@@ -1,6 +1,6 @@
 # 1. Base Image
 # 파이썬 버전
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 # 2. Set Working Directory
 # 작업 디렉토리를 /app으로 설정
