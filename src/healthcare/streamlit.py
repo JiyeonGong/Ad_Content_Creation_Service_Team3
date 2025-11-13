@@ -2,19 +2,37 @@
 # ============================================================
 # 💪 헬스케어 AI 콘텐츠 제작 앱 (Streamlit + GPT-5 Mini / SDXL 로컬)
 # 연결 모드 ON/OFF 지원
-# 캐싱 적용 및 페이지 3 개선
+# 캐시 경로 통합 적용 (Streamlit + Hugging Face)
 # ============================================================
 
 import os
 import re
 import streamlit as st
 from openai import OpenAI
-# I2I 파이프라인을 위해 StableDiffusionXLImg2ImgPipeline 추가
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 import torch
 from io import BytesIO
-# 이미지 처리를 위해 PIL import
 from PIL import Image
+
+# ============================================================
+# 🌐 프로젝트 기반 캐시 경로 설정
+# ============================================================
+
+# 프로젝트 루트 (src 폴더 기준)
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+cache_root = os.path.join(project_root, "cache")
+os.makedirs(cache_root, exist_ok=True)
+
+# Streamlit 캐시
+streamlit_cache_dir = os.path.join(cache_root, "streamlit_cache")
+os.makedirs(streamlit_cache_dir, exist_ok=True)
+st.set_option("global.cacheDir", streamlit_cache_dir)
+
+# Hugging Face 모델 캐시
+hf_cache_dir = os.path.join(cache_root, "hf_models")
+os.makedirs(hf_cache_dir, exist_ok=True)
+
+st.sidebar.info(f"Streamlit 캐시: {streamlit_cache_dir}\nHF 모델 캐시: {hf_cache_dir}")
 
 # ============================================================
 # 🌍 환경 변수 및 AI 클라이언트 초기화
@@ -39,14 +57,11 @@ else:
 st.set_page_config(page_title="💪 헬스케어 AI 콘텐츠 제작", layout="wide")
 st.sidebar.title("메뉴")
 
-# 페이지 선택
 menu = st.sidebar.radio(
     "페이지 선택",
     ["📝 홍보 문구+해시태그 생성", "🖼 인스타그램 이미지 생성", "🖼️ 이미지 편집/합성"],
 )
 
-# 연결 모드 토글
-st.sidebar.markdown("---")
 connect_mode = st.sidebar.checkbox("🔗 페이지 연결 모드", value=True)
 st.sidebar.info("연결 모드 ON: 페이지1에서 생성된 문구를 자동으로 페이지2/3에 사용\n"
                 "OFF: 각 페이지 독립 입력 사용")
@@ -76,7 +91,6 @@ def parse_output(output):
         captions = [output]
     return captions, hashtags
 
-# 🟢 캐싱 적용: GPT-5 Mini 호출 결과는 입력이 같으면 동일해야 하므로 cache_data 사용
 @st.cache_data(show_spinner="AI가 홍보 문구를 생성하는 중... ⏳")
 def generate_caption_and_hashtags(client, model, tone, info, hashtag_count=15):
     prompt = f"""
@@ -110,13 +124,7 @@ def generate_caption_and_hashtags(client, model, tone, info, hashtag_count=15):
         response = client.responses.create(
             model=model,
             input=prompt,
-            # 추가적인 파라미터 (선택 사항) 
-            # 추론 깊이: reasoning: { effort: "minimal" | "low" | "medium" | "high" } 
-            # 출력 상세도: text: { verbosity: "low" | "medium" | "high" } 
-            # 출력 길이: max_output_tokens # ⚠️ 중요: GPT-5 모델을 사용할 때 다음 매개변수는 지원되지 않습니다 
-            # (예 : gpt-5, gpt-5-mini, gpt-5-nano): temperature, top_p, logprobs
             reasoning={"effort":"minimal"},
-            # 🔥 max_output_tokens를 추가하여 응답 길이를 제어합니다.
             max_output_tokens=512, 
         )
         return response.output_text.strip()
@@ -125,44 +133,37 @@ def generate_caption_and_hashtags(client, model, tone, info, hashtag_count=15):
         return f"문구:\n1. [API 오류]\n해시태그:\n#[API오류]"
 
 # ============================================================
-# 🖼 로컬 SDXL 초기화 & 이미지 생성
+# 🖼 SDXL 초기화 및 이미지 생성
 # ============================================================
 
-# 🟢 캐싱 적용: SDXL T2I 파이프라인 (페이지 2용)
-@st.cache_resource(show_spinner="SDXL T2I 모델 로딩 중... (최초 1회, 시간이 걸릴 수 있습니다)")
+@st.cache_resource(show_spinner="SDXL T2I 모델 로딩 중...")
 def init_local_sdxl_t2i(model_id="stabilityai/stable-diffusion-xl-base-1.0"):
     if not torch.cuda.is_available():
         st.warning("⚠️ GPU가 감지되지 않았습니다. 이미지 생성이 매우 느릴 수 있습니다.")
-    
     pipe = StableDiffusionXLPipeline.from_pretrained(
         model_id,
+        cache_dir=hf_cache_dir,  # HF 모델 캐시 경로 지정
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
     )
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    pipe = pipe.to(device)
-    return pipe
+    return pipe.to(device)
 
-# 🟢 캐싱 적용: SDXL I2I 파이프라인 (페이지 3용)
-@st.cache_resource(show_spinner="SDXL I2I 모델 로딩 중... (최초 1회, 시간이 걸릴 수 있습니다)")
+@st.cache_resource(show_spinner="SDXL I2I 모델 로딩 중...")
 def init_local_sdxl_i2i(model_id="stabilityai/stable-diffusion-xl-base-1.0"):
     if not torch.cuda.is_available():
         st.warning("⚠️ GPU가 감지되지 않았습니다. 이미지 생성이 매우 느릴 수 있습니다.")
-    
     pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
         model_id,
+        cache_dir=hf_cache_dir,  # HF 모델 캐시 경로 지정
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
     )
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    pipe = pipe.to(device)
-    return pipe
+    return pipe.to(device)
 
-
-# 🟢 T2I 생성 함수 (페이지 2용)
 @st.cache_data(show_spinner=False)
 def generate_image_local(prompt, width=1024, height=1024, steps=30):
-    pipe = init_local_sdxl_t2i() # T2I 파이프라인 사용
+    pipe = init_local_sdxl_t2i()
     negative_prompt = "low quality, blurry, text, watermark, distorted"
-    
     result = pipe(prompt=prompt, negative_prompt=negative_prompt, width=width, height=height, num_inference_steps=steps)
     image = result.images[0]
     buf = BytesIO()
@@ -170,41 +171,32 @@ def generate_image_local(prompt, width=1024, height=1024, steps=30):
     buf.seek(0)
     return buf
 
-# 🟢 I2I 생성 함수 (페이지 3용)
 @st.cache_data(show_spinner=False)
 def generate_image_i2i_local(input_image_bytes, prompt, strength=0.75, width=1024, height=1024, steps=30):
-    pipe = init_local_sdxl_i2i() # I2I 파이프라인 사용
+    pipe = init_local_sdxl_i2i()
     negative_prompt = "low quality, blurry, text, watermark, distorted"
-    
-    # 1. 원본 이미지 로드 및 리사이즈
     input_image = Image.open(BytesIO(input_image_bytes)).convert("RGB").resize((width, height))
-    
-    # 2. I2I 파이프라인 실행 (input_image와 strength 파라미터 사용)
     result = pipe(
         prompt=prompt, 
-        image=input_image, # 원본 이미지 입력
-        strength=strength, # 변화 강도 (denoising_strength)
+        image=input_image,
+        strength=strength,
         negative_prompt=negative_prompt, 
         num_inference_steps=steps
     )
     image = result.images[0]
-    
-    # 3. BytesIO로 변환
     buf = BytesIO()
     image.save(buf, format="PNG")
     buf.seek(0)
     return buf
 
-
 def caption_to_image_prompt(caption, style="Instagram banner"):
     return f"{caption}, {style}, vibrant, professional, motivational"
 
 # ============================================================
-# 🔄 세션 상태 초기화 (독립 모드일 경우)
+# 🔄 세션 상태 초기화
 # ============================================================
 
 if not connect_mode:
-    # Clear cache for the functions whose output depends on the content_form inputs
     st.cache_data.clear() 
     for key in ["captions","hashtags","generated_images","selected_caption"]:
         if key in st.session_state:
