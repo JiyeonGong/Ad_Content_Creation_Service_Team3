@@ -1,3 +1,5 @@
+# 기본 코드
+# C:\Users\devuser\Codeit\Ad_Content_Creation_Service_Team3\src\app.py
 import streamlit as st
 
 st.set_page_config(layout="wide")
