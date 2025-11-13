@@ -25,3 +25,8 @@ Thumbs.db
 *.env
 
 # 여기서부터 우리가 새로 작성
+
+# 배진석 관련 파일
+experiments/
+gitclone/
+cache/
