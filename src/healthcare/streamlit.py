@@ -23,16 +23,27 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 cache_root = os.path.join(project_root, "cache")
 os.makedirs(cache_root, exist_ok=True)
 
-# Streamlit 캐시
-streamlit_cache_dir = os.path.join(cache_root, "streamlit_cache")
-os.makedirs(streamlit_cache_dir, exist_ok=True)
-st.set_option("global.cacheDir", streamlit_cache_dir)
+# Streamlit 캐시 (🚫 'global.cacheDir' 옵션은 지원되지 않으므로 제거)
+# st.set_option("global.cacheDir", streamlit_cache_dir)
+# Streamlit 캐시 파일은 기본 경로 (~/.streamlit/cache)에 저장됨.
 
 # Hugging Face 모델 캐시
 hf_cache_dir = os.path.join(cache_root, "hf_models")
 os.makedirs(hf_cache_dir, exist_ok=True)
 
-st.sidebar.info(f"Streamlit 캐시: {streamlit_cache_dir}\nHF 모델 캐시: {hf_cache_dir}")
+# Streamlit 캐시 경로를 지정하는 코드를 제거
+st.sidebar.info(f"Streamlit 캐시: 기본 경로 사용\nHF 모델 캐시: {hf_cache_dir}")
+
+
+# ============================================================
+# 🌱 .env 자동 로딩
+# ============================================================
+from dotenv import load_dotenv
+
+# 프로젝트 루트 기준으로 .env 경로 지정
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+dotenv_path = os.path.join(project_root, ".env")
+load_dotenv(dotenv_path)
 
 # ============================================================
 # 🌍 환경 변수 및 AI 클라이언트 초기화
