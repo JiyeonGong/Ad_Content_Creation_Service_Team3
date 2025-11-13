@@ -1,487 +1,181 @@
 # ============================================================
-
-# 홍보 문구/해시태그 생성 gpt-4o-mini 
-
+# 🏋️ 헬스케어 AI 콘텐츠 제작 앱 (Streamlit + GPT-5 Mini 통합)
 # ============================================================
-
-
-
-import streamlit as st
 
 import os
-
+import streamlit as st
 from dotenv import load_dotenv
-
 from openai import OpenAI
 
-
-
 # ============================================================
-
-# 🌍 환경 설정
-
+# 🌍 환경 변수 로드 및 OpenAI 클라이언트 초기화
 # ============================================================
 
 load_dotenv()
-
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-
-
 if OPENAI_API_KEY:
-
     try:
-
         client = OpenAI(api_key=OPENAI_API_KEY)
-
-        model_name = "gpt-4o-mini"  
-
+        model_name = "gpt-5-mini"  # GPT-5 Mini 모델 사용
     except Exception as e:
-
         st.error(f"OpenAI 클라이언트 초기화 오류: {e}")
-
         client = None
-
+        model_name = ""
 else:
-
     st.warning("⚠️ OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
-
     client = None
-
     model_name = ""
 
-
-
 # ============================================================
-
-# 🖥 페이지 설정
-
+# 🖥 Streamlit 페이지 설정
 # ============================================================
 
 st.set_page_config(page_title="💪 헬스케어 AI 콘텐츠 제작", layout="wide")
-
 st.sidebar.title("메뉴")
-
 menu = st.sidebar.radio(
-
     "페이지 선택",
-
-    ["📝 홍보 문구/해시태그 생성", "🖼 이미지 생성(준비 중)"],
-
+    ["📝 홍보 문구+해시태그 통합 생성", "🖼 이미지 생성(준비 중)"],
 )
 
-
-
 # ============================================================
-
-# 🧩 유틸 함수
-
+# 🧩 유틸리티 함수
 # ============================================================
 
 def validate_inputs(service_name, features):
-
-    """필수 입력 검증"""
-
     if not service_name or not features:
-
         st.warning("⚠️ 서비스 이름과 핵심 특징은 반드시 입력해주세요.")
-
         return False
-
     return True
 
-
-
-
-
-def generate_caption(client, model, tone, info):
-
-    """인스타그램 문구 생성"""
-
+def generate_caption_and_hashtags(client, model, tone, info, hashtag_count=15):
+    """
+    한 번의 API 호출로 인스타그램 홍보 문구 3개와 해시태그를 동시에 생성
+    """
     prompt = f"""
+당신은 헬스케어 소상공인을 위한 전문 인스타그램 콘텐츠 크리에이터입니다.
 
-당신은 헬스케어 소상공인을 위한 전문 인스타그램 카피라이터입니다.
-
-아래 정보를 바탕으로 **인스타그램 게시물에 최적화된** 홍보 문구 3개를 작성하세요.
-
-
-
-※ 필수 규칙
-
-1. **의료/식품 허위·과장 표현** (예: 100% 효과 보장, 즉시 치료, 완벽한 치유)은 절대 금지합니다.
-
-2. 각 문구는 **첫 줄 후킹 → 핵심 메시지 → 명확한 CTA** 구조를 유지하세요.
-
-3. 이모티콘을 적절히 사용해 **가독성**과 **친근함**을 높이세요.
-
-4. 문체 스타일: {tone}
-
-
-
-[스타일 예시]
-
-친근하고 동기부여: "🔥 오늘부터 진짜 몸 만들기 시작!"
-
-전문적이고 신뢰감: "체계적인 분석과 과학적 운동법으로 몸을 설계합니다."
-
-재미있고 트렌디: "운동은 지루하다는 편견? 우리랑 하면 NO!"
-
-차분하고 감성적: "몸과 마음이 함께 회복되는 시간."
-
-
+요청:
+1. 아래 정보를 바탕으로 인스타그램 게시물에 최적화된 홍보 문구 3개를 작성
+   - 각 문구는 첫 줄 후킹 → 핵심 메시지 → 명확한 CTA 구조
+   - 이모티콘을 적절히 사용
+   - 문체 스타일: {tone}
+2. 위 문구를 기반으로 해시태그 {hashtag_count}개를 추천
+   - 대형 태그 + 중형 태그 + 지역/틈새 태그 균형
+   - 모든 태그는 #태그 형식, 공백 없이, 중복 제거
 
 [정보]
-
 서비스 종류: {info['service_type']}
-
 서비스명: {info['service_name']}
-
 핵심 특징: {info['features']}
-
 지역: {info['location']}
-
 이벤트: {info['event_info']}
 
+출력 형식:
+문구:
+1. [문구1]
+2. [문구2]
+3. [문구3]
 
-
----
-
-# 1. 문구
-
-[여기에 문구 작성]
-
-# 2. 문구
-
-[여기에 문구 작성]
-
-# 3. 문구
-
-[여기에 문구 작성]
-
----
-
+해시태그:
+#[태그1] #[태그2] ... #[태그N]
 """
-
-    response = client.chat.completions.create(
-
+    response = client.responses.create(
         model=model,
-
-        messages=[{"role": "user", "content": prompt}],
-
-        temperature=0.85,
-
-        max_tokens=400,
-
+        input=prompt,
+        reasoning={"effort": "minimal"}
     )
-
-    return response.choices[0].message.content.strip()
-
-
-
-
-
-def generate_hashtags(client, model, info, count):
-
-    """인스타그램 해시태그 생성"""
-
-    prompt = f"""
-
-당신은 헬스케어 SNS 마케팅 전문가입니다.
-
-인스타그램 노출을 위한 최적의 해시태그 {count}개를 생성하세요.
-
-
-
-규칙:
-
-1. **대형 태그 + 중형 태그 + 지역/틈새 태그**를 균형 있게 조합합니다.
-
-2. 모든 태그는 **#태그** 형식으로 공백 없이 한 줄로 나열합니다.
-
-3. 중복 태그는 제거하세요.
-
-4. 결과만 출력하세요.
-
-
-
-[입력 정보]
-
-서비스 종류: {info['service_type']}
-
-서비스/제품명: {info['service_name']}
-
-핵심 특징: {info['features']}
-
-지역: {info['location']}
-
-"""
-
-    response = client.chat.completions.create(
-
-        model=model,
-
-        messages=[{"role": "user", "content": prompt}],
-
-        temperature=0.7,
-
-        max_tokens=200,
-
-    )
-
-    return response.choices[0].message.content.strip()
-
-
-
-
+    return response.output_text.strip()
 
 # ============================================================
-
-# 📣 페이지 1: 홍보 문구/해시태그 생성
-
+# 📣 페이지 1: 홍보 문구 + 해시태그 통합 생성
 # ============================================================
 
-if menu == "📝 홍보 문구/해시태그 생성":
-
-    st.title("📝 인스타그램 맞춤 홍보 문구 & 해시태그 생성")
-
-    st.markdown("헬스케어 소상공인을 위한 자동 콘텐츠 생성 도우미입니다 💪")
-
+if menu == "📝 홍보 문구+해시태그 통합 생성":
+    st.title("📝 인스타그램 맞춤 홍보 문구 & 해시태그 통합 생성")
+    st.markdown("헬스케어 소상공인을 위한 자동 콘텐츠 생성 도우미 💪")
     st.divider()
 
-
-
-    # -------------------------
-
-    # 📋 입력 영역
-
-    # -------------------------
-
+    # 입력 영역
     st.subheader("💡 서비스 정보 입력")
-
-
-
     col1, col2 = st.columns(2)
-
     with col1:
-
         service_type = st.selectbox(
-
-            "서비스 종류",
-
-            ["헬스장", "PT (개인 트레이닝)", "요가/필라테스", "건강 식품/보조제", "기타"],
-
+            "서비스 종류", 
+            ["헬스장", "PT (개인 트레이닝)", "요가/필라테스", "건강 식품/보조제", "기타"]
         )
-
     with col2:
-
         location = st.text_input("지역 (예: 강남, 마포구, 온라인)")
 
-
-
-    service_name = st.text_input("제품/클래스 이름 (예: 여름 특가 PT 8주 프로그램)")
-
+    service_name = st.text_input("제품/클래스 이름")
     features = st.text_area(
-
         "핵심 특징 및 장점 (줄바꿈 또는 콤마로 구분)",
-
         height=100,
-
-        placeholder="예: 최신 머신 완비, 1:1 맞춤 식단 관리, 20년 경력 트레이너",
-
+        placeholder="예: 최신 머신 완비, 1:1 맞춤 식단 관리, 20년 경력 트레이너"
     )
 
-
-
     col3, col4 = st.columns(2)
-
     with col3:
-
-        event_info = st.text_input("이벤트/할인 내용 (선택)", placeholder="예: 선착순 10명 30% 할인")
-
+        event_info = st.text_input("이벤트/할인 내용", placeholder="예: 선착순 10명 30% 할인")
     with col4:
-
         tone = st.selectbox(
-
             "톤 선택",
-
-            ["친근하고 동기부여", "전문적이고 신뢰감", "재미있고 트렌디", "차분하고 감성적"],
-
+            ["친근하고 동기부여", "전문적이고 신뢰감", "재미있고 트렌디", "차분하고 감성적"]
         )
 
-
-
-    # 톤 예시 미리보기
-
+    # 톤 예시
     tone_examples = {
-
         "친근하고 동기부여": "🔥 오늘부터 진짜 몸 만들기 시작!",
-
         "전문적이고 신뢰감": "체계적인 분석과 과학적 운동법으로 몸을 설계합니다.",
-
         "재미있고 트렌디": "운동은 지루하다는 편견? 우리랑 하면 NO!",
-
-        "차분하고 감성적": "몸과 마음이 함께 회복되는 시간.",
-
+        "차분하고 감성적": "몸과 마음이 함께 회복되는 시간."
     }
-
     st.caption(f"💬 톤 예시: {tone_examples[tone]}")
-
-
-
     st.divider()
 
-
-
-    # 예시 보기 버튼
-
-    if st.button("💡 입력 예시 보기"):
-
-        st.info(
-
-            """
-
-예시:
-
-- 서비스 종류: PT (개인 트레이닝)
-
-- 제품/클래스 이름: 여름 한정 8주 바디 챌린지
-
-- 핵심 특징: 1:1 체형 분석, 식단 피드백, 프리미엄 머신 완비
-
-- 이벤트: 선착순 10명 30% 할인
-
-- 지역: 강남
-
-"""
-
-        )
-
-
-
-    st.divider()
-
-
-
-    # =======================================================
-
-    # ✅ 문구 생성
-
-    # =======================================================
-
+    # 통합 생성 버튼
     if client:
-
-        st.subheader("📣 인스타그램 문구 생성")
-
-        if st.button("✨ 문구 3개 생성하기", type="primary"):
-
+        if st.button("✨ 문구+해시태그 생성", type="primary"):
             if validate_inputs(service_name, features):
-
-                with st.spinner("문구를 생성 중입니다..."):
-
+                with st.spinner("문구와 해시태그를 생성 중입니다..."):
                     info = {
-
                         "service_type": service_type,
-
                         "service_name": service_name,
-
                         "features": features,
-
                         "location": location if location else "전국/온라인",
-
-                        "event_info": event_info if event_info else "없음",
-
+                        "event_info": event_info if event_info else "없음"
                     }
+                    output = generate_caption_and_hashtags(client, model_name, tone, info, hashtag_count=15)
 
-                    ad_text = generate_caption(client, model_name, tone, info)
-
-
-
-                    # 결과 출력 (카드 형식)
-
-                    st.success("✅ 문구 생성 완료!")
-
-                    st.markdown("아래 문구를 복사하여 인스타그램에 바로 활용하세요.")
-
-                    texts = ad_text.split("#")[1:]
-
-                    for t in texts:
-
-                        st.markdown(f"💬 **{t.strip()}**")
-
-                        st.divider()
-
-
-
+                    # 결과 출력
+                    st.success("✅ 문구 및 해시태그 생성 완료!")
+                    if "문구:" in output and "해시태그:" in output:
+                        captions, hashtags = output.split("해시태그:")
+                        st.markdown("### 💬 문구")
+                        for line in captions.split("\n"):
+                            if line.strip() and line[0].isdigit():
+                                st.markdown(f"- {line.strip()}")
+                        st.markdown("### 🔖 해시태그")
+                        st.code(hashtags.strip(), language="text")
+                    else:
+                        st.warning("생성된 결과 형식이 예상과 다릅니다. 출력:")
+                        st.text(output)
     else:
-
         st.error("❌ API 클라이언트가 초기화되지 않아 기능을 사용할 수 없습니다.")
 
-
-
-    # =======================================================
-
-    # ✅ 해시태그 생성
-
-    # =======================================================
-
-    st.subheader("🔖 인스타그램 해시태그 생성")
-
-    hashtag_count = st.slider("해시태그 개수 (최대 20개)", 5, 20, 15)
-
-    if client and st.button("🔥 해시태그 생성하기"):
-
-        if validate_inputs(service_name, features):
-
-            with st.spinner("해시태그를 생성 중입니다..."):
-
-                info = {
-
-                    "service_type": service_type,
-
-                    "service_name": service_name,
-
-                    "features": features,
-
-                    "location": location if location else "전국/온라인",
-
-                    "event_info": event_info if event_info else "없음",
-
-                }
-
-                hashtags = generate_hashtags(client, model_name, info, hashtag_count)
-
-                st.success("✅ 해시태그 생성 완료!")
-
-                st.code(hashtags, language="text")
-
-                st.caption("복사하여 인스타그램 캡션 하단 또는 댓글에 활용하세요.")
-
-
-
-
-
 # ============================================================
-
-# ✅ 페이지 2: 이미지 생성 (가제)
-
+# 🖼 페이지 2: 이미지 생성 (가제)
 # ============================================================
 
 elif menu == "🖼 이미지 생성(준비 중)":
-
     st.title("🖼 인스타그램 이미지/배너 생성 (준비 중)")
-
     st.markdown("---")
-
-    st.info("이 페이지는 향후 DALL-E 또는 외부 디자인 API(예: Canva API)를 활용하여 시각 자료를 자동으로 생성하도록 확장될 예정입니다.")
-
+    st.info(
+        "이 페이지는 향후 DALL-E 또는 외부 디자인 API를 활용하여 시각 자료를 자동으로 생성하도록 확장될 예정입니다."
+    )
     st.subheader("예상 기능 구성")
-
     st.markdown("""
-
-    * **템플릿 기반 배너 자동 생성:** 소상공인이 업로드한 사진과 텍스트를 인스타그램 사이즈의 헬스케어 템플릿에 자동 적용.
-
-    * **텍스트 → 이미지 변환:** 입력된 문구를 시각화하는 인포그래픽/아이콘 이미지 생성.
-
-    * **메뉴판/가격표 디자인:** 입력된 가격 정보로 깔끔하고 전문적인 디자인의 가격표 이미지 생성.
-
+    * **템플릿 기반 배너 자동 생성**: 소상공인이 업로드한 사진과 텍스트를 인스타그램 사이즈 템플릿에 자동 적용
+    * **텍스트 → 이미지 변환**: 입력된 문구를 시각화하는 인포그래픽/아이콘 이미지 생성
+    * **메뉴판/가격표 디자인**: 입력된 가격 정보로 깔끔하고 전문적인 디자인의 가격표 생성
     """)
