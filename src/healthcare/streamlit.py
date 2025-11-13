@@ -1,8 +1,10 @@
 # ============================================================
-# 헬스케어 AI 콘텐츠 제작 앱 (Streamlit + GPT-5 Mini / SDXL 로컬)
+# 💪 헬스케어 AI 콘텐츠 제작 앱 (Streamlit + GPT-5 Mini / SDXL 로컬)
+# 연결 모드 ON/OFF 지원
 # ============================================================
 
 import os
+import re
 import streamlit as st
 from openai import OpenAI
 from diffusers import StableDiffusionXLPipeline
@@ -31,10 +33,18 @@ else:
 
 st.set_page_config(page_title="💪 헬스케어 AI 콘텐츠 제작", layout="wide")
 st.sidebar.title("메뉴")
+
+# 페이지 선택
 menu = st.sidebar.radio(
     "페이지 선택",
     ["📝 홍보 문구+해시태그 생성", "🖼 인스타그램 이미지 생성", "🖼️ 이미지 편집/합성"],
 )
+
+# 연결 모드 토글
+st.sidebar.markdown("---")
+connect_mode = st.sidebar.checkbox("🔗 페이지 연결 모드", value=True)
+st.sidebar.info("연결 모드 ON: 페이지1에서 생성된 문구를 자동으로 페이지2/3에 사용\n"
+                "OFF: 각 페이지 독립 입력 사용")
 
 # ============================================================
 # 🧩 유틸리티 함수
@@ -49,17 +59,16 @@ def validate_inputs(service_name, features):
 def parse_output(output):
     captions, hashtags = [], ""
     try:
-        if "문구:" in output and "해시태그:" in output:
-            parts = output.split("해시태그:")
-            caption_part = parts[0].replace("문구:", "").strip()
-            hashtags = parts[1].strip()
-            for line in caption_part.split("\n"):
-                if line.strip() and (line[0].isdigit() and "." in line):
-                    captions.append(line.split(".", 1)[1].strip())
-                elif line.strip() and not line.startswith("문구:"):
-                    captions.append(line.strip())
+        m = re.search(r"문구:(.*?)해시태그:(.*)", output, re.S)
+        if m:
+            caption_text = m.group(1).strip()
+            hashtags = m.group(2).strip()
+            captions = [line.split(".",1)[1].strip() if "." in line else line.strip()
+                        for line in caption_text.split("\n") if line.strip()]
+        else:
+            captions = [output]
     except Exception:
-        return [output], ""
+        captions = [output]
     return captions, hashtags
 
 def generate_caption_and_hashtags(client, model, tone, info, hashtag_count=15):
@@ -91,7 +100,11 @@ def generate_caption_and_hashtags(client, model, tone, info, hashtag_count=15):
 #[태그1] #[태그2] ... #[태그N]
 """
     try:
-        response = client.responses.create(model=model, input=prompt, reasoning={"effort":"minimal"})
+        response = client.responses.create(
+            model=model,
+            input=prompt,
+            reasoning={"effort":"minimal"},
+        )
         return response.output_text.strip()
     except Exception as e:
         st.error(f"GPT-5 Mini 호출 오류: {e}")
@@ -105,8 +118,16 @@ pipe = None
 def init_local_sdxl(model_id="stabilityai/stable-diffusion-xl-base-1.0"):
     global pipe
     if pipe is None:
-        pipe = StableDiffusionXLPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
-        pipe = pipe.to("cuda")  # GPU 없으면 "cpu"
+        if not torch.cuda.is_available():
+            st.warning("⚠️ GPU가 감지되지 않았습니다. 이미지 생성이 매우 느릴 수 있습니다.")
+        
+        with st.spinner("SDXL 모델 로딩 중... (최초 1회, 시간이 걸릴 수 있습니다)"):
+            pipe = StableDiffusionXLPipeline.from_pretrained(
+                model_id,
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
+            )
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            pipe = pipe.to(device)
     return pipe
 
 def generate_image_local(prompt, width=1024, height=1024, steps=30):
@@ -125,31 +146,64 @@ def caption_to_image_prompt(caption, style="Instagram banner"):
     return f"{caption}, {style}, vibrant, professional, motivational"
 
 # ============================================================
+# 🔄 세션 상태 초기화 (독립 모드일 경우)
+# ============================================================
+
+if not connect_mode:
+    for key in ["captions","hashtags","generated_images","selected_caption"]:
+        if key in st.session_state:
+            del st.session_state[key]
+
+# ============================================================
 # 📝 페이지 1: 홍보 문구 + 해시태그
 # ============================================================
 
 if menu == "📝 홍보 문구+해시태그 생성":
     st.title("📝 홍보 문구 & 해시태그 생성")
-    if openai_client:
+    
+    if not openai_client:
+        st.error("❌ OpenAI API 키가 설정되지 않아 이 기능을 사용할 수 없습니다.")
+    else:
         with st.form("content_form"):
-            service_name = st.text_input("제품/클래스 이름")
-            features = st.text_area("핵심 특징 및 장점")
+            service_name = st.text_input("제품/클래스 이름", placeholder="예: 30일 다이어트 챌린지")
+            features = st.text_area("핵심 특징 및 장점", placeholder="예: 전문 PT와 함께하는 맞춤형 운동, 영양 관리 포함")
             tone = st.selectbox("톤 선택", ["친근하고 동기부여","전문적이고 신뢰감","재미있고 트렌디","차분하고 감성적"])
             submitted = st.form_submit_button("✨ 문구+해시태그 생성")
 
-        if submitted and validate_inputs(service_name, features):
-            info = {"service_type":"헬스/피트니스","service_name":service_name,"features":features,"location":"전국/온라인","event_info":"없음"}
-            output = generate_caption_and_hashtags(openai_client, MODEL_GPT_MINI, tone, info, 15)
-            captions, hashtags = parse_output(output)
-            st.session_state["captions"] = captions
-            st.session_state["hashtags"] = hashtags
+        if submitted:
+            if validate_inputs(service_name, features):
+                with st.spinner("AI가 콘텐츠를 생성하는 중... ⏳"):
+                    info = {
+                        "service_type":"헬스/피트니스",
+                        "service_name":service_name,
+                        "features":features,
+                        "location":"전국/온라인",
+                        "event_info":"없음"
+                    }
+                    output = generate_caption_and_hashtags(openai_client, MODEL_GPT_MINI, tone, info, 15)
+                    captions, hashtags = parse_output(output)
+                    st.session_state["captions"] = captions
+                    st.session_state["hashtags"] = hashtags
 
-        if "captions" in st.session_state:
+        # 생성된 문구 표시 및 선택
+        if "captions" in st.session_state and st.session_state["captions"]:
             st.markdown("### 💬 생성된 문구")
-            for i, caption in enumerate(st.session_state["captions"]):
-                st.radio(f"문구 선택 {i+1}", st.session_state["captions"], key=f"selected_caption_{i}")
+            for i, caption in enumerate(st.session_state["captions"], 1):
+                st.write(f"**{i}.** {caption}")
+            
+            st.markdown("---")
+            selected_idx = st.radio(
+                "다음 페이지에서 사용할 문구 선택:", 
+                range(len(st.session_state["captions"])),
+                format_func=lambda x: f"문구 {x+1}",
+                key="caption_selector"
+            )
+            st.session_state["selected_caption"] = st.session_state["captions"][selected_idx]
+            
+            st.success(f"✅ 선택된 문구: {st.session_state['selected_caption'][:50]}...")
+            
             st.markdown("### 🔖 추천 해시태그")
-            st.code(st.session_state["hashtags"])
+            st.code(st.session_state["hashtags"], language="")
 
 # ============================================================
 # 🖼 페이지 2: 문구 기반 이미지 3버전 생성
@@ -157,50 +211,133 @@ if menu == "📝 홍보 문구+해시태그 생성":
 
 elif menu == "🖼 인스타그램 이미지 생성":
     st.title("🖼 문구 기반 이미지 생성 (3가지 버전)")
-    if "captions" not in st.session_state:
-        st.warning("⚠️ 페이지1에서 문구를 먼저 생성해주세요.")
+    
+    # 연결 모드일 때 페이지1 문구 사용 가능
+    if connect_mode and "selected_caption" in st.session_state:
+        st.info(f"🔗 연결 모드: 페이지1에서 선택한 문구 사용\n\n**선택된 문구:** {st.session_state['selected_caption']}")
+        selected_caption = st.session_state["selected_caption"]
     else:
-        selected_caption = st.selectbox("이미지에 반영할 문구 선택", st.session_state["captions"])
-        image_size = st.selectbox("이미지 크기", ["1024x1024","1792x1024","1024x1792"])
-        submitted = st.button("🖼 3가지 버전 생성")
+        if connect_mode:
+            st.warning("⚠️ 페이지1에서 문구를 먼저 생성하고 선택하세요.")
+        selected_caption = st.text_area("문구 입력 (연결 모드 OFF 또는 페이지1 문구 없음)", 
+                                        placeholder="예: 💪 새해 목표, 이번엔 꼭 이루자! 전문 PT와 함께하는 30일 다이어트 챌린지 🔥")
+    
+    image_size = st.selectbox("이미지 크기", ["1024x1024","1792x1024","1024x1792"])
+    submitted = st.button("🖼 3가지 버전 생성", type="primary")
 
-        if submitted:
-            width, height = map(int, image_size.split("x"))
-            st.session_state["generated_images"] = []
-            st.info("⏳ 3가지 버전 생성 중...")
-            for i in range(3):
-                version_prompt = caption_to_image_prompt(f"{selected_caption} (version {i+1})")
+    if submitted and selected_caption:
+        width, height = map(int, image_size.split("x"))
+        st.session_state["generated_images"] = []
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for i in range(3):
+            status_text.text(f"⏳ 버전 {i+1}/3 생성 중... (각 이미지당 30초~2분 소요)")
+            
+            # 각 버전마다 약간 다른 프롬프트
+            version_prompt = caption_to_image_prompt(
+                f"{selected_caption} (style variation {i+1})"
+            )
+            
+            try:
                 image_bytes = generate_image_local(version_prompt, width=width, height=height)
-                st.session_state["generated_images"].append({"prompt": version_prompt, "bytes": image_bytes})
+                st.session_state["generated_images"].append({
+                    "prompt": version_prompt, 
+                    "bytes": image_bytes
+                })
+                progress_bar.progress((i+1)/3)
+            except Exception as e:
+                st.error(f"이미지 생성 오류 (버전 {i+1}): {e}")
+                break
 
-            st.success("✅ 3가지 이미지 생성 완료!")
+        status_text.empty()
+        progress_bar.empty()
+        
+        if st.session_state["generated_images"]:
+            st.success(f"✅ {len(st.session_state['generated_images'])}개 이미지 생성 완료!")
+            
+            cols = st.columns(len(st.session_state["generated_images"]))
             for idx, img_data in enumerate(st.session_state["generated_images"]):
-                st.image(img_data["bytes"], caption=f"버전 {idx+1}: {img_data['prompt']}", use_column_width=True)
-                st.download_button(f"버전 {idx+1} 다운로드", img_data["bytes"], f"instagram_banner_v{idx+1}.png","image/png")
+                with cols[idx]:
+                    st.image(img_data["bytes"], caption=f"버전 {idx+1}", use_container_width=True)
+                    st.download_button(
+                        f"⬇️ 버전 {idx+1} 다운로드", 
+                        img_data["bytes"], 
+                        f"instagram_banner_v{idx+1}.png",
+                        "image/png",
+                        key=f"download_{idx}"
+                    )
 
 # ============================================================
-# 🖼 페이지 3: 이미지 편집/합성 (로컬 SDXL)
+# 🖼 페이지 3: 이미지 편집/합성
 # ============================================================
 
 elif menu == "🖼️ 이미지 편집/합성":
     st.title("🖼️ 이미지 편집 / 합성")
-    uploaded_file = st.file_uploader("업로드 이미지 (없으면 페이지2 선택 이미지 사용)", type=["png","jpg","jpeg"])
-    preloaded_image = st.session_state.get("generated_images", [None])[0]
-    image_bytes = uploaded_file.getvalue() if uploaded_file else preloaded_image
+    
+    st.info("💡 이 기능은 기존 이미지에 새로운 스타일을 적용하여 재생성합니다.")
+    
+    # 이미지 소스 선택
+    uploaded_file = st.file_uploader("업로드 이미지 (없으면 페이지2 생성 이미지 사용)", type=["png","jpg","jpeg"])
+    
+    # 페이지2에서 생성된 이미지 확인
+    preloaded_images = st.session_state.get("generated_images", [])
+    
+    image_bytes = None
+    if uploaded_file:
+        image_bytes = uploaded_file.getvalue()
+        st.image(image_bytes, caption="업로드된 이미지", width=300)
+    elif preloaded_images and connect_mode:
+        st.info("🔗 연결 모드: 페이지2에서 생성된 이미지 사용")
+        image_idx = st.selectbox("사용할 이미지 선택", 
+                                 range(len(preloaded_images)),
+                                 format_func=lambda x: f"버전 {x+1}")
+        image_bytes = preloaded_images[image_idx]["bytes"]
+        st.image(image_bytes, caption=f"선택된 이미지: 버전 {image_idx+1}", width=300)
+    else:
+        st.warning("⚠️ 이미지를 업로드하거나 페이지2에서 이미지를 먼저 생성하세요.")
+    
+    # 문구 소스 선택
+    if connect_mode and "selected_caption" in st.session_state:
+        st.info(f"🔗 사용할 문구: {st.session_state['selected_caption']}")
+        selected_caption = st.session_state["selected_caption"]
+    else:
+        selected_caption = st.text_input("편집에 반영할 문구 입력", 
+                                         placeholder="예: 💪 새해 목표, 이번엔 꼭 이루자!")
+    
+    edit_prompt = st.text_area("추가 편집 지시 (선택)", 
+                               placeholder="예: 더 밝고 활기찬 분위기로, 파란색 배경 추가")
+    output_size = st.selectbox("출력 이미지 크기", ["1024x1024","1792x1024","1024x1792"])
+    
+    submitted = st.button("✨ 합성 이미지 생성", type="primary")
 
-    if image_bytes and "captions" in st.session_state:
-        selected_caption = st.selectbox("편집에 반영할 문구 선택", st.session_state["captions"])
-        edit_prompt = st.text_area("추가 편집 지시 (선택)")
-        output_size = st.selectbox("출력 이미지 크기", ["1024x1024","1792x1024","1024x1792"])
-        submitted = st.button("✨ 합성 이미지 생성")
-
-        if submitted:
+    if submitted:
+        if not image_bytes:
+            st.error("❌ 이미지를 먼저 업로드하거나 페이지2에서 생성하세요.")
+        elif not selected_caption:
+            st.error("❌ 문구를 입력하세요.")
+        else:
             width, height = map(int, output_size.split('x'))
             final_prompt = caption_to_image_prompt(selected_caption)
             if edit_prompt:
                 final_prompt += f", {edit_prompt}"
-            with st.spinner("합성/편집 중... ⏳"):
-                edited_image_bytes = generate_image_local(final_prompt, width=width, height=height)
-                st.image(edited_image_bytes, caption=final_prompt, use_column_width=True)
-                st.download_button("합성 이미지 다운로드", edited_image_bytes, "edited_image.png","image/png")
-
+            
+            with st.spinner("합성/편집 중... ⏳ (30초~2분 소요)"):
+                try:
+                    # 주의: SDXL은 기존 이미지 편집이 아니라 프롬프트 기반 재생성
+                    edited_image_bytes = generate_image_local(final_prompt, width=width, height=height)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.image(image_bytes, caption="원본 이미지", use_container_width=True)
+                    with col2:
+                        st.image(edited_image_bytes, caption="편집된 이미지", use_container_width=True)
+                    
+                    st.success("✅ 이미지 생성 완료!")
+                    st.download_button("⬇️ 편집 이미지 다운로드", 
+                                     edited_image_bytes, 
+                                     "edited_image.png",
+                                     "image/png")
+                except Exception as e:
+                    st.error(f"이미지 생성 오류: {e}")
