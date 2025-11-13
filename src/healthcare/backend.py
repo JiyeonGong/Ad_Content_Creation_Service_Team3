@@ -1,8 +1,7 @@
 # C:\Users\devuser\Codeit\Ad_Content_Creation_Service_Team3\src\healthcare\backend.py
-
-# ========================================
-# 프론트엔드/벡엔드 분리 버전
-# ========================================
+#========================================
+# 프론트엔드/벡엔드 분리 + 캐시 경로 지정 버전
+#========================================
 
 import os
 import re
@@ -20,6 +19,18 @@ from PIL import Image
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL_GPT_MINI = "gpt-5-mini"
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
+# ===============================
+# 💾 캐시 경로 설정 (프로젝트 구조 기준)
+# ===============================
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+cache_root = os.path.join(project_root, "cache")
+os.makedirs(cache_root, exist_ok=True)
+
+hf_cache_dir = os.path.join(cache_root, "hf_models")
+os.makedirs(hf_cache_dir, exist_ok=True)
+
+print(f"[INFO] Hugging Face 모델 캐시 경로: {hf_cache_dir}")
 
 # ===============================
 # FastAPI 앱 & CORS
@@ -42,7 +53,7 @@ def parse_output(output):
         if m:
             caption_text = m.group(1).strip()
             hashtags = m.group(2).strip()
-            captions = [line.split(".",1)[1].strip() if "." in line else line.strip()
+            captions = [line.split(".", 1)[1].strip() if "." in line else line.strip()
                         for line in caption_text.split("\n") if line.strip()]
         else:
             captions = [output]
@@ -88,7 +99,7 @@ def generate_captions(
     response = openai_client.responses.create(
         model=MODEL_GPT_MINI,
         input=prompt,
-        reasoning={"effort":"minimal"},
+        reasoning={"effort": "minimal"},
         max_output_tokens=512
     )
     captions, hashtags = parse_output(response.output_text.strip())
@@ -103,15 +114,27 @@ def init_sdxl_t2i():
     if pipe_t2i is None:
         pipe_t2i = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
+            cache_dir=hf_cache_dir,  # ✅ HF 모델 캐시 경로 지정
             torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
         ).to("cuda" if torch.cuda.is_available() else "cpu")
     return pipe_t2i
 
 @app.post("/generate_image")
-def generate_image(prompt: str = Form(...), width: int = Form(1024), height: int = Form(1024), steps: int = Form(30)):
+def generate_image(
+    prompt: str = Form(...),
+    width: int = Form(1024),
+    height: int = Form(1024),
+    steps: int = Form(30)
+):
     pipe = init_sdxl_t2i()
     negative_prompt = "low quality, blurry, text, watermark, distorted"
-    result = pipe(prompt=prompt, negative_prompt=negative_prompt, width=width, height=height, num_inference_steps=steps)
+    result = pipe(
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        width=width,
+        height=height,
+        num_inference_steps=steps
+    )
     buf = BytesIO()
     result.images[0].save(buf, format="PNG")
     buf.seek(0)
@@ -126,6 +149,7 @@ def init_sdxl_i2i():
     if pipe_i2i is None:
         pipe_i2i = StableDiffusionXLImg2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
+            cache_dir=hf_cache_dir,  # ✅ HF 모델 캐시 경로 지정
             torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
         ).to("cuda" if torch.cuda.is_available() else "cpu")
     return pipe_i2i
@@ -142,8 +166,14 @@ def edit_image(
     pipe = init_sdxl_i2i()
     input_image = Image.open(BytesIO(image.file.read())).convert("RGB").resize((width, height))
     negative_prompt = "low quality, blurry, text, watermark, distorted"
-    
-    result = pipe(prompt=prompt, image=input_image, strength=strength, negative_prompt=negative_prompt, num_inference_steps=steps)
+
+    result = pipe(
+        prompt=prompt,
+        image=input_image,
+        strength=strength,
+        negative_prompt=negative_prompt,
+        num_inference_steps=steps
+    )
     buf = BytesIO()
     result.images[0].save(buf, format="PNG")
     buf.seek(0)
