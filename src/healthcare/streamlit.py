@@ -224,28 +224,44 @@ if menu == "📝 홍보 문구+해시태그 생성":
         st.error("❌ OpenAI API 키가 설정되지 않아 이 기능을 사용할 수 없습니다.")
     else:
         with st.form("content_form"):
+            
+            # 👇 사용자 요청에 따라 추가된 입력 필드
+            service_type = st.selectbox(
+                "서비스 종류",
+                ["헬스장", "PT (개인 트레이닝)", "요가/필라테스", "건강 식품/보조제", "기타"],
+            )
+            location = st.text_input("지역", placeholder="예: 강남, 마포구, 온라인")
+            # 👆 추가된 입력 필드
+
             service_name = st.text_input("제품/클래스 이름", placeholder="예: 30일 다이어트 챌린지")
             features = st.text_area("핵심 특징 및 장점", placeholder="예: 전문 PT와 함께하는 맞춤형 운동, 영양 관리 포함")
             tone = st.selectbox("톤 선택", ["친근하고 동기부여","전문적이고 신뢰감","재미있고 트렌디","차분하고 감성적"])
             submitted = st.form_submit_button("✨ 문구+해시태그 생성")
 
         if submitted:
-            if validate_inputs(service_name, features):
-                # Spinner is now handled by the @st.cache_data decorator's show_spinner argument
+            # `location`과 `service_name`, `features`는 GPT 프롬프트에 필수적이므로, 
+            # `location`의 빈 값 체크를 `validate_inputs`에 포함하는 것이 좋습니다.
+            if validate_inputs(service_name, features) and location.strip(): # 지역 정보가 추가됨
+                
                 info = {
-                    "service_type":"헬스/피트니스",
-                    "service_name":service_name,
-                    "features":features,
-                    "location":"전국/온라인",
+                    "service_type": service_type, # 👈 새로운 정보 포함
+                    "service_name": service_name,
+                    "features": features,
+                    "location": location,       # 👈 새로운 정보 포함
                     "event_info":"없음"
                 }
+                
                 output = generate_caption_and_hashtags(openai_client, MODEL_GPT_MINI, tone, info, 15)
                 captions, hashtags = parse_output(output)
                 st.session_state["captions"] = captions
                 st.session_state["hashtags"] = hashtags
+            else:
+                 st.warning("⚠️ 서비스 이름, 핵심 특징, **지역**을 모두 입력해주세요.")
 
-        # 생성된 문구 표시 및 선택
+
+        # 생성된 문구 표시 및 선택 (이하 동일)
         if "captions" in st.session_state and st.session_state["captions"]:
+            # ... (이하 기존 코드와 동일)
             st.markdown("### 💬 생성된 문구")
             for i, caption in enumerate(st.session_state["captions"], 1):
                 st.write(f"**{i}.** {caption}")
