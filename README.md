@@ -78,10 +78,12 @@
 
 #### 2\. 서버 실행
 
+Ad_Content_Creation_Service_Team3\src\healthcare>로 터미널 경로 이동 후
+
 1.  **백엔드 서버 실행:**
 
     ```bash
-    uvicorn src.healthcare.backend:app --reload
+    uvicorn backend:app --reload
     ```
 
       * 터미널에 "SDXL 모델 로딩 완료." 메시지가 뜨면 성공적으로 로드된 것입니다.
@@ -89,7 +91,7 @@
 2.  **프론트엔드 앱 실행 (새 터미널):**
 
     ```bash
-    streamlit run src/healthcare/frontend.py
+    streamlit run frontend.py
     ```
 
       * 웹 브라우저에서 Streamlit UI에 접속하여 서비스를 이용합니다.
