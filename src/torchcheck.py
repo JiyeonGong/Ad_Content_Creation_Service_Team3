@@ -1,5 +1,11 @@
-# C:\Users\devuser\Codeit\Ad_Content_Creation_Service_Team3\src\torchcheck.py
+# python C:\Users\devuser\Codeit\Ad_Content_Creation_Service_Team3\src\torchcheck.py
 import torch
+
+# 0. 설치된 PyTorch 버전 확인
+print(f"설치된 PyTorch 버전: {torch.__version__}")
+
+# 0-1. 설치된 CUDA 버전 확인 (PyTorch가 컴파일된 버전)
+print(f"PyTorch가 컴파일된 CUDA 버전: {torch.version.cuda}")
 
 # 1. GPU(CUDA) 사용 가능 여부 확인
 is_cuda_available = torch.cuda.is_available()
@@ -14,8 +20,8 @@ if is_cuda_available:
     gpu_name = torch.cuda.get_device_name(0)
     print(f"GPU 이름 (Device 0): {gpu_name}")
     
-    # 4. 사용할 장치 자동 선택 (코드 작성 시 유용)
-    device = torch.device('cuda:0' if is_cuda_available else 'cpu')
+    # 4. 사용할 장치 자동 선택
+    device = torch.device('cuda:0')
     print(f"선택된 장치: {device}")
 else:
     # CPU만 사용
