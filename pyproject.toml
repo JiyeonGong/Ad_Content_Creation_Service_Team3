@@ -1,0 +1,41 @@
+# C:\Users\devuser\Codeit\Ad_Content_Creation_Service_Team3\pyproject.toml
+[project]
+name = "ad-content-creation-service-team3"
+version = "0.1.0"
+description = "FastAPI backend and Streamlit frontend for AI content generation (GPT/SDXL)."
+authors = [
+    {name = "devuser", email = "devuser@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+keywords = ["fastapi", "streamlit", "openai", "diffusers", "pytorch", "ai"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+# ----------------------------------------------------
+# 📌 종속성 (Dependencies)
+# * 모든 종속성은 문자열 배열(list of strings)로 나열해야 합니다.
+# ----------------------------------------------------
+dependencies = [
+    # 웹 서비스 및 프론트엔드
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "streamlit>=1.31",
+    "requests>=2.31",
+
+    # AI 모델 및 유틸리티
+    "openai>=1.12",
+    "diffusers>=0.26",
+    "Pillow>=10.2",
+    "python-dotenv>=1.0",
+]
+
+# ----------------------------------------------------
+# ⚠️ PyTorch/CUDA 관련 참고 사항
+# * GPU 버전 설치는 별도 명령을 사용해야 합니다.
+# ----------------------------------------------------
+# uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
