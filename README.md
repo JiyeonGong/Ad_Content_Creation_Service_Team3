@@ -81,7 +81,7 @@
 1.  **백엔드 서버 실행:**
 
     ```bash
-    uvicorn src.healthcare.backend:app --reload --port 8000
+    uvicorn src.healthcare.backend:app --reload
     ```
 
       * 터미널에 "SDXL 모델 로딩 완료." 메시지가 뜨면 성공적으로 로드된 것입니다.
