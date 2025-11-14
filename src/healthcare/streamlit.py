@@ -32,7 +32,7 @@ hf_cache_dir = os.path.join(cache_root, "hf_models")
 os.makedirs(hf_cache_dir, exist_ok=True)
 
 # Streamlit 캐시 경로를 지정하는 코드를 제거
-st.sidebar.info(f"Streamlit 캐시: 기본 경로 사용\nHF 모델 캐시: {hf_cache_dir}")
+# st.sidebar.info(f"Streamlit 캐시: 기본 경로 사용\n HF 모델 캐시: {hf_cache_dir}")
 
 
 # ============================================================
