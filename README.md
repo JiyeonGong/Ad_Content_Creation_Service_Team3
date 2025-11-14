@@ -57,9 +57,9 @@
       * **GPU 환경 (CUDA 12.8 예시, `pyproject.toml`에 명시된 대로):**
         ```bash
         # uv 또는 pip을 사용하여 PyTorch 설치
-        uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+        uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
         # 또는
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
         ```
       * **CPU 환경 (테스트용):**
         ```bash
