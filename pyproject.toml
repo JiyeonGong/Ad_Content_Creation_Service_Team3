@@ -1,0 +1,30 @@
+# uv 관리 파일
+
+[project]
+name = "ai-ad-creator"
+version = "0.1.0"
+description = "Generative AI Ad Creator for Trainers"
+readme = "README.md"
+requires-python = ">=3.10, <3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "streamlit",
+    "requests",
+    "pydantic",
+    # --- AI 관련 의존성 추가 ---
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "diffusers",
+    "transformers",
+    "accelerate",
+    "rembg",
+    "opencv-python",
+    "numpy",
+    "pillow",
+]
+
+# 의존성 추가 후 변경사항 반영
+# uv sync
