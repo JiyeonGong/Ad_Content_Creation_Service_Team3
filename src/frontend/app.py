@@ -74,7 +74,7 @@ if 'result' in st.session_state:
                 st.button(f"다운로드 ({content['option_name']})", key=f"btn_{i}")
 
     st.divider()
-    
+   
     # Step 4: 가이드
     st.subheader("Step 4. 업로드 꿀팁")
     st.write(f"**추천 해시태그:** {' '.join(res['hashtags'])}")
