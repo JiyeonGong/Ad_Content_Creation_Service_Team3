@@ -34,7 +34,7 @@ cache/
 src/outfitanyone
 
 # 이미지 관련 파일 전부 제외
-assets/outputs/
+#assets/outputs/
 
 # 입력폴더 공유시 주석처리
-assets/inputs/
+#assets/inputs/
