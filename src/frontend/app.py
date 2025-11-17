@@ -1,4 +1,4 @@
-# C:\Users\devuser\Codeit\Ad_Content_Creation_Service_Team3\src\healthcare\frontend.py
+# /home/spai0323/Ad_Content_Creation_Service_Team3/src/frontend/app.py
 # ============================================================
 # 💪 헬스케어 AI 콘텐츠 제작 앱 (Streamlit 프론트엔드)
 # - 모든 AI 로직은 FastAPI 백엔드(http://localhost:8000)로 위임
