@@ -1,4 +1,4 @@
-# src/backend/main.py
+# /home/spai0323/Ad_Content_Creation_Service_Team3/src/backend/main.py
 # ============================================================
 # 🚀 FastAPI 백엔드 API 서버 (게이트웨이 역할)
 # - AI 추론 로직은 'services.py'로 위임

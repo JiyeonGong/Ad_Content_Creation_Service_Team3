@@ -1,4 +1,4 @@
-# src/backend/services.py
+# /home/spai0323/Ad_Content_Creation_Service_Team3/src/backend/services.py
 # ============================================================
 # ⚙️ AI 핵심 추론 엔진 (Web-Independent)
 # - GPT-5 Mini 호출 (OpenAI API)
