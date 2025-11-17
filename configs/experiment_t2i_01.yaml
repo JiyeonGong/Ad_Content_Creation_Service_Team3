@@ -1,0 +1,22 @@
+# configs/experiment_t2i_01.yaml
+# configs.yaml 입니다.
+# 만약 config.yaml이라는 이름 하나만 사용하면, T2I 실험을 하다가 I2I 실험을 하려면 그 파일을 덮어쓰거나 매번 수정해야함
+experiment_name: "T2I 헬스장 스타일 기본 테스트"
+
+# 1. 모델 설정
+# (services.py에서 이미 MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"로
+# 하드코딩 되어 있으므로, 여기서는 프롬프트와 파라미터만 제어합니다.)
+# (추후 services.py를 수정하면 모델 ID도 여기서 제어 가능합니다.)
+
+# 2. 입/출력 설정
+output_path: "assets/outputs/t2i_test_01.png"
+
+# 3. 프롬프트
+prompt: "전문 헬스 트레이너가 포즈를 취하는 역동적인 사진, 헬스장 배경, 인스타그램 광고 스타일, 고화질"
+negative_prompt: "blurry, low quality, text, watermark, ugly" # (현재 services.py는 이 값을 무시하지만, 향후 확장 가능)
+
+# 4. 생성 파라미터
+width: 1024
+height: 1024
+steps: 30
+# guidance_scale: 7.5 # (현재 services.py에 7.5로 하드코딩 되어 있음)
