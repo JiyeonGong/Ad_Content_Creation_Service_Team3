@@ -1,4 +1,4 @@
-# scripts/run_experiment.py
+# C:\Users\devuser\Codeit\notlocaltest\Ad_Content_Creation_Service_Team3\scripts\run_experiment.py
 # ============================================================
 # 🧪 AI 모델 실험 하네스 스크립트
 # - YAML 설정 파일을 읽어 AI 모델(services)을 실행
