@@ -56,9 +56,17 @@
 
       * **GPU 환경 (CUDA 12.8 예시, `pyproject.toml`에 명시된 대로):**
         ```bash
+        # uv 또는 pip 사용하여 설치된 PyTorch 삭제
+        uv pip uninstall torch torchvision 
+
+  
+        pip uninstall torch torchvision 
+
+
         # uv 또는 pip을 사용하여 PyTorch 설치
         uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-        # 또는
+
+
         pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
         ```
       * **CPU 환경 (테스트용):**
@@ -78,20 +86,21 @@
 
 #### 2\. 서버 실행
 
-Ad_Content_Creation_Service_Team3\src\healthcare>로 터미널 경로 이동 후
+Ad_Content_Creation_Service_Team3 프로젝트 루트에서
 
 1.  **백엔드 서버 실행:**
 
     ```bash
-    uvicorn backend:app --reload
+    uvicorn src.backend.main:app (--reload --host 0.0.0.0 --port 8000)
     ```
 
       * 터미널에 "SDXL 모델 로딩 완료." 메시지가 뜨면 성공적으로 로드된 것입니다.
+      * reload부터의 옵션은 선택사항입니다.
 
 2.  **프론트엔드 앱 실행 (새 터미널):**
 
     ```bash
-    streamlit run frontend.py
+    streamlit run src/frontend/app.py
     ```
 
       * 웹 브라우저에서 Streamlit UI에 접속하여 서비스를 이용합니다.
