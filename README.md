@@ -312,9 +312,9 @@ models:
 
 # 실행 설정
 runtime:
-  primary_model: "flux-schnell"  # 기본 모델
+  primary_model: "sdxl"  # 기본 모델
   fallback_models:               # 폴백 체인
-    - "sdxl"
+    - "flux-schnell"
     - "playground"
   enable_fallback: true
   
@@ -398,8 +398,8 @@ uvicorn src.backend.main:app --host 0.0.0.0 --port 8000
 INFO:     Started server process [12345]
 INFO:     Waiting for application startup.
 📦 모델 레지스트리 로드 완료: 6개 모델
-🎯 Primary 모델 시도: flux-schnell
-✅ flux-schnell 로딩 성공!
+🎯 Primary 모델 시도: sdxl
+✅ sdxl 로딩 성공!
 ✅ FastAPI 시작 완료 - 모델 로드됨
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8000
@@ -529,7 +529,7 @@ streamlit run src/frontend/app.py \
 
 ```bash
 # .env 파일 수정
-PRIMARY_MODEL=flux-schnell
+PRIMARY_MODEL=sdxl
 
 # 서버 재시작
 ```
@@ -539,7 +539,7 @@ PRIMARY_MODEL=flux-schnell
 ```yaml
 # model_config.yaml
 runtime:
-  primary_model: "flux-schnell"
+  primary_model: "sdxl"
 ```
 
 #### 방법 3: 명령줄 (일회성)
@@ -866,13 +866,13 @@ Ad_Content_Creation_Service_Team3/
 **예시:**
 ```bash
 # .env
-PRIMARY_MODEL=flux-schnell  # 이게 사용됨!
+PRIMARY_MODEL=sdxl  # 이게 사용됨!
 ```
 
 ```yaml
 # model_config.yaml
 runtime:
-  primary_model: "sdxl"  # 무시됨
+  primary_model: "flux-schnell"  # 무시됨
 ```
 
 ### 새 페이지 추가하기
