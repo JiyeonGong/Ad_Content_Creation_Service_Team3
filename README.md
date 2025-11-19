@@ -1407,8 +1407,6 @@ streamlit run src/frontend/app.py
 
 <div align="center">
 
-문제가 있거나 질문이 있으시면 [Issues](https://github.com/your-org/healthcare-ai-content/issues)에 남겨주세요.
-
 [⬆ 맨 위로](#-헬스케어-ai-콘텐츠-제작-서비스)
 
 </div>
