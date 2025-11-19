@@ -454,6 +454,8 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                         "image/png",
                         key=f"dl_{idx}"
                     )
+        else:
+            st.error("❌ 이미지 생성에 실패했습니다. 백엔드 로그를 확인하세요.")
 
 # ============================================================
 # 페이지 3: I2I 이미지 편집

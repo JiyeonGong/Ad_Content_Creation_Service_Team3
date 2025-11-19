@@ -40,5 +40,5 @@ dependencies = [
 # * GPU 버전 설치는 별도 명령을 사용해야 합니다.
 # uv sync로 설치된 torch를 삭제하고 다시 cuda가 반영된 torch를 설치합니다.
 # ----------------------------------------------------
-# uv pip uninstall torch torchvision 
+# uv pip uninstall torch
 # uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
