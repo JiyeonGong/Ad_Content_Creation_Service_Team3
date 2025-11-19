@@ -32,6 +32,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "transformers>=4.57.1",
     "accelerate>=1.11.0",
+    "pyyaml>=6.0.3",
 ]
 
 # ----------------------------------------------------
