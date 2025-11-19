@@ -171,22 +171,22 @@
 ### 2. 저장소 클론
 
 ```bash
-git clone https://github.com/your-org/healthcare-ai-content.git
-cd healthcare-ai-content
+git clone https://github.com/JiyeonGong/Ad_Content_Creation_Service_Team3
+cd Ad_Content_Creation_Service_Team3
 ```
 
 ### 3. 가상환경 생성 (권장)
 
 ```bash
 # Python venv
-python -m venv venv
+python -m venv .venv
 
 # 활성화
 # Windows:
-venv\Scripts\activate
+.venv\Scripts\activate
 
 # macOS/Linux:
-source venv/bin/activate
+source .venv/bin/activate
 ```
 
 ### 4. 의존성 설치
