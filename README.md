@@ -234,7 +234,7 @@ requests>=2.31.0
 #### 📄 .env 파일 생성
 
 ```bash
-cp .env.example .env
+cp env.example .env
 ```
 
 #### ✏️ .env 파일 편집
@@ -820,7 +820,7 @@ ENABLE_VAE_SLICING=false
 ```
 Ad_Content_Creation_Service_Team3/
 ├── .env                        # 환경변수 (Git 제외!)
-├── .env.example                # 환경변수 템플릿
+├── env.example                # 환경변수 템플릿
 ├── .gitignore
 ├── requirements.txt
 ├── README.md
@@ -1140,7 +1140,7 @@ docker-compose up -d
 ```bash
 # ✅ 올바른 방법
 echo ".env" >> .gitignore
-git add .env.example  # 템플릿만 커밋
+git add env.example  # 템플릿만 커밋
 
 # ❌ 절대 금지
 git add .env  # API 키 노출!
