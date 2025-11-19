@@ -1,4 +1,4 @@
-# python C:\Users\devuser\Codeit\Ad_Content_Creation_Service_Team3\src\torchcheck.py
+# python C:\Users\devuser\Codeit\Ad_Content_Creation_Service_Team3\scripts\torchcheck.py
 import torch
 
 # 0. 설치된 PyTorch 버전 확인
