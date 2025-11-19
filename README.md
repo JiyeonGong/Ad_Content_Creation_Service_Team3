@@ -818,7 +818,7 @@ ENABLE_VAE_SLICING=false
 ### 프로젝트 구조
 
 ```
-healthcare-ai-content/
+Ad_Content_Creation_Service_Team3/
 ├── .env                        # 환경변수 (Git 제외!)
 ├── .env.example                # 환경변수 템플릿
 ├── .gitignore
