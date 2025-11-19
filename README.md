@@ -1,97 +1,114 @@
-# Ad_Content_Creation_Service_Team3
+# 🏥 Ad_Content_Creation_Service_Team3
 
-## 🚀 헬스케어 AI 콘텐츠 제작 서비스
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi)
+![Streamlit](https://img.shields.io/badge/Streamlit-Frontend-FF4B4B?logo=streamlit)
+![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)
 
-이 프로젝트는 **FastAPI** 백엔드와 **Streamlit** 프론트엔드를 결합하여 헬스케어 분야의 소상공인을 위한 인스타그램 홍보 콘텐츠(문구, 해시태그, 이미지)를 AI로 쉽고 빠르게 생성하는 서비스입니다.
+## 🚀 헬스케어 소상공인을 위한 AI 콘텐츠 제작 서비스
+
+이 프로젝트는 **FastAPI** 백엔드와 **Streamlit** 프론트엔드를 결합하여, 헬스케어 분야(병원, 약국, 헬스장 등) 소상공인을 위한 인스타그램 홍보 콘텐츠(문구, 해시태그, 이미지)를 AI로 쉽고 빠르게 생성하는 서비스입니다.
+
+---
 
 ### 🌟 주요 기능
 
 | 기능 | 사용 모델/기술 | 설명 |
 | :--- | :--- | :--- |
-| **📝 홍보 문구 & 해시태그 생성** | `GPT-5 Mini` (OpenAI API) | 서비스 정보(이름, 특징, 지역, 톤)를 입력하면 인스타그램에 최적화된 3가지 문구와 해시태그를 생성합니다. |
-| **🖼 문구 기반 이미지 생성 (T2I)** | `SDXL-Base-1.0` (Diffusers/PyTorch) | 생성된 문구를 기반으로 3가지 버전의 인스타그램 홍보 이미지를 생성합니다. |
-| **🖼️ 이미지 편집 / 합성 (I2I)** | `SDXL-Base-1.0` (Diffusers/PyTorch) | 업로드하거나 생성된 이미지를 기반으로 문구와 추가 지시를 반영하여 새로운 스타일로 이미지를 편집/합성합니다. |
+| **📝 홍보 문구 & 해시태그** | `GPT-5-Mini` (OpenAI) | 업체 정보(이름, 특징, 톤)를 입력하면 인스타그램에 최적화된 감성적인 문구와 해시태그를 생성합니다. |
+| **🖼 문구 기반 이미지 (T2I)** | `SDXL-Base-1.0` (Diffusers) | 생성된 문구의 맥락을 이해하여 홍보용 이미지를 자동으로 생성합니다. |
+| **🎨 이미지 편집/합성 (I2I)** | `SDXL-Base-1.0` (Diffusers) | 기존 사진을 업로드하고 지시사항을 입력하면 새로운 스타일로 이미지를 변환합니다. |
 
------
+---
 
-### 🏛️ 아키텍처 및 기술 스택
+### 🏛️ 시스템 아키텍처
 
-이 서비스는 **클라이언트-서버 구조**로 분리되어 AI 추론의 부하를 백엔드 서버가 전담합니다.
+이 서비스는 **Client-Server 구조**로 분리되어 있으며, 무거운 AI 연산은 백엔드 서버가 전담합니다.
 
-| 영역 | 기술 스택 | 설명 |
+| 영역 | 기술 스택 | 역할 |
 | :--- | :--- | :--- |
-| **백엔드 (AI 서버)** | **FastAPI**, `OpenAI` (GPT-5 Mini), `Diffusers` (SDXL), `Pydantic` | AI 모델 추론 로직을 담당하며, RESTful API를 통해 프론트엔드에 기능을 제공합니다. GPU를 사용하는 SDXL 모델을 효율적으로 로드하고 관리합니다. |
-| **프론트엔드 (UI 앱)** | **Streamlit**, `requests` | 사용자 인터페이스(UI)를 구성하고, 사용자의 입력을 받아 백엔드 API를 호출하여 결과를 표시합니다. |
-| **데이터 처리** | `Base64` 인코딩/디코딩, `io.BytesIO` | 이미지 데이터는 HTTP 통신을 위해 Base64로 인코딩되어 전송됩니다. |
+| **Backend** | **FastAPI**, `Diffusers`, `Pydantic` | AI 모델(SDXL) 로드 및 추론, REST API 제공 (`src/backend`) |
+| **Frontend** | **Streamlit**, `Requests` | 사용자 UI 제공 및 백엔드 API 호출 (`src/frontend`) |
+| **Infra** | **Docker**, **uv** | 컨테이너 기반 배포 및 고속 패키지 관리 |
 
------
+---
 
-### 📦 종속성 관리 도구 설명
+### 📂 프로젝트 구조
 
-이 프로젝트는 Python 종속성 관리를 위해 `pip`와 차세대 패키지 관리 도구인 \*\*`uv`\*\*를 함께 사용할 수 있도록 준비되었습니다.
+```text
+Ad_Content_Creation_Service_Team3
+├── src
+│   ├── backend          # 🧠 AI 서버 (FastAPI)
+│   │   ├── core         # 설정 및 초기화
+│   │   ├── routers      # API 엔드포인트 (t2i, i2i, caption)
+│   │   ├── services     # AI 모델 로직 (Pipeline, OpenAI)
+│   │   └── main.py      # 백엔드 실행 파일
+│   └── frontend         # 💻 사용자 앱 (Streamlit)
+│       ├── pages        # 화면 구성 (Tab)
+│       ├── services     # API 통신 모듈
+│       └── app.py       # 프론트엔드 실행 파일
+├── docker-compose.yaml  # Docker 실행 설정
+├── pyproject.toml       # 프로젝트 설정 및 의존성
+├── uv.lock              # 패키지 잠금 파일
+└── requirements.txt     # pip 호환용 리스트
+⚙️ 실행 방법 (Local)
+이 프로젝트는 Python 3.10 이상을 필요로 하며, 패키지 관리자로 uv 사용을 권장합니다.
 
-  * **pip (Python Package Installer):** Python 표준 패키지 설치 도구입니다. `requirements.txt`에 명시된 종속성을 설치하는 데 사용됩니다.
-  * **uv (Next-generation Python package installer and resolver):** Rust로 작성된 빠르고 효율적인 패키지 설치 및 해소 도구입니다. `pyproject.toml` 기반의 현대적인 Python 프로젝트 관리에 유용하며, 특히 `pip`보다 빠른 설치 및 해소 속도를 제공합니다.
+1. 환경 설정
+A. 저장소 복제 및 이동
 
------
+Bash
 
-### ⚙️ 실행 환경 설정 및 방법
+git clone -b localbjs [https://github.com/JiyeonGong/Ad_Content_Creation_Service_Team3.git](https://github.com/JiyeonGong/Ad_Content_Creation_Service_Team3.git)
+cd Ad_Content_Creation_Service_Team3
+B. 패키지 설치
 
-#### 1\. 환경 설정
+Bash
 
-1.  **Python 버전 확인:** Python 3.10 이상이 설치되어 있어야 합니다.
+# uv 사용 시 (추천)
+uv sync
 
-2.  **종속성 설치:** `requirements.txt` 또는 `pyproject.toml`에 명시된 기본 패키지를 설치합니다.
+# pip 사용 시
+pip install -r requirements.txt
+C. API 키 설정 프로젝트 루트에 .env 파일을 생성하고 OpenAI 키를 입력하세요.
 
-      * **pip 사용 시:**
-        ```bash
-        pip install -r requirements.txt
-        ```
-      * **uv 사용 시 (권장):**
-        ```bash
-        uv sync
-        ```
+Ini, TOML
 
-3.  **PyTorch 및 GPU 설정 (필수):** SDXL 모델 구동을 위해서는 **PyTorch**와 **CUDA Toolkit**이 필요합니다. 성능을 위해 GPU 환경을 권장합니다.
+OPENAI_API_KEY="sk-your-openai-api-key-here"
+2. 서버 실행
+두 개의 터미널을 열어 백엔드와 프론트엔드를 각각 실행해주세요. (모두 프로젝트 루트 경로에서 실행)
 
-      * **GPU 환경 (CUDA 12.8 예시, `pyproject.toml`에 명시된 대로):**
-        ```bash
-        # uv 또는 pip을 사용하여 PyTorch 설치
-        uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-        # 또는
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-        ```
-      * **CPU 환경 (테스트용):**
-        ```bash
-        uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-        # 또는
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-        ```
+터미널 1: 백엔드 (Backend)
 
-4.  **OpenAI API Key 설정:**
+Bash
 
-      * 프로젝트 루트에 `.env` 파일을 생성하고 `OPENAI_API_KEY`를 설정합니다.
-        ```ini
-        # .env 파일 내용
-        OPENAI_API_KEY="sk-..."
-        ```
+# uv 사용 시
+uv run uvicorn src.backend.main:app --reload
 
-#### 2\. 서버 실행
+# pip 사용 시
+uvicorn src.backend.main:app --reload
+터미널에 Application startup complete 메시지가 뜨면 준비 완료입니다.
 
-Ad_Content_Creation_Service_Team3\src\healthcare>로 터미널 경로 이동 후
+터미널 2: 프론트엔드 (Frontend)
 
-1.  **백엔드 서버 실행:**
+Bash
 
-    ```bash
-    uvicorn backend:app --reload
-    ```
+# uv 사용 시
+uv run streamlit run src/frontend/app.py
 
-      * 터미널에 "SDXL 모델 로딩 완료." 메시지가 뜨면 성공적으로 로드된 것입니다.
+# pip 사용 시
+streamlit run src/frontend/app.py
+브라우저가 자동으로 열리며 http://localhost:8501로 접속됩니다.
 
-2.  **프론트엔드 앱 실행 (새 터미널):**
+🐳 Docker로 실행 (간편 실행)
+로컬 세팅 없이 Docker로 한 번에 실행할 수 있습니다.
 
-    ```bash
-    streamlit run frontend.py
-    ```
+Bash
 
-      * 웹 브라우저에서 Streamlit UI에 접속하여 서비스를 이용합니다.
+docker-compose up --build
+설치가 완료되면 브라우저에서 http://localhost:8501 로 접속하세요.
+
+💡 문제 해결 (Troubleshooting)
+CUDA/GPU 오류: torch.cuda.is_available()이 False인 경우, 본인의 CUDA 버전에 맞는 PyTorch를 재설치해야 합니다. (CPU 모드로 실행 시 속도가 느릴 수 있습니다.)
+
+Backend 연결 실패: 프론트엔드에서 API 오류가 발생하면 http://localhost:8000/docs 에 접속하여 백엔드 서버가 정상 작동 중인지 확인하세요.
