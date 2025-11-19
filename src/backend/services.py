@@ -1,21 +1,18 @@
-# C:\Users\devuser\Codeit\Ad_Content_Creation_Service_Team3\src\backend\services.py (안정화 버전 - SDXL 폴백 포함)
+# services.py (리팩토링 버전)
+"""
+AI 서비스 레이어 - 설정 기반 모델 관리
+"""
 import os
 import io
-import traceback
-import base64
 from typing import Optional
 
 from openai import OpenAI
-from diffusers import (
-    StableDiffusionXLPipeline, 
-    StableDiffusionXLImg2ImgPipeline,
-    DiffusionPipeline,
-    AutoPipelineForText2Image,
-    AutoPipelineForImage2Image
-)
 import torch
 from PIL import Image
 from dotenv import load_dotenv
+
+from .model_registry import get_registry
+from .model_loader import ModelLoader
 
 # Load env
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
@@ -23,22 +20,15 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL_GPT_MINI = "gpt-5-mini"
 
-# 🆕 모델 우선순위 설정 (환경변수로 제어 가능)
-PRIMARY_MODEL = os.getenv("IMAGE_MODEL_ID", "black-forest-labs/FLUX.1-schnell")
-FALLBACK_MODEL = "stabilityai/stable-diffusion-xl-base-1.0"
-USE_FALLBACK = os.getenv("USE_SDXL_FALLBACK", "true").lower() == "true"
-
 # HF cache location
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 hf_cache_dir = os.path.join(project_root, "cache", "hf_models")
 os.makedirs(hf_cache_dir, exist_ok=True)
 
-# Globals
+# 전역 인스턴스
 openai_client: Optional[OpenAI] = None
-T2I_PIPE = None
-I2I_PIPE = None
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-CURRENT_MODEL = None  # 실제 로드된 모델 추적
+model_loader: Optional[ModelLoader] = None
+registry = get_registry()
 
 # Initialize OpenAI client
 if OPENAI_API_KEY:
@@ -69,156 +59,63 @@ def ensure_steps(steps: int) -> int:
     return max(1, s)
 
 # ===========================
-# 모델별 추론 파라미터
-# ===========================
-def get_model_params(model_id: str):
-    """모델별 최적 파라미터 반환"""
-    if "FLUX" in model_id.upper():
-        return {
-            "default_steps": 4,
-            "use_negative_prompt": False,
-            "guidance_scale": None,
-            "supports_i2i": True
-        }
-    else:  # SDXL
-        return {
-            "default_steps": 30,
-            "use_negative_prompt": True,
-            "guidance_scale": 7.5,
-            "supports_i2i": True
-        }
-
-# ===========================
-# 🆕 모델 초기화 (안정화 + 폴백)
+# 모델 초기화
 # ===========================
 def init_image_pipelines():
     """
-    이미지 생성 모델을 로드합니다.
-    1. FLUX 시도 (성공 시 종료)
-    2. 실패 시 SDXL로 폴백
-    3. 이미 로드된 경우 스킵
+    설정 파일 기반으로 이미지 생성 모델 로드
     """
-    global T2I_PIPE, I2I_PIPE, DEVICE, CURRENT_MODEL
-
-    # 이미 로드되었으면 스킵
-    if T2I_PIPE is not None:
-        print(f"ℹ️ 이미지 파이프라인 이미 로드됨 (모델: {CURRENT_MODEL}) — 스킵")
+    global model_loader
+    
+    # 이미 로드된 경우 스킵
+    if model_loader and model_loader.is_loaded():
+        print("ℹ️ 이미지 파이프라인 이미 로드됨 — 스킵")
         return
-
-    print(f"📦 이미지 모델 로딩 시작 (Device={DEVICE})")
-    dtype = torch.float16 if DEVICE == "cuda" else torch.float32
-
-    # 1단계: PRIMARY 모델 시도 (FLUX)
-    try:
-        print(f"🔄 1차 시도: {PRIMARY_MODEL} 로딩 중...")
-        
-        T2I_PIPE = DiffusionPipeline.from_pretrained(
-            PRIMARY_MODEL,
-            cache_dir=hf_cache_dir,
-            torch_dtype=dtype,
-        ).to(DEVICE)
-        
-        # I2I 파이프라인 생성
-        try:
-            I2I_PIPE = AutoPipelineForImage2Image.from_pipe(T2I_PIPE)
-        except:
-            I2I_PIPE = T2I_PIPE  # 폴백
-        
-        CURRENT_MODEL = PRIMARY_MODEL
-        print(f"✅ {PRIMARY_MODEL} 로딩 성공!")
-        return  # 성공 시 종료
-        
-    except Exception as e:
-        error_msg = str(e).lower()
-        print(f"⚠️ {PRIMARY_MODEL} 로딩 실패: {e}")
-        
-        # HF 인증 필요 에러인지 확인
-        if "401" in error_msg or "authentication" in error_msg or "gated" in error_msg:
-            print("❗ Hugging Face 인증이 필요한 모델입니다.")
-            print("해결 방법:")
-            print("1. https://huggingface.co/black-forest-labs/FLUX.1-schnell 방문")
-            print("2. 'Agree and access repository' 클릭")
-            print("3. HF 토큰 생성: https://huggingface.co/settings/tokens")
-            print("4. 터미널에서: huggingface-cli login")
-        
-        # 폴백 시도
-        if not USE_FALLBACK:
-            print("❌ 폴백이 비활성화되어 있습니다. USE_SDXL_FALLBACK=true 설정 필요")
-            T2I_PIPE = None
-            I2I_PIPE = None
-            return
-
-    # 2단계: FALLBACK 모델 시도 (SDXL)
-    try:
-        print(f"🔄 2차 시도: {FALLBACK_MODEL} (SDXL) 로딩 중...")
-        
-        T2I_PIPE = StableDiffusionXLPipeline.from_pretrained(
-            FALLBACK_MODEL,
-            cache_dir=hf_cache_dir,
-            torch_dtype=dtype,
-        ).to(DEVICE)
-
-        I2I_PIPE = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-            FALLBACK_MODEL,
-            cache_dir=hf_cache_dir,
-            torch_dtype=dtype,
-        ).to(DEVICE)
-        
-        CURRENT_MODEL = FALLBACK_MODEL
-        print(f"✅ {FALLBACK_MODEL} (폴백) 로딩 성공!")
-        return
-        
-    except Exception as e2:
-        print(f"❌ SDXL 폴백도 실패: {e2}")
-        print(traceback.format_exc())
-        
-        # GPU OOM 시 CPU 폴백
-        if DEVICE == "cuda" and "out of memory" in str(e2).lower():
-            print("⚠️ GPU OOM 발생 — CPU 폴백 시도")
-            try:
-                DEVICE = "cpu"
-                T2I_PIPE = StableDiffusionXLPipeline.from_pretrained(
-                    FALLBACK_MODEL,
-                    cache_dir=hf_cache_dir,
-                    torch_dtype=torch.float32,
-                ).to("cpu")
-                
-                I2I_PIPE = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-                    FALLBACK_MODEL,
-                    cache_dir=hf_cache_dir,
-                    torch_dtype=torch.float32,
-                ).to("cpu")
-                
-                CURRENT_MODEL = FALLBACK_MODEL
-                print("✅ SDXL CPU 로딩 완료 (느립니다)")
-                return
-                
-            except Exception as e3:
-                print(f"❌ CPU 폴백 최종 실패: {e3}")
-        
-        T2I_PIPE = None
-        I2I_PIPE = None
-        CURRENT_MODEL = None
+    
+    # ModelLoader 생성
+    if model_loader is None:
+        model_loader = ModelLoader(cache_dir=hf_cache_dir)
+    
+    # 폴백 체인으로 로딩 시도
+    success = model_loader.load_with_fallback()
+    
+    if success:
+        info = model_loader.get_current_model_info()
+        print(f"✅ 이미지 생성 준비 완료")
+        print(f"   모델: {info['name']} ({info['type']})")
+        print(f"   장치: {info['device']}")
+    else:
+        print("❌ 모든 모델 로딩 실패 - 이미지 생성 불가")
 
 # ===========================
-# GPT로 한국어 프롬프트 번역/최적화
+# 프롬프트 최적화
 # ===========================
-def optimize_prompt(text: str) -> str:
+def optimize_prompt(text: str, model_config) -> str:
     """
-    한국어 프롬프트를 영어로 번역 및 이미지 생성에 최적화
-    SDXL의 경우 77 토큰 제한 고려
+    한국어 프롬프트를 영어로 번역 및 최적화
+    모델별 토큰 제한 고려
     """
     if not openai_client:
         return text
     
+    # 프롬프트 최적화 설정 확인
+    opt_config = registry.get_prompt_optimization_config()
+    if not opt_config.get("enabled", True):
+        return text
+    
     # 이미 영어인 경우 스킵
+    if not opt_config.get("translate_korean", True):
+        return text
+    
     if all(ord(char) < 128 for char in text[:20]):
         return text
     
     try:
-        # SDXL인 경우 짧게 요청
-        if CURRENT_MODEL and "stable-diffusion" in CURRENT_MODEL.lower():
-            constraint = "Keep it under 60 words (SDXL has 77 token limit)."
+        # 모델별 길이 제약
+        max_tokens = model_config.max_tokens if model_config else 77
+        
+        if max_tokens <= 77:
+            constraint = f"Keep it under 60 words (model has {max_tokens} token limit)."
         else:
             constraint = "Keep it concise but descriptive (under 150 words)."
         
@@ -294,35 +191,43 @@ def generate_caption_core(info: dict, tone: str) -> str:
 # 이미지 생성 (T2I)
 # ===========================
 def generate_t2i_core(prompt: str, width: int, height: int, steps: int) -> bytes:
-    global T2I_PIPE, CURRENT_MODEL
+    global model_loader
     
-    if T2I_PIPE is None:
+    if not model_loader or not model_loader.is_loaded():
         raise RuntimeError("이미지 파이프라인이 초기화되지 않았습니다.")
     
+    model_config = model_loader.current_model_config
+    
     # 프롬프트 최적화
-    optimized_prompt = optimize_prompt(prompt)
+    optimized_prompt = optimize_prompt(prompt, model_config)
     
-    # 모델별 파라미터
-    params = get_model_params(CURRENT_MODEL)
+    # Steps 검증
+    if steps < 1:
+        steps = model_config.default_steps
+    steps = min(steps, model_config.max_steps)
     
-    # 공통 파라미터
+    # 생성 파라미터 구성
     gen_params = {
         "prompt": optimized_prompt,
         "width": width,
         "height": height,
-        "num_inference_steps": steps if steps > 1 else params["default_steps"],
+        "num_inference_steps": steps,
     }
     
     # 조건부 파라미터 추가
-    if params["use_negative_prompt"]:
-        gen_params["negative_prompt"] = "low quality, blurry, text, watermark, distorted"
+    if model_config.use_negative_prompt:
+        gen_params["negative_prompt"] = model_config.negative_prompt
     
-    if params["guidance_scale"] is not None:
-        gen_params["guidance_scale"] = params["guidance_scale"]
+    if model_config.guidance_scale is not None:
+        gen_params["guidance_scale"] = model_config.guidance_scale
     
-    print(f"🎨 이미지 생성 중 (모델: {CURRENT_MODEL}, steps: {gen_params['num_inference_steps']})")
+    print(f"🎨 이미지 생성 중")
+    print(f"   모델: {model_loader.current_model_name}")
+    print(f"   Steps: {steps}")
+    print(f"   크기: {width}x{height}")
     
-    result = T2I_PIPE(**gen_params)
+    # 생성
+    result = model_loader.t2i_pipe(**gen_params)
     image = result.images[0]
     
     buf = io.BytesIO()
@@ -334,38 +239,66 @@ def generate_t2i_core(prompt: str, width: int, height: int, steps: int) -> bytes
 # ===========================
 def generate_i2i_core(input_image_bytes: bytes, prompt: str, strength: float, 
                       width: int, height: int, steps: int) -> bytes:
-    global I2I_PIPE, CURRENT_MODEL
+    global model_loader
     
-    if I2I_PIPE is None:
+    if not model_loader or not model_loader.is_loaded():
         raise RuntimeError("이미지 파이프라인이 초기화되지 않았습니다.")
     
+    model_config = model_loader.current_model_config
+    
+    # I2I 지원 확인
+    if not model_config.supports_i2i:
+        raise RuntimeError(f"현재 모델({model_loader.current_model_name})은 I2I를 지원하지 않습니다.")
+    
     # 프롬프트 최적화
-    optimized_prompt = optimize_prompt(prompt)
+    optimized_prompt = optimize_prompt(prompt, model_config)
     
     # 입력 이미지 준비
     input_image = Image.open(io.BytesIO(input_image_bytes)).convert("RGB").resize((width, height))
     
-    # 모델별 파라미터
-    params = get_model_params(CURRENT_MODEL)
+    # Steps 검증
+    if steps < 1:
+        steps = model_config.default_steps
+    steps = min(steps, model_config.max_steps)
     
+    # 생성 파라미터
     gen_params = {
         "prompt": optimized_prompt,
         "image": input_image,
         "strength": float(strength),
-        "num_inference_steps": steps if steps > 1 else params["default_steps"],
+        "num_inference_steps": steps,
     }
     
-    if params["use_negative_prompt"]:
-        gen_params["negative_prompt"] = "low quality, blurry, text, watermark, distorted"
+    if model_config.use_negative_prompt:
+        gen_params["negative_prompt"] = model_config.negative_prompt
     
-    if params["guidance_scale"] is not None:
-        gen_params["guidance_scale"] = params["guidance_scale"]
+    if model_config.guidance_scale is not None:
+        gen_params["guidance_scale"] = model_config.guidance_scale
     
-    print(f"✏️ 이미지 편집 중 (모델: {CURRENT_MODEL}, strength: {strength})")
+    print(f"✏️ 이미지 편집 중")
+    print(f"   모델: {model_loader.current_model_name}")
+    print(f"   Strength: {strength}")
+    print(f"   Steps: {steps}")
     
-    result = I2I_PIPE(**gen_params)
+    # 생성
+    result = model_loader.i2i_pipe(**gen_params)
     image = result.images[0]
     
     buf = io.BytesIO()
     image.save(buf, format="PNG")
     return buf.getvalue()
+
+# ===========================
+# 상태 조회
+# ===========================
+def get_service_status() -> dict:
+    """서비스 상태 반환"""
+    status = {
+        "gpt_ready": openai_client is not None,
+        "image_ready": model_loader and model_loader.is_loaded(),
+    }
+    
+    if model_loader:
+        status.update(model_loader.get_current_model_info())
+    
+    return status
