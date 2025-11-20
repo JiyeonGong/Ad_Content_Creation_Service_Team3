@@ -6,7 +6,7 @@ authors = [
     {name = "devuser", email = "devuser@example.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = "==3.12"
 license = {text = "MIT"}
 keywords = ["fastapi", "streamlit", "openai", "diffusers", "pytorch", "ai"]
 classifiers = [
@@ -33,6 +33,11 @@ dependencies = [
     "transformers>=4.57.1",
     "accelerate>=1.11.0",
     "pyyaml>=6.0.3",
+    "sentencepiece>=0.2.0",  # FLUX 토크나이저 필수
+    "protobuf>=3.20.0",  # sentencepiece 의존성
+    "safetensors>=0.4.1",  # FLUX 모델 로딩
+    "huggingface-hub>=0.20.0",  # HF 모델 다운로드
+    "tokenizers>=0.15.0",  # 토크나이저
 ]
 
 # ----------------------------------------------------
