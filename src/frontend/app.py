@@ -497,8 +497,18 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         else:
             guidance_scale = None
             st.caption("(현재 모델은 Guidance Scale 미사용)")
-    
-    submitted = st.button("🖼 3가지 버전 생성", type="primary")
+
+    # 생성 개수 선택
+    num_images = st.slider(
+        "생성할 이미지 개수",
+        min_value=1,
+        max_value=5,
+        value=1,
+        step=1,
+        help="여러 개 생성 시 각각 다른 랜덤 seed 사용 (시간: 약 30-60초/이미지)"
+    )
+
+    submitted = st.button(f"🖼 이미지 생성 ({num_images}개)", type="primary")
     
     if submitted and selected_caption:
         # 해상도 정렬
@@ -509,9 +519,14 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         
         st.session_state["generated_images"] = []
         progress = st.progress(0)
-        
-        for i in range(3):
-            prompt = caption_to_prompt(f"{selected_caption} (variation {i+1})")
+
+        for i in range(num_images):
+            # 1개만 생성할 때는 variation 표시 안함
+            if num_images == 1:
+                prompt = caption_to_prompt(selected_caption)
+            else:
+                prompt = caption_to_prompt(f"{selected_caption} (variation {i+1})")
+
             payload = {
                 "prompt": prompt,
                 "width": aligned_w,
@@ -521,14 +536,14 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             }
 
             try:
-                with st.spinner(f"이미지 {i+1}/3 생성 중..."):
+                with st.spinner(f"이미지 {i+1}/{num_images} 생성 중..."):
                     img_bytes = api.call_t2i(payload)
                     if img_bytes:
                         st.session_state["generated_images"].append({
                             "prompt": prompt,
                             "bytes": img_bytes
                         })
-                progress.progress((i+1)/3)
+                progress.progress((i+1)/num_images)
             except Exception as e:
                 st.error(f"이미지 {i+1} 생성 실패: {e}")
                 break
