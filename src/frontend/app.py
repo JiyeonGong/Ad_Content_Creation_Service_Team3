@@ -100,7 +100,7 @@ class APIClient:
         """모델 정보 조회 (캐싱)"""
         if self._model_info and not force_refresh:
             return self._model_info
-        
+
         try:
             resp = requests.get(f"{self.base_url}/models", timeout=5)
             resp.raise_for_status()
@@ -109,6 +109,22 @@ class APIClient:
         except Exception as e:
             st.warning(f"⚠️ 모델 정보 조회 실패: {e}")
             return None
+
+    def switch_model(self, model_name: str) -> Dict:
+        """모델 전환"""
+        try:
+            resp = requests.post(
+                f"{self.base_url}/api/switch_model",
+                json={"model_name": model_name},
+                timeout=60  # 모델 로딩은 시간이 걸릴 수 있음
+            )
+            resp.raise_for_status()
+            # 캐시 무효화
+            self._model_info = None
+            self._backend_status = None
+            return resp.json()
+        except Exception as e:
+            raise Exception(f"모델 전환 실패: {e}")
     
     def call_caption(self, payload: Dict) -> str:
         """문구 생성 API 호출"""
@@ -246,6 +262,47 @@ def main():
     selected_idx = page_options.index(menu)
     page_id = pages_config[selected_idx]["id"]
     
+    # 모델 선택
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🤖 이미지 생성 모델")
+
+    model_info = api.get_model_info()
+    if model_info:
+        current_model = model_info.get("current", "N/A")
+        available_models = list(model_info.get("models", {}).keys())
+
+        # 현재 모델 표시
+        st.sidebar.info(f"현재 모델: **{current_model}**")
+
+        # 모델 선택 드롭다운
+        if available_models:
+            selected_model = st.sidebar.selectbox(
+                "모델 선택",
+                available_models,
+                index=available_models.index(current_model) if current_model in available_models else 0,
+                key="model_selector"
+            )
+
+            # 선택한 모델 정보 표시
+            if selected_model in model_info["models"]:
+                model_desc = model_info["models"][selected_model].get("description", "")
+                if model_desc:
+                    st.sidebar.caption(f"📝 {model_desc}")
+
+            # 모델 전환 버튼
+            if selected_model != current_model:
+                if st.sidebar.button("🔄 모델 전환", type="primary"):
+                    with st.spinner(f"'{selected_model}' 로딩 중..."):
+                        try:
+                            result = api.switch_model(selected_model)
+                            st.sidebar.success(result["message"])
+                            api.get_model_info(force_refresh=True)
+                            st.rerun()
+                        except Exception as e:
+                            st.sidebar.error(f"❌ {e}")
+    else:
+        st.sidebar.warning("⚠️ 모델 정보를 가져올 수 없습니다")
+
     # 연결 모드
     st.sidebar.markdown("---")
     connect_mode = st.sidebar.checkbox(
@@ -253,7 +310,7 @@ def main():
         value=config.get("connection_mode.enabled_by_default", True)
     )
     st.sidebar.info(config.get("connection_mode.description", ""))
-    
+
     # 백엔드 상태 표시
     with st.sidebar.expander("🔧 시스템 상태"):
         status = api.get_backend_status()
@@ -387,22 +444,45 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
     width = preset_sizes[size_idx]["width"]
     height = preset_sizes[size_idx]["height"]
     
-    # Steps (모델 정보 기반)
+    # Steps & Guidance Scale (모델 정보 기반)
     model_info = api.get_model_info()
     if model_info and model_info.get("current"):
-        current_model = model_info["models"].get(model_info["current"], {})
+        current_model_name = model_info["current"]
+        current_model = model_info["models"].get(current_model_name, {})
         default_steps = current_model.get("default_steps", 10)
-        st.info(f"ℹ️ 현재 모델: {model_info['current']} (권장 steps: {default_steps})")
+        default_guidance = current_model.get("guidance_scale")
+
+        st.info(f"ℹ️ 현재 모델: **{current_model_name}** (권장 steps: {default_steps}, guidance: {default_guidance if default_guidance else 'N/A'})")
     else:
         default_steps = config.get("image.steps.default", 10)
-    
-    steps = st.slider(
-        "추론 단계 (Steps)",
-        min_value=config.get("image.steps.min", 1),
-        max_value=config.get("image.steps.max", 50),
-        value=default_steps,
-        step=1
-    )
+        default_guidance = None
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        steps = st.slider(
+            "추론 단계 (Steps)",
+            min_value=config.get("image.steps.min", 1),
+            max_value=config.get("image.steps.max", 50),
+            value=default_steps,
+            step=1,
+            help="생성 반복 횟수 (높을수록 정교하지만 느림)"
+        )
+
+    with col2:
+        # Guidance Scale (모델이 지원하는 경우만)
+        if default_guidance is not None:
+            guidance_scale = st.slider(
+                "Guidance Scale",
+                min_value=1.0,
+                max_value=10.0,
+                value=float(default_guidance),
+                step=0.5,
+                help="프롬프트 준수 강도 (높을수록 프롬프트를 더 따름)"
+            )
+        else:
+            guidance_scale = None
+            st.caption("(현재 모델은 Guidance Scale 미사용)")
     
     submitted = st.button("🖼 3가지 버전 생성", type="primary")
     
@@ -422,9 +502,10 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                 "prompt": prompt,
                 "width": aligned_w,
                 "height": aligned_h,
-                "steps": steps
+                "steps": steps,
+                "guidance_scale": guidance_scale
             }
-            
+
             try:
                 with st.spinner(f"이미지 {i+1}/3 생성 중..."):
                     img_bytes = api.call_t2i(payload)
