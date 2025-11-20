@@ -206,12 +206,18 @@ def generate_t2i_core(prompt: str, width: int, height: int, steps: int, guidance
         steps = model_config.default_steps
     steps = min(steps, model_config.max_steps)
 
+    # 랜덤 seed 생성 (매번 다른 이미지)
+    import random
+    random_seed = random.randint(0, 2**32 - 1)
+    generator = torch.Generator(device=model_loader.device).manual_seed(random_seed)
+
     # 생성 파라미터 구성
     gen_params = {
         "prompt": optimized_prompt,
         "width": width,
         "height": height,
         "num_inference_steps": steps,
+        "generator": generator,
     }
 
     # 조건부 파라미터 추가
@@ -228,6 +234,7 @@ def generate_t2i_core(prompt: str, width: int, height: int, steps: int, guidance
     print(f"   모델: {model_loader.current_model_name}")
     print(f"   Steps: {steps}")
     print(f"   크기: {width}x{height}")
+    print(f"   Seed: {random_seed}")
     if "guidance_scale" in gen_params:
         print(f"   Guidance: {gen_params['guidance_scale']}")
 

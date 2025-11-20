@@ -46,35 +46,35 @@ test_scenarios:
     num_inference_steps: 28
     guidance_scale: 3.5
     num_images: 1
-    seed: 42
+    seed: null  # 랜덤 seed (매번 다른 이미지)
     description: "기본 품질 확인"
 
   # ========================================
   # 실험 2: 손 디테일 강조
   # ========================================
   - name: "exp02_hand_focus"
-    enabled: true
+    enabled: false
     prompt: "Close-up professional photo of hands holding a product box, 5 fingers clearly visible, detailed hand anatomy, perfect skin texture, professional studio lighting, white background"
     width: 1024
     height: 1024
     num_inference_steps: 35
     guidance_scale: 4.0
     num_images: 1
-    seed: 123
+    seed: null  # 랜덤 seed
     description: "손 디테일 최대화"
 
   # ========================================
   # 실험 3: 헬스케어 시나리오
   # ========================================
   - name: "exp03_healthcare"
-    enabled: true
+    enabled: false
     prompt: "A friendly healthcare professional in white coat showing a medical device to camera, welcoming smile, modern clinic interior, natural lighting, professional photography"
     width: 1024
     height: 1024
     num_inference_steps: 30
     guidance_scale: 3.5
     num_images: 1
-    seed: 456
+    seed: null  # 랜덤 seed
     description: "헬스케어 광고용"
 
   # ========================================
