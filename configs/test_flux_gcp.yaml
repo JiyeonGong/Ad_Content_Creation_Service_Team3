@@ -15,8 +15,9 @@ output:
 
 # 메모리 최적화 설정 (ai-ad 방식)
 memory_optimization:
-  # Sequential CPU offload (FLUX 전용 - 메모리 70% 절약)
-  enable_sequential_cpu_offload: true
+  # Sequential CPU offload (FLUX 전용 - 메모리 70% 절약, 하지만 느림)
+  # L4는 VRAM 23GB라 여유있음 → false로 변경하면 속도 2-3배 빨라짐
+  enable_sequential_cpu_offload: false  # 속도 우선 (메모리 여유 있음)
 
   # VAE 최적화
   enable_vae_tiling: true
