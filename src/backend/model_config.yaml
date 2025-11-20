@@ -24,15 +24,31 @@ models:
     type: "flux"
     requires_auth: true
     params:
-      default_steps: 20
+      default_steps: 28
       max_steps: 50
       use_negative_prompt: false
-      guidance_scale: null
+      guidance_scale: 3.5
       supports_i2i: true
       max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
     description: "고품질, 느림"
+
+  # GCP VM 전용 flux-dev (로컬 경로)
+  flux-dev-gcp:
+    id: "/home/shared/FLUX.1-dev"  # GCP VM 로컬 경로
+    type: "flux"
+    requires_auth: false  # 이미 다운로드됨
+    params:
+      default_steps: 28
+      max_steps: 50
+      use_negative_prompt: false
+      guidance_scale: 3.5
+      supports_i2i: true
+      max_tokens: 512
+      default_size: [1024, 1024]
+      max_size: [2048, 2048]
+    description: "GCP VM용 FLUX.1-dev (로컬)"
   
   # Stable Diffusion XL (안정적, 폴백용)
   sdxl:
@@ -121,9 +137,9 @@ runtime:
     translate_korean: true
     max_length_by_model: true  # 모델별 토큰 제한 준수
   
-  # 메모리 최적화
+  # 메모리 최적화 (ai-ad 방식)
   memory:
-    enable_cpu_offload: false  # CPU 오프로드 (메모리 부족 시)
-    enable_attention_slicing: true  # 어텐션 슬라이싱
+    enable_cpu_offload: true  # CPU 오프로드 (FLUX는 sequential 사용)
+    enable_attention_slicing: false  # 어텐션 슬라이싱 (선택적)
     enable_vae_slicing: true  # VAE 슬라이싱
     use_8bit: false  # 8비트 양자화 (더 느리지만 메모리 50% 절약)
