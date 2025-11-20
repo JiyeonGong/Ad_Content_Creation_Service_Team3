@@ -120,7 +120,7 @@ models:
 # 실행 설정
 runtime:
   # 기본 사용 모델 (환경변수로 오버라이드 가능)
-  primary_model: "sdxl"
+  primary_model: "flux-dev-gcp"
 
   
   # 폴백 모델 체인 (순서대로 시도)
