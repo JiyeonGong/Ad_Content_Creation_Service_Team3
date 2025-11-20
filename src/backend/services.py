@@ -190,22 +190,22 @@ def generate_caption_core(info: dict, tone: str) -> str:
 # ===========================
 # 이미지 생성 (T2I)
 # ===========================
-def generate_t2i_core(prompt: str, width: int, height: int, steps: int) -> bytes:
+def generate_t2i_core(prompt: str, width: int, height: int, steps: int, guidance_scale: float = None) -> bytes:
     global model_loader
-    
+
     if not model_loader or not model_loader.is_loaded():
         raise RuntimeError("이미지 파이프라인이 초기화되지 않았습니다.")
-    
+
     model_config = model_loader.current_model_config
-    
+
     # 프롬프트 최적화
     optimized_prompt = optimize_prompt(prompt, model_config)
-    
+
     # Steps 검증
     if steps < 1:
         steps = model_config.default_steps
     steps = min(steps, model_config.max_steps)
-    
+
     # 생성 파라미터 구성
     gen_params = {
         "prompt": optimized_prompt,
@@ -213,23 +213,28 @@ def generate_t2i_core(prompt: str, width: int, height: int, steps: int) -> bytes
         "height": height,
         "num_inference_steps": steps,
     }
-    
+
     # 조건부 파라미터 추가
     if model_config.use_negative_prompt:
         gen_params["negative_prompt"] = model_config.negative_prompt
-    
-    if model_config.guidance_scale is not None:
+
+    # guidance_scale: 사용자 지정값 우선, 없으면 모델 기본값
+    if guidance_scale is not None:
+        gen_params["guidance_scale"] = guidance_scale
+    elif model_config.guidance_scale is not None:
         gen_params["guidance_scale"] = model_config.guidance_scale
-    
+
     print(f"🎨 이미지 생성 중")
     print(f"   모델: {model_loader.current_model_name}")
     print(f"   Steps: {steps}")
     print(f"   크기: {width}x{height}")
-    
+    if "guidance_scale" in gen_params:
+        print(f"   Guidance: {gen_params['guidance_scale']}")
+
     # 생성
     result = model_loader.t2i_pipe(**gen_params)
     image = result.images[0]
-    
+
     buf = io.BytesIO()
     image.save(buf, format="PNG")
     return buf.getvalue()
@@ -289,6 +294,54 @@ def generate_i2i_core(input_image_bytes: bytes, prompt: str, strength: float,
     return buf.getvalue()
 
 # ===========================
+# 모델 전환
+# ===========================
+def switch_model(model_name: str) -> dict:
+    """
+    다른 모델로 전환
+    Returns: {"success": bool, "message": str, "model_info": dict}
+    """
+    global model_loader
+
+    if not model_loader:
+        model_loader = ModelLoader(cache_dir=hf_cache_dir)
+
+    # 모델 존재 여부 확인
+    model_config = registry.get_model(model_name)
+    if not model_config:
+        return {
+            "success": False,
+            "message": f"알 수 없는 모델: {model_name}",
+            "model_info": None
+        }
+
+    # 이미 로드된 경우
+    if model_loader.is_loaded() and model_loader.current_model_name == model_name:
+        return {
+            "success": True,
+            "message": f"모델 '{model_name}' 이미 로드됨",
+            "model_info": model_loader.get_current_model_info()
+        }
+
+    # 모델 로드
+    print(f"🔄 모델 전환 중: {model_name}")
+    success = model_loader.load_model(model_name)
+
+    if success:
+        info = model_loader.get_current_model_info()
+        return {
+            "success": True,
+            "message": f"모델 '{model_name}' 로드 성공",
+            "model_info": info
+        }
+    else:
+        return {
+            "success": False,
+            "message": f"모델 '{model_name}' 로드 실패",
+            "model_info": None
+        }
+
+# ===========================
 # 상태 조회
 # ===========================
 def get_service_status() -> dict:
@@ -297,8 +350,8 @@ def get_service_status() -> dict:
         "gpt_ready": openai_client is not None,
         "image_ready": model_loader and model_loader.is_loaded(),
     }
-    
+
     if model_loader:
         status.update(model_loader.get_current_model_info())
-    
+
     return status
