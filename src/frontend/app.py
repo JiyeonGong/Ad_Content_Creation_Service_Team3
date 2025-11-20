@@ -434,11 +434,25 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             placeholder=config.get("ui.placeholders.caption", "")
         )
     
+    # 현재 모델 정보 가져오기 (크기 권장을 위해)
+    model_info = api.get_model_info()
+    current_model_name = model_info.get("current") if model_info else None
+    is_flux = current_model_name and "flux" in current_model_name.lower()
+
     # 이미지 크기 (설정 기반)
     preset_sizes = config.get("image.preset_sizes", [])
-    size_options = [f"{s['name']} ({s['width']}x{s['height']})" for s in preset_sizes]
+
+    # FLUX 모델 사용 시 권장 크기 표시
+    size_options = []
+    for s in preset_sizes:
+        label = f"{s['name']} ({s['width']}x{s['height']})"
+        # FLUX 모델이고 1024x1024인 경우 권장 표시
+        if is_flux and s['width'] == 1024 and s['height'] == 1024:
+            label += " ⭐ 권장"
+        size_options.append(label)
+
     selected_size = st.selectbox("이미지 크기", size_options)
-    
+
     # 선택된 크기 파싱
     size_idx = size_options.index(selected_size)
     width = preset_sizes[size_idx]["width"]
