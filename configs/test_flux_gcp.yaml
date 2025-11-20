@@ -3,7 +3,7 @@
 
 # 모델 경로 (GCP VM 전용)
 model:
-  name: "flux-dev"
+  name: "flux-dev-gcp"  # model_config.yaml의 모델명과 일치해야 함
   path: "/home/shared/FLUX.1-dev"
   type: "flux"
 
