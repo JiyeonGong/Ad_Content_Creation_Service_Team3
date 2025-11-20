@@ -1,4 +1,4 @@
-# services.py (리팩토링 버전)
+# /home/spai0323/Ad_Content_Creation_Service_Team3/src/backend/services.py (리팩토링 버전)
 """
 AI 서비스 레이어 - 설정 기반 모델 관리
 """

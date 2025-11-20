@@ -1,4 +1,4 @@
-# frontend_config.yaml
+# /home/spai0323/Ad_Content_Creation_Service_Team3/src/frontend/frontend_config.yaml
 # Streamlit 프론트엔드 설정
 
 app:
@@ -99,4 +99,4 @@ ui:
 # 연결 모드 설정
 connection_mode:
   enabled_by_default: true
-  description: "연결 모드 ON: 페이지1에서 생성된 문구를 자동으로 페이지2/3에 사용\nOFF: 각 페이지 독립 입력 사용"
+  description: "연결 모드 ON: 페이지1에서 생성된 문구
