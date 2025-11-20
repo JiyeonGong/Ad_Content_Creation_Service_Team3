@@ -1,5 +1,6 @@
 # main.py (개선)
 import base64
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import asyncio
@@ -24,7 +25,7 @@ class T2IRequest(BaseModel):
     width: int = 1024
     height: int = 1024
     steps: int = 4  # 🆕 FLUX-schnell은 4 steps 권장
-    guidance_scale: float = None  # FLUX-dev는 3.5 권장, schnell은 None
+    guidance_scale: Optional[float] = None  # FLUX-dev는 3.5 권장, schnell은 None
 
 class T2IResponse(BaseModel):
     image_base64: str
