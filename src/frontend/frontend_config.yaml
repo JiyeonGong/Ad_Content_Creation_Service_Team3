@@ -46,25 +46,25 @@ caption:
 image:
   # 사전 정의된 크기 (백엔드에서 동적으로 가져올 수도 있음)
   preset_sizes:
+    - name: "정사각형 1024x1024"
+      width: 1024
+      height: 1024
+      description: "FLUX/SDXL 최적 크기"
+
     - name: "Instagram 세로 (4:5)"
       width: 1080
       height: 1350
       description: "피드 게시물 최적"
-    
+
     - name: "Instagram 정사각형 (1:1)"
       width: 1080
       height: 1080
       description: "범용"
-    
+
     - name: "Instagram 가로 (16:9)"
       width: 1080
       height: 608
       description: "풍경 이미지"
-    
-    - name: "SDXL 기본 (1:1)"
-      width: 1024
-      height: 1024
-      description: "모델 권장 크기"
   
   # Steps 범위 (모델별로 다를 수 있음)
   steps:
