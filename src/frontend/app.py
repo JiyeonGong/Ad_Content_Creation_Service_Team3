@@ -571,8 +571,8 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
 # 페이지 3: I2I 이미지 편집
 # ============================================================
 def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
-    st.title("🖼️ 이미지 편집 / 합성 (Image-to-Image)")
-    st.info("💡 업로드된 이미지를 AI로 편집합니다")
+    st.title("🖼️ 이미지 편집 (Image-to-Image)")
+    st.info("💡 업로드된 이미지를 AI로 편집합니다 (배경 변경, 스타일 변경 등)")
     
     # 이미지 소스
     uploaded = st.file_uploader("이미지 업로드", type=["png", "jpg", "jpeg"])
@@ -618,17 +618,34 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         "추가 지시 (선택)",
         placeholder=config.get("ui.placeholders.edit_prompt", "")
     )
-    
-    # 출력 크기
+
+    # 현재 모델 정보 가져오기 (크기 권장을 위해)
+    model_info = api.get_model_info()
+    current_model_name = model_info.get("current") if model_info else None
+    is_flux = current_model_name and "flux" in current_model_name.lower()
+
+    # 출력 크기 (입력 이미지가 이 크기로 리사이즈됨)
     preset_sizes = config.get("image.preset_sizes", [])
-    size_options = [f"{s['name']} ({s['width']}x{s['height']})" for s in preset_sizes]
-    selected_size = st.selectbox("출력 크기", size_options)
-    
+
+    # FLUX 모델 사용 시 권장 크기 표시
+    size_options = []
+    for s in preset_sizes:
+        label = f"{s['name']} ({s['width']}x{s['height']})"
+        if is_flux and s['width'] == 1024 and s['height'] == 1024:
+            label += " ⭐ 권장"
+        size_options.append(label)
+
+    selected_size = st.selectbox(
+        "출력 크기",
+        size_options,
+        help="입력 이미지가 이 크기로 리사이즈된 후 편집됩니다"
+    )
+
     size_idx = size_options.index(selected_size)
     width = preset_sizes[size_idx]["width"]
     height = preset_sizes[size_idx]["height"]
-    
-    submitted = st.button("✨ 합성/편집 생성", type="primary")
+
+    submitted = st.button("✨ 이미지 편집", type="primary")
     
     if submitted:
         if not image_bytes:

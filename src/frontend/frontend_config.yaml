@@ -24,7 +24,7 @@ pages:
   
   - id: "i2i"
     icon: "🖼️"
-    title: "이미지 편집/합성"
+    title: "이미지 편집"
     description: "기존 이미지를 AI로 편집하고 스타일을 변경합니다"
 
 # 문구 생성 설정
