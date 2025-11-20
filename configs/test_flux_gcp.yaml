@@ -44,7 +44,7 @@ test_scenarios:
     height: 1024
     num_inference_steps: 28
     guidance_scale: 3.5
-    num_images: 2
+    num_images: 1
     seed: 42
     description: "기본 품질 확인"
 
@@ -58,7 +58,7 @@ test_scenarios:
     height: 1024
     num_inference_steps: 35
     guidance_scale: 4.0
-    num_images: 3
+    num_images: 1
     seed: 123
     description: "손 디테일 최대화"
 
@@ -72,7 +72,7 @@ test_scenarios:
     height: 1024
     num_inference_steps: 30
     guidance_scale: 3.5
-    num_images: 2
+    num_images: 1
     seed: 456
     description: "헬스케어 광고용"
 
