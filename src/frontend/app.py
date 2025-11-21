@@ -1,4 +1,4 @@
-# /home/spai0323/Ad_Content_Creation_Service_Team3/src/frontend/app.py (리팩토링 버전)
+# app.py (리팩토링 버전)
 """
 헬스케어 AI 콘텐츠 제작 앱 - Streamlit 프론트엔드
 설정 기반 아키텍처로 하드코딩 최소화
@@ -577,6 +577,8 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                         "image/png",
                         key=f"dl_{idx}"
                     )
+        else:
+            st.error("❌ 이미지 생성에 실패했습니다. 백엔드 로그를 확인하세요.")
 
 # ============================================================
 # 페이지 3: I2I 이미지 편집

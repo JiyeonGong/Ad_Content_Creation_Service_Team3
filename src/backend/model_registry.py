@@ -1,4 +1,4 @@
-# /home/spai0323/Ad_Content_Creation_Service_Team3/src/backend/model_registry.py
+# model_registry.py
 """
 모델 레지스트리 - 모델 설정 로드 및 관리
 """

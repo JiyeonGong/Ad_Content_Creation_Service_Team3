@@ -1,24 +1,8 @@
-# /home/spai0323/Ad_Content_Creation_Service_Team3/src/backend/model_config.yaml
+# model_config.yaml
 # 이미지 생성 모델 설정 파일
 # 새 모델 추가 시 이 파일만 수정하면 됨
 
 models:
-  # # 🆕 로컬 튜닝 모델 (팀 커스텀)
-  # flux-dev-tuned:
-  #   id: "/home/shared/FLUX.1-dev"  # 로컬 경로!
-  #   type: "flux"
-  #   requires_auth: false  # 로컬 파일이므로 불필요
-  #   params:
-  #     default_steps: 4
-  #     max_steps: 8
-  #     use_negative_prompt: false
-  #     guidance_scale: null
-  #     supports_i2i: true
-  #     max_tokens: 256
-  #     default_size: [768, 768]
-  #     max_size: [1024, 1024]
-  #   description: "팀 튜닝 모델 - 헬스케어 특화"
-  
   # FLUX 모델 (최신, 고품질, 한국어 지원 우수)
   flux-schnell:
     id: "black-forest-labs/FLUX.1-schnell"
@@ -26,14 +10,14 @@ models:
     requires_auth: true
     params:
       default_steps: 4
-      max_steps: 6
+      max_steps: 8
       use_negative_prompt: false
       guidance_scale: null
       supports_i2i: true
       max_tokens: 512
-      default_size: [768, 768]
-      max_size: [1024, 1024]
-    description: "FLUX.1-dev "
+      default_size: [1024, 1024]
+      max_size: [2048, 2048]
+    description: "빠른 생성, 4 steps 권장"
     
   flux-dev:
     id: "black-forest-labs/FLUX.1-dev"
@@ -183,7 +167,7 @@ runtime:
 
   # 폴백 모델 체인 (순서대로 시도)
   fallback_models:
-    - "sdxl"
+    - "flux-schnell"
     - "playground"
 
   # 폴백 활성화 여부
