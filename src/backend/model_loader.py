@@ -169,29 +169,31 @@ class ModelLoader:
                         print("  📥 FP8 Transformer 로딩 중...")
                         from torchao.quantization import quantize_, int8_weight_only
 
-                        # Transformer 로드 후 양자화 (device_map="balanced"로 GPU 우선, 넘치면 CPU)
+                        # Transformer 로드 (CPU 메모리에)
                         transformer = FluxTransformer2DModel.from_pretrained(
                             model_id,
                             subfolder="transformer",
                             torch_dtype=self.dtype,
-                            cache_dir=self.cache_dir,
-                            device_map="balanced"  # GPU 우선, 넘치면 CPU 분산
+                            cache_dir=self.cache_dir
                         )
 
-                        # FP8 양자화 적용
+                        # FP8 양자화 적용 (레이어별로 GPU에서 양자화)
                         print("  🔄 FP8 양자화 적용 중... (5-15분 소요)")
-                        quantize_(transformer, int8_weight_only())
+                        print("  ℹ️  레이어별로 GPU로 전송하여 양자화 (메모리 절약)")
+                        quantize_(transformer, int8_weight_only(), device=self.device)
                         print("  ✓ FP8 양자화 적용 완료")
 
-                        # 전체 파이프라인 구성
+                        # 전체 파이프라인 구성 (양자화된 transformer 사용)
                         print("  🔧 파이프라인 구성 중...")
                         t2i = DiffusionPipeline.from_pretrained(
                             model_id,
                             transformer=transformer,
                             torch_dtype=self.dtype,
-                            cache_dir=self.cache_dir,
-                            device_map="balanced"  # 나머지 컴포넌트도 자동 분산
+                            cache_dir=self.cache_dir
                         )
+                        # 양자화 완료 후 GPU로 이동
+                        t2i = t2i.to(self.device)
+                        print(f"  ✓ 양자화된 모델을 {self.device}로 이동")
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
@@ -209,8 +211,7 @@ class ModelLoader:
                             subfolder="transformer",
                             quantization_config=nf4_config,
                             torch_dtype=self.dtype,
-                            cache_dir=self.cache_dir,
-                            device_map="balanced"  # GPU 우선, 넘치면 CPU 분산
+                            cache_dir=self.cache_dir
                         )
                         print("  ✓ NF4 양자화 로드 완료")
 
@@ -220,12 +221,11 @@ class ModelLoader:
                             model_id,
                             transformer=transformer,
                             torch_dtype=self.dtype,
-                            cache_dir=self.cache_dir,
-                            device_map="balanced"  # 나머지 컴포넌트도 자동 분산
+                            cache_dir=self.cache_dir
                         )
+                        t2i = t2i.to(self.device)
+                        print(f"  ✓ 양자화된 모델을 {self.device}로 이동")
 
-                    # device_map="balanced" 사용으로 이미 자동 배치됨
-                    print(f"  ✓ {quant_type.upper()} 모델 device_map='balanced' 적용 (GPU 우선, 넘치면 CPU 분산)")
                     print(f"  ✅ {quant_type.upper()} 양자화 로딩 완료")
 
                 except Exception as e:
