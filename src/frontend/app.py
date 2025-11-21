@@ -100,7 +100,7 @@ class APIClient:
         """모델 정보 조회 (캐싱)"""
         if self._model_info and not force_refresh:
             return self._model_info
-        
+
         try:
             resp = requests.get(f"{self.base_url}/models", timeout=5)
             resp.raise_for_status()
@@ -109,6 +109,22 @@ class APIClient:
         except Exception as e:
             st.warning(f"⚠️ 모델 정보 조회 실패: {e}")
             return None
+
+    def switch_model(self, model_name: str) -> Dict:
+        """모델 전환"""
+        try:
+            resp = requests.post(
+                f"{self.base_url}/api/switch_model",
+                json={"model_name": model_name},
+                timeout=60  # 모델 로딩은 시간이 걸릴 수 있음
+            )
+            resp.raise_for_status()
+            # 캐시 무효화
+            self._model_info = None
+            self._backend_status = None
+            return resp.json()
+        except Exception as e:
+            raise Exception(f"모델 전환 실패: {e}")
     
     def call_caption(self, payload: Dict) -> str:
         """문구 생성 API 호출"""
@@ -246,6 +262,47 @@ def main():
     selected_idx = page_options.index(menu)
     page_id = pages_config[selected_idx]["id"]
     
+    # 모델 선택
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🤖 이미지 생성 모델")
+
+    model_info = api.get_model_info()
+    if model_info:
+        current_model = model_info.get("current", "N/A")
+        available_models = list(model_info.get("models", {}).keys())
+
+        # 현재 모델 표시
+        st.sidebar.info(f"현재 모델: **{current_model}**")
+
+        # 모델 선택 드롭다운
+        if available_models:
+            selected_model = st.sidebar.selectbox(
+                "모델 선택",
+                available_models,
+                index=available_models.index(current_model) if current_model in available_models else 0,
+                key="model_selector"
+            )
+
+            # 선택한 모델 정보 표시
+            if selected_model in model_info["models"]:
+                model_desc = model_info["models"][selected_model].get("description", "")
+                if model_desc:
+                    st.sidebar.caption(f"📝 {model_desc}")
+
+            # 모델 전환 버튼
+            if selected_model != current_model:
+                if st.sidebar.button("🔄 모델 전환", type="primary"):
+                    with st.spinner(f"'{selected_model}' 로딩 중..."):
+                        try:
+                            result = api.switch_model(selected_model)
+                            st.sidebar.success(result["message"])
+                            api.get_model_info(force_refresh=True)
+                            st.rerun()
+                        except Exception as e:
+                            st.sidebar.error(f"❌ {e}")
+    else:
+        st.sidebar.warning("⚠️ 모델 정보를 가져올 수 없습니다")
+
     # 연결 모드
     st.sidebar.markdown("---")
     connect_mode = st.sidebar.checkbox(
@@ -253,7 +310,7 @@ def main():
         value=config.get("connection_mode.enabled_by_default", True)
     )
     st.sidebar.info(config.get("connection_mode.description", ""))
-    
+
     # 백엔드 상태 표시
     with st.sidebar.expander("🔧 시스템 상태"):
         status = api.get_backend_status()
@@ -377,34 +434,81 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             placeholder=config.get("ui.placeholders.caption", "")
         )
     
+    # 현재 모델 정보 가져오기 (크기 권장을 위해)
+    model_info = api.get_model_info()
+    current_model_name = model_info.get("current") if model_info else None
+    is_flux = current_model_name and "flux" in current_model_name.lower()
+
     # 이미지 크기 (설정 기반)
     preset_sizes = config.get("image.preset_sizes", [])
-    size_options = [f"{s['name']} ({s['width']}x{s['height']})" for s in preset_sizes]
+
+    # FLUX 모델 사용 시 권장 크기 표시
+    size_options = []
+    for s in preset_sizes:
+        label = f"{s['name']} ({s['width']}x{s['height']})"
+        # FLUX 모델이고 1024x1024인 경우 권장 표시
+        if is_flux and s['width'] == 1024 and s['height'] == 1024:
+            label += " ⭐ 권장"
+        size_options.append(label)
+
     selected_size = st.selectbox("이미지 크기", size_options)
-    
+
     # 선택된 크기 파싱
     size_idx = size_options.index(selected_size)
     width = preset_sizes[size_idx]["width"]
     height = preset_sizes[size_idx]["height"]
     
-    # Steps (모델 정보 기반)
+    # Steps & Guidance Scale (모델 정보 기반)
     model_info = api.get_model_info()
     if model_info and model_info.get("current"):
-        current_model = model_info["models"].get(model_info["current"], {})
+        current_model_name = model_info["current"]
+        current_model = model_info["models"].get(current_model_name, {})
         default_steps = current_model.get("default_steps", 10)
-        st.info(f"ℹ️ 현재 모델: {model_info['current']} (권장 steps: {default_steps})")
+        default_guidance = current_model.get("guidance_scale")
+
+        st.info(f"ℹ️ 현재 모델: **{current_model_name}** (권장 steps: {default_steps}, guidance: {default_guidance if default_guidance else 'N/A'})")
     else:
         default_steps = config.get("image.steps.default", 10)
-    
-    steps = st.slider(
-        "추론 단계 (Steps)",
-        min_value=config.get("image.steps.min", 1),
-        max_value=config.get("image.steps.max", 50),
-        value=default_steps,
-        step=1
+        default_guidance = None
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        steps = st.slider(
+            "추론 단계 (Steps)",
+            min_value=config.get("image.steps.min", 1),
+            max_value=config.get("image.steps.max", 50),
+            value=default_steps,
+            step=1,
+            help="생성 반복 횟수 (높을수록 정교하지만 느림)"
+        )
+
+    with col2:
+        # Guidance Scale (모델이 지원하는 경우만)
+        if default_guidance is not None:
+            guidance_scale = st.slider(
+                "Guidance Scale",
+                min_value=1.0,
+                max_value=10.0,
+                value=float(default_guidance),
+                step=0.5,
+                help="프롬프트 준수 강도 (높을수록 프롬프트를 더 따름)"
+            )
+        else:
+            guidance_scale = None
+            st.caption("(현재 모델은 Guidance Scale 미사용)")
+
+    # 생성 개수 선택
+    num_images = st.slider(
+        "생성할 이미지 개수",
+        min_value=1,
+        max_value=5,
+        value=1,
+        step=1,
+        help="여러 개 생성 시 각각 다른 랜덤 seed 사용 (시간: 약 30-60초/이미지)"
     )
-    
-    submitted = st.button("🖼 3가지 버전 생성", type="primary")
+
+    submitted = st.button(f"🖼 이미지 생성 ({num_images}개)", type="primary")
     
     if submitted and selected_caption:
         # 해상도 정렬
@@ -415,25 +519,31 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         
         st.session_state["generated_images"] = []
         progress = st.progress(0)
-        
-        for i in range(3):
-            prompt = caption_to_prompt(f"{selected_caption} (variation {i+1})")
+
+        for i in range(num_images):
+            # 1개만 생성할 때는 variation 표시 안함
+            if num_images == 1:
+                prompt = caption_to_prompt(selected_caption)
+            else:
+                prompt = caption_to_prompt(f"{selected_caption} (variation {i+1})")
+
             payload = {
                 "prompt": prompt,
                 "width": aligned_w,
                 "height": aligned_h,
-                "steps": steps
+                "steps": steps,
+                "guidance_scale": guidance_scale
             }
-            
+
             try:
-                with st.spinner(f"이미지 {i+1}/3 생성 중..."):
+                with st.spinner(f"이미지 {i+1}/{num_images} 생성 중..."):
                     img_bytes = api.call_t2i(payload)
                     if img_bytes:
                         st.session_state["generated_images"].append({
                             "prompt": prompt,
                             "bytes": img_bytes
                         })
-                progress.progress((i+1)/3)
+                progress.progress((i+1)/num_images)
             except Exception as e:
                 st.error(f"이미지 {i+1} 생성 실패: {e}")
                 break
@@ -459,8 +569,8 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
 # 페이지 3: I2I 이미지 편집
 # ============================================================
 def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
-    st.title("🖼️ 이미지 편집 / 합성 (Image-to-Image)")
-    st.info("💡 업로드된 이미지를 AI로 편집합니다")
+    st.title("🖼️ 이미지 편집 (Image-to-Image)")
+    st.info("💡 업로드된 이미지를 AI로 편집합니다 (배경 변경, 스타일 변경 등)")
     
     # 이미지 소스
     uploaded = st.file_uploader("이미지 업로드", type=["png", "jpg", "jpeg"])
@@ -506,17 +616,34 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         "추가 지시 (선택)",
         placeholder=config.get("ui.placeholders.edit_prompt", "")
     )
-    
-    # 출력 크기
+
+    # 현재 모델 정보 가져오기 (크기 권장을 위해)
+    model_info = api.get_model_info()
+    current_model_name = model_info.get("current") if model_info else None
+    is_flux = current_model_name and "flux" in current_model_name.lower()
+
+    # 출력 크기 (입력 이미지가 이 크기로 리사이즈됨)
     preset_sizes = config.get("image.preset_sizes", [])
-    size_options = [f"{s['name']} ({s['width']}x{s['height']})" for s in preset_sizes]
-    selected_size = st.selectbox("출력 크기", size_options)
-    
+
+    # FLUX 모델 사용 시 권장 크기 표시
+    size_options = []
+    for s in preset_sizes:
+        label = f"{s['name']} ({s['width']}x{s['height']})"
+        if is_flux and s['width'] == 1024 and s['height'] == 1024:
+            label += " ⭐ 권장"
+        size_options.append(label)
+
+    selected_size = st.selectbox(
+        "출력 크기",
+        size_options,
+        help="입력 이미지가 이 크기로 리사이즈된 후 편집됩니다"
+    )
+
     size_idx = size_options.index(selected_size)
     width = preset_sizes[size_idx]["width"]
     height = preset_sizes[size_idx]["height"]
-    
-    submitted = st.button("✨ 합성/편집 생성", type="primary")
+
+    submitted = st.button("✨ 이미지 편집", type="primary")
     
     if submitted:
         if not image_bytes:

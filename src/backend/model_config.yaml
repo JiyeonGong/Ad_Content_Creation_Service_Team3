@@ -3,21 +3,21 @@
 # 새 모델 추가 시 이 파일만 수정하면 됨
 
 models:
-  # 🆕 로컬 튜닝 모델 (팀 커스텀)
-  flux-dev-tuned:
-    id: "/home/shared/FLUX.1-dev"  # 로컬 경로!
-    type: "flux"
-    requires_auth: false  # 로컬 파일이므로 불필요
-    params:
-      default_steps: 4
-      max_steps: 8
-      use_negative_prompt: false
-      guidance_scale: null
-      supports_i2i: true
-      max_tokens: 256
-      default_size: [768, 768]
-      max_size: [1024, 1024]
-    description: "팀 튜닝 모델 - 헬스케어 특화"
+  # # 🆕 로컬 튜닝 모델 (팀 커스텀)
+  # flux-dev-tuned:
+  #   id: "/home/shared/FLUX.1-dev"  # 로컬 경로!
+  #   type: "flux"
+  #   requires_auth: false  # 로컬 파일이므로 불필요
+  #   params:
+  #     default_steps: 4
+  #     max_steps: 8
+  #     use_negative_prompt: false
+  #     guidance_scale: null
+  #     supports_i2i: true
+  #     max_tokens: 256
+  #     default_size: [768, 768]
+  #     max_size: [1024, 1024]
+  #   description: "팀 튜닝 모델 - 헬스케어 특화"
   
   # FLUX 모델 (최신, 고품질, 한국어 지원 우수)
   flux-schnell:
@@ -40,15 +40,31 @@ models:
     type: "flux"
     requires_auth: true
     params:
-      default_steps: 20
+      default_steps: 28
       max_steps: 50
       use_negative_prompt: false
-      guidance_scale: null
+      guidance_scale: 3.5
       supports_i2i: true
       max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
-    description: "FLUX.1-schnell"
+    description: "고품질, 느림"
+
+  # GCP VM 전용 flux-dev (로컬 경로)
+  flux-dev-gcp:
+    id: "/home/shared/FLUX.1-dev"  # GCP VM 로컬 경로
+    type: "flux"
+    requires_auth: false  # 이미 다운로드됨
+    params:
+      default_steps: 28
+      max_steps: 50
+      use_negative_prompt: false
+      guidance_scale: 3.5
+      supports_i2i: true
+      max_tokens: 512
+      default_size: [1024, 1024]
+      max_size: [2048, 2048]
+    description: "GCP VM용 FLUX.1-dev (로컬)"
   
   # Stable Diffusion XL (안정적, 폴백용)
   sdxl:
@@ -120,7 +136,8 @@ models:
 # 실행 설정
 runtime:
   # 기본 사용 모델 (환경변수로 오버라이드 가능)
-  primary_model: "flux-dev-tuned"
+  primary_model: "flux-dev-gcp"
+
   
   # 폴백 모델 체인 (순서대로 시도)
   fallback_models:
@@ -136,23 +153,9 @@ runtime:
     translate_korean: true
     max_length_by_model: true  # 모델별 토큰 제한 준수
   
-  # 메모리 최적화
+  # 메모리 최적화 (ai-ad 방식)
   memory:
-    # 기본 최적화 (항상 권장)
-    enable_vae_tiling: true           # VAE 타일링 (메모리 절약, 속도 영향 없음) ⭐ 
-    enable_vae_slicing: true          # VAE 슬라이싱 (메모리 절약)
-    enable_attention_slicing: true    # 어텐션 슬라이싱 (메모리 절약)
-    
-    # 고급 최적화 (필요시 활성화)
-    enable_cpu_offload: false         # CPU 오프로드 (메모리 70% 절약, 매우 느림) ⚠️
-    enable_sequential_cpu_offload: true  # 순차 CPU 오프로드 (최대 메모리 절약, FLUX 전용)
-    
-    # 정밀도 최적화
-    use_bfloat16: true                # bfloat16 사용 (FLUX 권장, FP16보다 안정적)
-    use_8bit: false                  # 8비트 양자화 (메모리 50% 절약, 느림), flux 파이프 라인에는 미지원
-    
-    # 기타 최적화
-    enable_xformers: false            # xFormers (설치된 경우 더 빠름)
-    enable_torch_compile: false       # torch.compile (PyTorch 2.0+, 첫 실행 느림)
-
-
+    enable_cpu_offload: true  # CPU 오프로드 (FLUX는 sequential 사용)
+    enable_attention_slicing: false  # 어텐션 슬라이싱 (선택적)
+    enable_vae_slicing: true  # VAE 슬라이싱
+    use_8bit: false  # 8비트 양자화 (더 느리지만 메모리 50% 절약)

@@ -241,6 +241,7 @@
 
 # /home/spai0323/Ad_Content_Creation_Service_Team3/src/backend/main.py (개선)
 import base64
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import asyncio
@@ -265,6 +266,7 @@ class T2IRequest(BaseModel):
     width: int = 1024
     height: int = 1024
     steps: int = 4  # 🆕 FLUX-schnell은 4 steps 권장
+    guidance_scale: Optional[float] = None  # FLUX-dev는 3.5 권장, schnell은 None
 
 class T2IResponse(BaseModel):
     image_base64: str
@@ -310,6 +312,7 @@ async def generate_t2i_image(req: T2IRequest):
     steps = services.ensure_steps(req.steps)
     width = services.align_to_64(req.width)
     height = services.align_to_64(req.height)
+    guidance_scale = req.guidance_scale
 
     if width > 2048 or height > 2048:
         raise HTTPException(status_code=400, detail="width/height 값이 너무 큽니다.")
@@ -322,7 +325,8 @@ async def generate_t2i_image(req: T2IRequest):
             req.prompt,
             width,
             height,
-            steps
+            steps,
+            guidance_scale
         )
         b64 = base64.b64encode(image_bytes).decode("utf-8")
         return T2IResponse(image_base64=b64)
@@ -378,13 +382,26 @@ def list_models():
     """사용 가능한 모델 목록 조회"""
     registry = services.registry
     models = {}
-    
+
     for name in registry.list_models():
         models[name] = registry.get_model_info(name)
-    
+
     return {
         "models": models,
         "current": services.model_loader.current_model_name if services.model_loader else None,
         "primary": registry.get_primary_model(),
         "fallback_chain": registry.get_fallback_models()
     }
+
+class SwitchModelRequest(BaseModel):
+    model_name: str
+
+@app.post("/api/switch_model")
+def switch_model(req: SwitchModelRequest):
+    """모델 전환"""
+    result = services.switch_model(req.model_name)
+
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+
+    return result

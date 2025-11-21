@@ -19,19 +19,24 @@ from .model_registry import ModelConfig, get_registry
 class ModelLoader:
     """모델 로딩 및 관리 클래스"""
     
-    def __init__(self, cache_dir: str):
+    def __init__(self, cache_dir: str, use_bfloat16: bool = True):
         self.cache_dir = cache_dir
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.dtype = torch.float16 if self.device == "cuda" else torch.float32
-        
+
+        # FLUX는 bfloat16 권장 (ai-ad 방식)
+        if use_bfloat16 and self.device == "cuda":
+            self.dtype = torch.bfloat16
+        else:
+            self.dtype = torch.float16 if self.device == "cuda" else torch.float32
+
         self.t2i_pipe = None
         self.i2i_pipe = None
         self.current_model_name = None
         self.current_model_config: Optional[ModelConfig] = None
-        
+
         self.registry = get_registry()
-        
-        print(f"🔧 ModelLoader 초기화 (Device: {self.device}, Cache: {cache_dir})")
+
+        print(f"🔧 ModelLoader 초기화 (Device: {self.device}, dtype: {self.dtype}, Cache: {cache_dir})")
     
     def is_loaded(self) -> bool:
         """모델 로드 여부 확인"""
@@ -51,80 +56,57 @@ class ModelLoader:
             "description": self.current_model_config.description
         }
     
-    def _apply_memory_optimizations(self, pipe):
-        """메모리 최적화 적용 (팀원 최적화 기법 포함)"""
+    def _apply_memory_optimizations(self, pipe, model_type: str, pipe_name: str = ""):
+        """메모리 최적화 적용 (ai-ad 방식 강화)"""
         memory_config = self.registry.get_memory_config()
-        model_type = self.current_model_config.type if self.current_model_config else "unknown"
-        
-        print(f"  🔧 메모리 최적화 적용 중...")
-        
-        # 1. VAE 타일링 (최우선, 속도 영향 없음) ⭐
-        if memory_config.get("enable_vae_tiling", True):
-            if hasattr(pipe, 'vae'):
-                try:
-                    pipe.vae.enable_tiling()
-                    print(f"    ✓ VAE 타일링 활성화 (메모리 절약, 속도 영향 없음)")
-                except Exception as e:
-                    print(f"    ⚠️ VAE 타일링 실패: {e}")
-        
-        # 2. VAE 슬라이싱
-        if memory_config.get("enable_vae_slicing", True):
-            if hasattr(pipe, 'vae'):
-                try:
-                    pipe.vae.enable_slicing()
-                    print(f"    ✓ VAE 슬라이싱 활성화")
-                except Exception as e:
-                    print(f"    ⚠️ VAE 슬라이싱 실패: {e}")
-        
-        # 3. 어텐션 슬라이싱
-        if memory_config.get("enable_attention_slicing", True):
+
+        # 파이프라인 이름 표시 (T2I/I2I 구분)
+        prefix = f"[{pipe_name}] " if pipe_name else "  "
+
+        # FLUX 전용: Sequential CPU offload (더 공격적인 메모리 절약)
+        if model_type == "flux" and memory_config.get("enable_cpu_offload", False):
             try:
-                pipe.enable_attention_slicing()
-                print(f"    ✓ 어텐션 슬라이싱 활성화")
+                pipe.enable_sequential_cpu_offload()
+                print(f"{prefix}✓ Sequential CPU 오프로드 활성화 (FLUX 전용, 메모리 70% 절약)")
             except Exception as e:
-                print(f"    ⚠️ 어텐션 슬라이싱 실패: {e}")
-        
-        # 4. xFormers (설치된 경우)
-        if memory_config.get("enable_xformers", False):
-            try:
-                pipe.enable_xformers_memory_efficient_attention()
-                print(f"    ✓ xFormers 활성화 (메모리 효율 + 속도 향상)")
-            except Exception as e:
-                print(f"    ℹ️ xFormers 사용 불가 (pip install xformers)")
-        
-        # 5. Sequential CPU Offload (FLUX 전용, 최대 메모리 절약)
-        if memory_config.get("enable_sequential_cpu_offload", False):
-            if model_type == "flux":
+                print(f"{prefix}⚠️ Sequential CPU offload 실패: {e}")
                 try:
-                    pipe.enable_sequential_cpu_offload()
-                    print(f"    ✓ Sequential CPU 오프로드 활성화 (FLUX, 최대 메모리 절약)")
-                    print(f"    ⚠️ 주의: 생성 속도가 매우 느려집니다")
-                except Exception as e:
-                    print(f"    ⚠️ Sequential CPU 오프로드 실패: {e}")
-            else:
-                print(f"    ℹ️ Sequential CPU offload는 FLUX 모델 전용입니다")
-        
-        # 6. Model CPU Offload (일반, 메모리 절약)
+                    pipe.enable_model_cpu_offload()
+                    print(f"{prefix}✓ 일반 CPU 오프로드로 폴백")
+                except:
+                    pass
         elif memory_config.get("enable_cpu_offload", False):
             try:
                 pipe.enable_model_cpu_offload()
-                print(f"    ✓ CPU 오프로드 활성화 (메모리 절약)")
-                print(f"    ⚠️ 주의: 생성 속도가 느려집니다")
-            except Exception as e:
-                print(f"    ⚠️ CPU 오프로드 실패: {e}")
-        
-        # 7. Torch Compile (PyTorch 2.0+)
-        if memory_config.get("enable_torch_compile", False):
+                print(f"{prefix}✓ CPU 오프로드 활성화")
+            except:
+                pass
+
+        # VAE Tiling (고해상도 처리)
+        if hasattr(pipe, 'vae'):
             try:
-                import torch
-                if hasattr(torch, 'compile'):
-                    pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead")
-                    print(f"    ✓ Torch Compile 활성화 (첫 실행 느림, 이후 빠름)")
-                else:
-                    print(f"    ℹ️ PyTorch 2.0+ 필요 (torch.compile)")
-            except Exception as e:
-                print(f"    ⚠️ Torch Compile 실패: {e}")
-        
+                pipe.vae.enable_tiling()
+                print(f"{prefix}✓ VAE Tiling 활성화 (메모리 절약, 속도 영향 없음)")
+            except:
+                pass
+
+        # VAE Slicing (배치 처리)
+        if memory_config.get("enable_vae_slicing", False):
+            if hasattr(pipe, 'vae'):
+                try:
+                    pipe.vae.enable_slicing()
+                    print(f"{prefix}✓ VAE 슬라이싱 활성화")
+                except:
+                    pass
+
+        # Attention Slicing (선택적)
+        if memory_config.get("enable_attention_slicing", False):
+            try:
+                pipe.enable_attention_slicing()
+                print(f"{prefix}✓ 어텐션 슬라이싱 활성화")
+            except:
+                pass
+
         return pipe
     
     def _load_model_by_type(self, model_config: ModelConfig) -> Tuple[Any, Any]:
@@ -161,9 +143,14 @@ class ModelLoader:
         
         # 모델 타입별 로딩
         if model_type == "flux":
-            # FLUX 계열
-            t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs).to(self.device)
-            
+            # FLUX 계열 (ai-ad 방식: CPU offload 사용 시 .to(device) 생략)
+            t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
+
+            # CPU offload 미사용 시에만 .to(device)
+            if not self.registry.get_memory_config().get("enable_cpu_offload", False):
+                t2i = t2i.to(self.device)
+                print(f"  ✓ 모델을 {self.device}로 이동")
+
             # I2I 파이프라인 생성 시도
             try:
                 i2i = AutoPipelineForImage2Image.from_pipe(t2i)
@@ -191,10 +178,10 @@ class ModelLoader:
             except:
                 i2i = t2i
         
-        # 메모리 최적화 적용
-        t2i = self._apply_memory_optimizations(t2i)
+        # 메모리 최적화 적용 (model_type 전달)
+        t2i = self._apply_memory_optimizations(t2i, model_type, "T2I")
         if i2i != t2i:
-            i2i = self._apply_memory_optimizations(i2i)
+            i2i = self._apply_memory_optimizations(i2i, model_type, "I2I")
         
         return t2i, i2i
     
