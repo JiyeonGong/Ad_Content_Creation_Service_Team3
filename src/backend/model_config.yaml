@@ -49,6 +49,22 @@ models:
       default_size: [1024, 1024]
       max_size: [2048, 2048]
     description: "GCP VM용 FLUX.1-dev (로컬)"
+
+  # 사전 양자화된 FP8 모델 (로딩 빠름, 매번 양자화 불필요)
+  flux-dev-fp8:
+    id: "sayakpaul/FLUX.1-dev-int8-pkg"  # 공식 FP8 모델
+    type: "flux"
+    requires_auth: false
+    params:
+      default_steps: 28
+      max_steps: 50
+      use_negative_prompt: false
+      guidance_scale: 3.5
+      supports_i2i: true
+      max_tokens: 512
+      default_size: [1024, 1024]
+      max_size: [2048, 2048]
+    description: "FLUX.1-dev FP8 (사전 양자화, 빠른 로딩)"
   
   # Stable Diffusion XL (안정적, 폴백용)
   sdxl:
@@ -119,17 +135,31 @@ models:
 
 # 실행 설정
 runtime:
-  # 기본 사용 모델 (환경변수로 오버라이드 가능)
-  primary_model: "flux-dev-gcp"
+  # ========================================
+  # 🚀 성능 모드 선택 (아래 중 하나 선택)
+  # ========================================
+  # 옵션 1: flux-dev-gcp (원본 모델 + CPU offload)
+  #   - 속도: 50-60분/이미지
+  #   - 품질: 100%
+  #   - 메모리: Sequential CPU offload 사용
+  #   - 디스크: 기존 /home/shared/FLUX.1-dev 사용
+  #
+  # 옵션 2: flux-dev-fp8 (사전 양자화 모델)
+  #   - 속도: 19-25분/이미지 (2-2.6배 빠름)
+  #   - 품질: 99%+
+  #   - 메모리: GPU 100% 활용 (CPU offload 불필요)
+  #   - 디스크: 첫 실행 시 ~12GB 다운로드 (한 번만)
+  # ========================================
 
-  
+  primary_model: "flux-dev-gcp"  # 기본값: 원본 모델 (변경: flux-dev-fp8)
+
   # 폴백 모델 체인 (순서대로 시도)
   fallback_models:
     - "flux-schnell"
     - "playground"
-  
+
   # 폴백 활성화 여부
-  enable_fallback: true
+  enable_fallback: false  # 디스크 용량 절약
   
   # 프롬프트 최적화 설정
   prompt_optimization:
