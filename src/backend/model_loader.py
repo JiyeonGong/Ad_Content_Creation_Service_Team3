@@ -192,6 +192,11 @@ class ModelLoader:
                         freeze(t2i.text_encoder_2)
                         print("  ✓ T5 인코더 양자화 완료")
 
+                        # meta 디바이스 텐서를 GPU로 이동
+                        print("  🔄 모델을 GPU로 이동 중...")
+                        t2i = t2i.to(self.device)
+                        print(f"  ✓ 모델 GPU 이동 완료 (device: {self.device})")
+
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
                         # ⚠️ NF4 양자화 모델은 저장/로드 복잡 - 매번 양자화 수행
