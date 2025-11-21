@@ -5,71 +5,62 @@ FLUX.1-dev FP8 양자화 모델 로딩 (LoRA 학습용)
     python scripts/load_flux_fp8_for_lora.py
 
 이 스크립트는:
-1. FLUX.1-dev를 FP8로 양자화하여 메모리에 로드
+1. 사전 양자화된 FLUX FP8 모델을 Hugging Face에서 로드
 2. LoRA 학습을 위한 준비 (base_model 반환)
 3. 메모리 사용량 출력
+
+참고:
+- 사전 양자화 모델: diffusers/FLUX.1-dev-torchao-fp8 (~12GB)
+- GPU 22GB에 완전히 로드 가능 (CPU offload 불필요)
 """
 import torch
-from diffusers import FluxTransformer2DModel, DiffusionPipeline
-from torchao.quantization import quantize_, Int8WeightOnlyConfig
+from diffusers import FluxPipeline
 import gc
 
 
 def load_flux_fp8_for_lora(
-    model_path: str = "/home/shared/FLUX.1-dev",
+    model_id: str = "diffusers/FLUX.1-dev-torchao-fp8",
     device: str = "cuda",
-    dtype: torch.dtype = torch.bfloat16
+    dtype: torch.dtype = torch.bfloat16,
+    cache_dir: str = "/home/shared/models"
 ):
     """
-    FLUX.1-dev를 FP8로 양자화하여 로드
+    사전 양자화된 FLUX FP8 모델 로드
 
     Args:
-        model_path: FLUX.1-dev 모델 경로
+        model_id: Hugging Face 모델 ID
         device: 디바이스 (cuda)
         dtype: 데이터 타입 (bfloat16)
+        cache_dir: 모델 캐시 디렉토리
 
     Returns:
-        pipe: FLUX 파이프라인 (FP8 양자화됨)
+        pipe: FLUX 파이프라인 (FP8 사전 양자화)
     """
     print("=" * 60)
-    print("FLUX.1-dev FP8 양자화 로딩 (LoRA 학습용)")
+    print("FLUX.1-dev FP8 사전 양자화 모델 로딩 (LoRA 학습용)")
     print("=" * 60)
 
-    # 1. Transformer를 device_map="balanced"로 로드 (GPU 우선, 넘치면 CPU 분산)
-    print("\n📥 FLUX Transformer 로딩 중...")
-    print("⚠️  CPU 메모리 16GB 부족 → device_map='balanced' 사용 (GPU 우선, 넘치면 CPU 분산)")
-    transformer = FluxTransformer2DModel.from_pretrained(
-        model_path,
-        subfolder="transformer",
-        torch_dtype=dtype,
-        device_map="balanced"  # GPU 우선, 부족하면 CPU로 분산
-    )
-    print("✅ Transformer 로드 완료")
+    # 1. 사전 양자화된 FP8 모델 로드
+    # ⚠️ 사전 양자화된 torchao 모델은 CPU/disk offload 미지원
+    # → device_map 없이 직접 .to(device) 사용
+    print("\n📥 사전 양자화된 FLUX FP8 모델 로딩 중...")
+    print(f"  모델: {model_id}")
+    print(f"  캐시: {cache_dir}")
+    print("  ℹ️  양자화 과정 불필요 - 바로 로딩! (~12GB)")
 
-    # GPU 메모리 확인 (양자화 전)
+    pipe = FluxPipeline.from_pretrained(
+        model_id,
+        torch_dtype=dtype,
+        use_safetensors=False,  # torchao 양자화 모델은 pickle 형식
+        cache_dir=cache_dir
+    ).to(device)  # GPU로 직접 이동
+
+    print("✅ FP8 모델 로드 완료")
+
+    # GPU 메모리 확인
     if torch.cuda.is_available():
         allocated = torch.cuda.memory_allocated() / 1024**3
-        print(f"📊 양자화 전 GPU 메모리: {allocated:.2f} GB")
-
-    # 2. INT8 양자화 적용 (레이어별로 GPU 전송)
-    print("\n🔄 INT8 양자화 적용 중... (5-15분 소요)")
-    quantize_(transformer, Int8WeightOnlyConfig(), device=device)
-    print("✅ INT8 양자화 완료")
-
-    # GPU 메모리 확인 (양자화 후)
-    if torch.cuda.is_available():
-        allocated = torch.cuda.memory_allocated() / 1024**3
-        print(f"📊 양자화 후 GPU 메모리: {allocated:.2f} GB")
-
-    # 3. 파이프라인 구성
-    print("\n🔧 파이프라인 구성 중...")
-    pipe = DiffusionPipeline.from_pretrained(
-        model_path,
-        transformer=transformer,
-        torch_dtype=dtype,
-        device_map="balanced"  # 나머지도 분산
-    )
-    print("✅ 파이프라인 구성 완료")
+        print(f"📊 GPU 메모리: {allocated:.2f} GB")
 
     # 5. 메모리 사용량 출력
     if device == "cuda":
@@ -169,7 +160,7 @@ if __name__ == "__main__":
             prompt="A cute cat",
             width=1024,
             height=1024,
-            num_inference_steps=4,
+            num_inference_steps=28,  # flux-dev 기본값
             guidance_scale=3.5,
             generator=torch.Generator(device="cuda").manual_seed(42)
         ).images[0]

@@ -161,18 +161,20 @@ class ModelLoader:
         # 모델 타입별 로딩
         if model_type == "flux-quantized":
             # 사전 양자화된 FLUX 모델 (diffusers/FLUX.1-dev-torchao-fp8)
+            # ⚠️ 사전 양자화된 torchao 모델은 CPU/disk offload 미지원
+            # → device_map="cuda" 사용 필수 (FP8 모델 ~12GB로 GPU 22GB에 충분)
             print("  📥 사전 양자화된 FLUX 모델 로딩 중...")
             print("  ℹ️  양자화 과정 불필요 - 바로 로딩!")
+            print("  ℹ️  FP8 모델 ~12GB → GPU 22GB에 완전 로드")
 
             from diffusers import FluxPipeline
             t2i = FluxPipeline.from_pretrained(
                 model_id,
                 torch_dtype=self.dtype,
                 use_safetensors=False,  # torchao 양자화 모델은 pickle 형식
-                device_map="balanced",  # GPU 우선, 넘치면 CPU 분산
                 cache_dir=self.cache_dir
-            )
-            print(f"  ✓ 사전 양자화 모델 로드 완료 (device_map='balanced')")
+            ).to(self.device)  # GPU로 직접 이동 (CPU offload 미지원)
+            print(f"  ✓ 사전 양자화 모델 로드 완료 (device: {self.device})")
 
             # GPU 메모리 확인
             if self.device == "cuda":
