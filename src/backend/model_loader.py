@@ -109,19 +109,18 @@ class ModelLoader:
             except:
                 pass
 
-        # SageAttention 적용 (NF4와 함께 사용 시 추가 속도 개선)
-        if memory_config.get("use_sage_attention", False):
+        # Flash Attention 2 적용 (양자화와 함께 사용 시 추가 속도 개선)
+        if memory_config.get("use_flash_attention", False):
             try:
-                import sageattention
-                # SageAttention은 transformer에 직접 적용
-                if hasattr(pipe, 'transformer'):
-                    pipe.transformer.to(memory_format=torch.channels_last)
-                    print(f"{prefix}✓ SageAttention2++ 준비 완료")
-                # 전체 파이프라인 최적화는 모델 로딩 후 적용됨
+                if hasattr(pipe, 'transformer') and hasattr(pipe.transformer, 'enable_flash_attention_2'):
+                    pipe.transformer.enable_flash_attention_2()
+                    print(f"{prefix}✓ Flash Attention 2 활성화")
+                else:
+                    print(f"{prefix}ℹ️ Flash Attention 2 미지원 모델")
             except ImportError:
-                print(f"{prefix}⚠️ SageAttention 미설치, 기본 attention 사용")
+                print(f"{prefix}⚠️ Flash Attention 2 미설치, 기본 attention 사용")
             except Exception as e:
-                print(f"{prefix}⚠️ SageAttention 적용 실패: {e}")
+                print(f"{prefix}⚠️ Flash Attention 2 적용 실패: {e}")
 
         return pipe
     

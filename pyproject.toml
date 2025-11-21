@@ -41,7 +41,7 @@ dependencies = [
     # 최적화 라이브러리
     "bitsandbytes>=0.41.0",  # NF4 양자화 (FLUX 속도 3-4배 개선)
     "torchao>=0.1.0",  # FP8 양자화 (FLUX 품질 우선, 속도 2-2.6배 개선)
-    "sageattention>=1.0.0",  # SageAttention2++ (추가 2배 속도 개선)
+    "flash-attn>=2.5.0",  # Flash Attention 2 (추가 1.5-2배 속도 개선)
 ]
 
 # ----------------------------------------------------

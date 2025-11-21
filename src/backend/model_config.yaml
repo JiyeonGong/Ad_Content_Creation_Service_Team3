@@ -147,7 +147,7 @@ runtime:
     enable_cpu_offload: true  # 양자화 미사용 시에만 적용
 
     # Attention 최적화 (양자화와 함께 사용 시 추가 속도 개선)
-    use_sage_attention: true  # SageAttention2++ (실패 시 자동으로 기본 attention)
+    use_flash_attention: true  # Flash Attention 2 (1.5-2배 속도 개선)
     enable_attention_slicing: true  # 추가 메모리 절약
 
     # VAE 최적화
