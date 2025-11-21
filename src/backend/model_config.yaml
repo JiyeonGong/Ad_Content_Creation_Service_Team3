@@ -145,7 +145,7 @@ runtime:
     
     # 고급 최적화 (필요시 활성화)
     enable_cpu_offload: false         # CPU 오프로드 (메모리 70% 절약, 매우 느림) ⚠️
-    enable_sequential_cpu_offload: false  # 순차 CPU 오프로드 (최대 메모리 절약, FLUX 전용)
+    enable_sequential_cpu_offload: true  # 순차 CPU 오프로드 (최대 메모리 절약, FLUX 전용)
     
     # 정밀도 최적화
     use_bfloat16: true                # bfloat16 사용 (FLUX 권장, FP16보다 안정적)
