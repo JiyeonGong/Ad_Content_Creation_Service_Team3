@@ -58,31 +58,25 @@ class ModelLoader:
             "description": self.current_model_config.description
         }
     
-    def _apply_memory_optimizations(self, pipe, model_type: str, pipe_name: str = ""):
+    def _apply_memory_optimizations(self, pipe, model_type: str, pipe_name: str = "", is_quantized: bool = False):
         """메모리 최적화 및 속도 최적화 적용"""
         memory_config = self.registry.get_memory_config()
 
         # 파이프라인 이름 표시 (T2I/I2I 구분)
         prefix = f"[{pipe_name}] " if pipe_name else "  "
 
-        # 양자화 타입 확인
-        quant_type = memory_config.get("quantization_type", "none").lower()
-        use_quantization = quant_type in ["fp8", "nf4"]
-
         # CPU offload 설정 (양자화 사용 시 자동 비활성화)
-        if memory_config.get("enable_cpu_offload", False) and not use_quantization:
+        if memory_config.get("enable_cpu_offload", False) and not is_quantized:
             try:
                 # FLUX 모델은 sequential offload 사용 (더 공격적인 메모리 절약)
                 if model_type == "flux":
                     pipe.enable_sequential_cpu_offload()
-                    print(f"{prefix}✓ Sequential CPU 오프로드 활성화 (FLUX 전용, 양자화 미사용)")
+                    print(f"{prefix}✓ Sequential CPU 오프로드 활성화 (FLUX 전용)")
                 else:
                     pipe.enable_model_cpu_offload()
                     print(f"{prefix}✓ Model CPU 오프로드 활성화")
             except Exception as e:
                 print(f"{prefix}⚠️ CPU offload 실패: {e}")
-        elif use_quantization:
-            print(f"{prefix}ℹ️ {quant_type.upper()} 양자화 사용 중 - CPU offload 비활성화 (GPU 최대 활용)")
 
         # VAE Tiling (고해상도 처리)
         if hasattr(pipe, 'vae'):
@@ -272,11 +266,11 @@ class ModelLoader:
             except:
                 i2i = t2i
         
-        # 메모리 최적화 적용 (model_type 전달)
-        t2i = self._apply_memory_optimizations(t2i, model_type, "T2I")
+        # 메모리 최적화 적용 (실제 양자화 여부 전달)
+        t2i = self._apply_memory_optimizations(t2i, model_type, "T2I", use_quantization)
         if i2i != t2i:
-            i2i = self._apply_memory_optimizations(i2i, model_type, "I2I")
-        
+            i2i = self._apply_memory_optimizations(i2i, model_type, "I2I", use_quantization)
+
         return t2i, i2i
     
     def load_model(self, model_name: str) -> bool:
