@@ -138,18 +138,25 @@ class ModelLoader:
             "torch_dtype": self.dtype
         }
 
-        # 양자화 설정 (FLUX에만 적용)
-        quant_type = memory_config.get("quantization_type", "none").lower()
-        use_quantization = quant_type in ["fp8", "nf4"] and model_type == "flux"
+        # 사전 양자화 모델 체크 (모델 ID에 "int8", "fp8", "nf4" 포함 시)
+        is_prequantized = any(keyword in model_id.lower() for keyword in ["int8", "fp8", "nf4", "gguf"])
 
-        if use_quantization:
-            if quant_type == "fp8":
-                print("  🚀 FP8 양자화 모드 활성화 (22GB → 12GB, 품질 99%+, 2-2.6배 속도)")
-            elif quant_type == "nf4":
-                print("  🚀 NF4 양자화 모드 활성화 (22GB → 12GB, 품질 98%, 3-4배 속도)")
-        elif memory_config.get("use_8bit", False):
-            load_kwargs["load_in_8bit"] = True
-            print("  ✓ 8-bit 양자화 모드 (deprecated)")
+        if is_prequantized:
+            print("  ✅ 사전 양자화 모델 감지 - 바로 로드 (양자화 과정 생략)")
+            use_quantization = False
+        else:
+            # 양자화 설정 (FLUX에만 적용)
+            quant_type = memory_config.get("quantization_type", "none").lower()
+            use_quantization = quant_type in ["fp8", "nf4"] and model_type == "flux"
+
+            if use_quantization:
+                if quant_type == "fp8":
+                    print("  🚀 FP8 양자화 모드 활성화 (22GB → 12GB, 품질 99%+, 2-2.6배 속도)")
+                elif quant_type == "nf4":
+                    print("  🚀 NF4 양자화 모드 활성화 (22GB → 12GB, 품질 98%, 3-4배 속도)")
+            elif memory_config.get("use_8bit", False):
+                load_kwargs["load_in_8bit"] = True
+                print("  ✓ 8-bit 양자화 모드 (deprecated)")
 
         # 모델 타입별 로딩
         if model_type == "flux":
