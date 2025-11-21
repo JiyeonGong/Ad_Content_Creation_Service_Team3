@@ -1,8 +1,9 @@
-# model_loader.py
+# model_loader.py (최종 버전 - GPU 메모리 관리 개선)
 """
 모델 로더 - 설정 기반 모델 로딩 및 관리
 """
 import os
+import time
 import traceback
 from typing import Optional, Tuple, Any
 import torch
@@ -25,7 +26,7 @@ class ModelLoader:
         self.cache_dir = cache_dir
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        # FLUX는 bfloat16 권장 (ai-ad 방식)
+        # FLUX는 bfloat16 권장
         if use_bfloat16 and self.device == "cuda":
             self.dtype = torch.bfloat16
         else:
@@ -62,7 +63,6 @@ class ModelLoader:
         """메모리 최적화 및 속도 최적화 적용"""
         memory_config = self.registry.get_memory_config()
 
-        # 파이프라인 이름 표시 (T2I/I2I 구분)
         prefix = f"[{pipe_name}] " if pipe_name else "  "
 
         # 양자화 타입 확인
@@ -72,7 +72,6 @@ class ModelLoader:
         # CPU offload 설정 (양자화 사용 시 자동 비활성화)
         if memory_config.get("enable_cpu_offload", False) and not use_quantization:
             try:
-                # FLUX 모델은 sequential offload 사용 (더 공격적인 메모리 절약)
                 if model_type == "flux":
                     pipe.enable_sequential_cpu_offload()
                     print(f"{prefix}✓ Sequential CPU 오프로드 활성화 (FLUX 전용, 양자화 미사용)")
@@ -92,7 +91,7 @@ class ModelLoader:
             except:
                 pass
 
-        # VAE Slicing (배치 처리)
+        # VAE Slicing
         if memory_config.get("enable_vae_slicing", False):
             if hasattr(pipe, 'vae'):
                 try:
@@ -101,7 +100,7 @@ class ModelLoader:
                 except:
                     pass
 
-        # Attention Slicing (선택적)
+        # Attention Slicing
         if memory_config.get("enable_attention_slicing", False):
             try:
                 pipe.enable_attention_slicing()
@@ -109,7 +108,7 @@ class ModelLoader:
             except:
                 pass
 
-        # Flash Attention 2 적용 (양자화와 함께 사용 시 추가 속도 개선)
+        # Flash Attention 2
         if memory_config.get("use_flash_attention", False):
             try:
                 if hasattr(pipe, 'transformer') and hasattr(pipe.transformer, 'enable_flash_attention_2'):
@@ -138,7 +137,7 @@ class ModelLoader:
             "torch_dtype": self.dtype
         }
 
-        # 사전 양자화 모델 체크 (모델 ID에 "int8", "fp8", "nf4" 포함 시)
+        # 사전 양자화 모델 체크
         is_prequantized = any(keyword in model_id.lower() for keyword in ["int8", "fp8", "nf4", "gguf"])
 
         if is_prequantized:
@@ -165,14 +164,11 @@ class ModelLoader:
                 try:
                     if quant_type == "fp8":
                         # FP8 양자화 (TorchAO)
-                        # 저장 경로 설정
                         quantized_path = "/home/shared/FLUX.1-dev-fp8"
 
-                        # 저장된 양자화 모델이 있는지 확인
-                        import os
+                        # 저장된 양자화 모델 확인
                         if os.path.exists(os.path.join(quantized_path, "config.json")):
                             print(f"  ✅ 저장된 FP8 모델 발견 - 로딩 중: {quantized_path}")
-                            # 저장된 양자화 모델 로드
                             transformer = FluxTransformer2DModel.from_pretrained(
                                 quantized_path,
                                 torch_dtype=self.dtype,
@@ -180,10 +176,9 @@ class ModelLoader:
                             )
                             print("  ✓ 저장된 FP8 모델 로드 완료 (양자화 과정 생략)")
                         else:
-                            print("  📥 FP8 Transformer 로딩 중...")
+                            print("  🔥 FP8 Transformer 로딩 중...")
                             from torchao.quantization import quantize_, int8_weight_only
 
-                            # Transformer 로드 후 양자화
                             transformer = FluxTransformer2DModel.from_pretrained(
                                 model_id,
                                 subfolder="transformer",
@@ -191,7 +186,6 @@ class ModelLoader:
                                 cache_dir=self.cache_dir
                             )
 
-                            # FP8 양자화 적용
                             print("  🔄 FP8 양자화 적용 중... (5-15분 소요)")
                             quantize_(transformer, int8_weight_only())
                             print("  ✓ FP8 양자화 적용 완료")
@@ -201,9 +195,9 @@ class ModelLoader:
                                 print(f"  💾 양자화 모델 저장 중: {quantized_path}")
                                 os.makedirs(quantized_path, exist_ok=True)
                                 transformer.save_pretrained(quantized_path)
-                                print(f"  ✅ 양자화 모델 저장 완료 (다음 실행부터 빠르게 로드)")
+                                print(f"  ✅ 양자화 모델 저장 완료")
                             except Exception as save_err:
-                                print(f"  ⚠️ 양자화 모델 저장 실패 (다음에도 양자화 수행): {save_err}")
+                                print(f"  ⚠️ 양자화 모델 저장 실패: {save_err}")
 
                         # 전체 파이프라인 구성
                         print("  🔧 파이프라인 구성 중...")
@@ -216,24 +210,13 @@ class ModelLoader:
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
-                        # 저장 경로 설정
-                        quantized_path = "/home/shared/FLUX.1-dev-nf4"
-
-                        # 저장된 양자화 모델이 있는지 확인
-                        import os
-                        if os.path.exists(os.path.join(quantized_path, "config.json")):
-                            print(f"  ✅ 저장된 NF4 모델 발견 - 로딩 중: {quantized_path}")
-                            # NF4는 저장/로드가 복잡하므로 매번 양자화 (개선 필요)
-                            print("  ⚠️ NF4는 저장된 모델 로드 미지원 - 재양자화 수행")
-
-                        print("  📥 NF4 Transformer 로딩 중...")
+                        print("  🔥 NF4 Transformer 로딩 중...")
                         nf4_config = BitsAndBytesConfig(
                             load_in_4bit=True,
                             bnb_4bit_quant_type="nf4",
                             bnb_4bit_compute_dtype=self.dtype
                         )
 
-                        # Transformer만 양자화 로드
                         transformer = FluxTransformer2DModel.from_pretrained(
                             model_id,
                             subfolder="transformer",
@@ -252,49 +235,43 @@ class ModelLoader:
                             cache_dir=self.cache_dir
                         )
 
-                    # 양자화 사용 시 GPU로 직접 이동 (CPU offload 불필요)
+                    # 양자화 사용 시 GPU로 직접 이동
                     if self.device == "cuda":
                         t2i = t2i.to(self.device)
-                        print(f"  ✓ {quant_type.upper()} 모델을 {self.device}로 이동 (CPU offload 불필요)")
+                        print(f"  ✓ {quant_type.upper()} 모델을 {self.device}로 이동")
 
                     print(f"  ✅ {quant_type.upper()} 양자화 로딩 완료")
 
                 except Exception as e:
                     print(f"  ⚠️ {quant_type.upper()} 로딩 실패, 일반 모드로 폴백: {e}")
                     use_quantization = False
-                    # 폴백: 일반 로딩
                     t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
                     if not memory_config.get("enable_cpu_offload", False):
                         t2i = t2i.to(self.device)
             else:
-                # 일반 FLUX 로딩 (양자화 미사용)
+                # 일반 FLUX 로딩
                 t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
-
-                # CPU offload 미사용 시에만 .to(device)
                 if not memory_config.get("enable_cpu_offload", False):
                     t2i = t2i.to(self.device)
                     print(f"  ✓ 모델을 {self.device}로 이동")
 
-            # I2I 파이프라인 생성 시도
+            # I2I 파이프라인 생성
             try:
                 i2i = AutoPipelineForImage2Image.from_pipe(t2i)
             except:
-                i2i = t2i  # 폴백
+                i2i = t2i
                 print("  ⚠️ I2I 파이프라인 공유")
         
         elif model_type in ["sdxl", "sd3", "playground"]:
-            # SDXL 계열
             t2i = StableDiffusionXLPipeline.from_pretrained(model_id, **load_kwargs).to(self.device)
             i2i = StableDiffusionXLImg2ImgPipeline.from_pretrained(model_id, **load_kwargs).to(self.device)
         
         elif model_type == "kandinsky":
-            # Kandinsky 계열
             from diffusers import AutoPipelineForText2Image
             t2i = AutoPipelineForText2Image.from_pretrained(model_id, **load_kwargs).to(self.device)
             i2i = AutoPipelineForImage2Image.from_pipe(t2i)
         
         else:
-            # 기본 (Auto 파이프라인)
             print(f"  ⚠️ 알 수 없는 타입 '{model_type}', Auto 파이프라인 사용")
             t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs).to(self.device)
             try:
@@ -302,7 +279,7 @@ class ModelLoader:
             except:
                 i2i = t2i
         
-        # 메모리 최적화 적용 (model_type 전달)
+        # 메모리 최적화 적용
         t2i = self._apply_memory_optimizations(t2i, model_type, "T2I")
         if i2i != t2i:
             i2i = self._apply_memory_optimizations(i2i, model_type, "I2I")
@@ -311,12 +288,10 @@ class ModelLoader:
     
     def load_model(self, model_name: str) -> bool:
         """특정 모델 로드"""
-        # 이미 로드된 경우 스킵
         if self.is_loaded() and self.current_model_name == model_name:
             print(f"ℹ️ 모델 '{model_name}' 이미 로드됨 — 스킵")
             return True
         
-        # 모델 설정 가져오기
         model_config = self.registry.get_model(model_name)
         if not model_config:
             print(f"❌ 알 수 없는 모델: {model_name}")
@@ -325,7 +300,6 @@ class ModelLoader:
         print(f"🔄 모델 로딩 시작: {model_name}")
         print(f"  ID: {model_config.id}")
         
-        # 인증 필요 여부 체크
         if model_config.requires_auth:
             print(f"  ⚠️ 인증 필요 모델입니다.")
             print(f"  해결: huggingface-cli login")
@@ -342,6 +316,13 @@ class ModelLoader:
             error_msg = str(e).lower()
             print(f"❌ 모델 '{model_name}' 로딩 실패: {e}")
             
+            # 🆕 GPU 메모리 강제 정리 (제안 반영!)
+            if torch.cuda.is_available():
+                print(f"  🧹 GPU 메모리 정리 중...")
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+                print(f"  ✓ GPU 메모리 정리 완료")
+            
             # 인증 에러 상세 안내
             if any(kw in error_msg for kw in ["401", "authentication", "gated", "access"]):
                 print(f"\n🔐 인증 필요:")
@@ -353,9 +334,9 @@ class ModelLoader:
             elif "out of memory" in error_msg and self.device == "cuda":
                 print(f"\n💾 메모리 부족 감지")
                 print(f"해결 방법:")
-                print(f"1. model_config.yaml에서 memory.use_8bit: true 설정")
+                print(f"1. model_config.yaml에서 quantization_type: 'fp8' 설정")
                 print(f"2. 더 작은 모델 사용 (sdxl, playground)")
-                print(f"3. CPU 모드로 실행")
+                print(f"3. GPU 메모리 확인: nvidia-smi")
             
             print(traceback.format_exc())
             return False
@@ -363,8 +344,8 @@ class ModelLoader:
     def load_with_fallback(self) -> bool:
         """
         Primary 모델 로드 시도, 실패 시 폴백 체인 실행
+        🆕 각 실패 시마다 GPU 메모리 정리 및 대기
         """
-        # 이미 로드된 경우 스킵
         if self.is_loaded():
             print(f"ℹ️ 모델 이미 로드됨 — 스킵")
             return True
@@ -375,6 +356,11 @@ class ModelLoader:
         
         if self.load_model(primary):
             return True
+        
+        # 🆕 Primary 실패 후 안정화 대기
+        if torch.cuda.is_available():
+            print(f"  ⏳ GPU 메모리 안정화 대기 중...")
+            time.sleep(2)
         
         # 폴백 비활성화된 경우 종료
         if not self.registry.is_fallback_enabled():
@@ -387,14 +373,18 @@ class ModelLoader:
         
         for fallback_name in fallback_chain:
             if fallback_name == primary:
-                continue  # 이미 시도한 모델 스킵
+                continue
             
             print(f"\n🔄 폴백 시도: {fallback_name}")
             if self.load_model(fallback_name):
                 print(f"✅ 폴백 성공: {fallback_name}")
                 return True
+            
+            # 🆕 각 폴백 실패 후 안정화 대기
+            if torch.cuda.is_available():
+                print(f"  ⏳ GPU 메모리 안정화 대기 중...")
+                time.sleep(2)
         
-        # 모든 폴백 실패
         print("❌ 모든 모델 로딩 실패")
         return False
     
@@ -411,8 +401,10 @@ class ModelLoader:
         self.current_model_name = None
         self.current_model_config = None
         
-        # GPU 메모리 정리
+        # 🆕 GPU 메모리 강제 정리
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        
-        print("🗑️ 모델 언로드 완료")
+            torch.cuda.ipc_collect()
+            print("🗑️ 모델 언로드 및 GPU 메모리 정리 완료")
+        else:
+            print("🗑️ 모델 언로드 완료")
