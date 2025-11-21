@@ -12,6 +12,7 @@
 ## 📋 목차
 
 - [주요 기능](#-주요-기능)
+- [RAG 챗봇 시스템](#-rag-챗봇-시스템)
 - [시스템 아키텍처](#-시스템-아키텍처)
 - [기술 스택](#-기술-스택)
 - [설치 방법](#-설치-방법)
@@ -47,6 +48,130 @@
 - 변화 강도 조절 (0.0 ~ 1.0)
 - 추가 지시사항 반영
 - 원본 vs 편집본 비교 뷰
+
+---
+
+## 🤖 RAG 챗봇 시스템
+
+### 개요
+헬스케어 전문 상담을 위한 멀티모달 RAG(Retrieval-Augmented Generation) 챗봇 시스템입니다.
+
+### 주요 기능
+- 📄 **PDF 문서 처리**: OCR을 통한 텍스트 추출 (Qwen3-VL-30B-A3B)
+- 🖼️ **이미지 분석**: 운동/식단 이미지 자동 분석 및 설명 생성
+- 🔍 **벡터 검색**: BGE-M3 임베딩 + Milvus 벡터 DB
+- 💬 **대화형 상담**: Qwen3-30B-A3B-2507 기반 자연스러운 대화
+- 🧠 **컨텍스트 유지**: 대화 기록 관리 (최근 5턴)
+
+### 시스템 구조
+```
+사용자 질문
+    ↓
+벡터 검색 (Milvus Dense + BGE-M3 ColBERT Rerank)
+    ↓
+관련 문서 top-5 추출
+    ↓
+RAG 체인 (검색 결과 + 대화 기록)
+    ↓
+Qwen3-30B-A3B-2507 (Ollama GPU)
+    ↓
+응답 생성
+```
+
+### 사용법
+
+#### 1. Milvus Docker 시작
+```bash
+docker-compose -f docker-compose.milvus.yml up -d
+```
+
+#### 2. Ollama 모델 설치
+```bash
+# Qwen3-30B-A3B-2507 설치
+ollama pull qwen3-30b-a3b-2507:latest
+
+# 서버 실행 확인
+ollama list
+```
+
+#### 3. 데이터베이스 구축
+```bash
+# 데이터 준비
+# - data/raw/pdfs/: PDF 파일
+# - data/raw/images/: 이미지 파일
+# - data/raw/json/: JSON 데이터
+
+# DB 구축
+python -m src.rag_chatbot.build_db
+```
+
+#### 4. 챗봇 실행
+```bash
+python -m src.rag_chatbot.chat
+```
+
+### 터미널 명령어
+- **일반 채팅**: 질문 입력
+- **이미지 포함**: `/image <경로> <질문>`
+- **소스 표시**: `/sources <질문>`
+- **메모리 초기화**: `/clear`
+- **도움말**: `/help`
+- **종료**: `/quit` 또는 `/exit`
+
+### 예시 대화
+```
+사용자: 다이어트 운동 추천해줘
+상담사: [검색된 문서 기반 답변...]
+
+사용자: /image data/user_uploads/pose.jpg 이 자세가 맞나요?
+상담사: [이미지 분석 포함 답변...]
+
+사용자: /sources 식단 추천해줘
+상담사: [답변...]
+📚 참고 문서
+[1] pdf - 점수: 0.952
+파일: data/processed/pdfs/nutrition.md
+내용: ...
+```
+
+### 기술 스택
+- **Qwen3-VL-30B-A3B**: OCR 및 이미지 분석 (~16GB VRAM)
+- **Qwen3-30B-A3B-2507**: 대화 생성 (Ollama GPU)
+- **BGE-M3**: 한국어 임베딩 (1024차원)
+- **Milvus**: 벡터 데이터베이스 (Docker)
+- **LangChain**: RAG 프레임워크
+
+### 메모리 관리
+- **Lazy Loading**: 모델은 필요할 때만 로딩, 사용 후 즉시 언로딩
+- **독립적 관리**: 각 기능(OCR, 임베딩, 채팅)이 자체 모델 관리
+- **GPU 최적화**: Ollama는 GPU에서 실행, 다른 모델과 메모리 공유 안함
+
+### 디렉토리 구조
+```
+src/rag_chatbot/
+├── __init__.py
+├── vector_store.py          # Milvus 연결 및 컬렉션 관리
+├── chunking.py              # 텍스트 청킹
+├── retriever.py             # 검색 및 재순위
+├── rag_chain.py             # RAG 체인 (검색 + 생성)
+├── chat.py                  # 터미널 인터페이스
+├── build_db.py              # DB 구축 스크립트
+└── pipelines/
+    ├── ocr_pipeline.py      # PDF OCR
+    ├── image_pipeline.py    # 이미지 분석
+    └── embedding_pipeline.py # BGE-M3 임베딩
+
+data/
+├── raw/                     # 원본 데이터
+│   ├── pdfs/
+│   ├── images/
+│   └── json/
+├── processed/               # 처리된 데이터
+│   ├── pdfs/               # OCR 결과 (Markdown)
+│   ├── images/             # 이미지 분석 결과 (JSON)
+│   └── json/
+└── user_uploads/           # 사용자 업로드 이미지
+```
 
 ---
 
@@ -1228,6 +1353,31 @@ git push origin feature/amazing-feature
 ---
 
 ## 📝 업데이트 로그
+
+### v3.0.0 (2025-01-XX) - RAG 챗봇 시스템 추가
+
+**주요 변경사항:**
+- 🤖 멀티모달 RAG 챗봇 시스템 구축 (Phase 1-11 완료)
+- 📄 PDF OCR 파이프라인 (Qwen3-VL-30B-A3B)
+- 🖼️ 이미지 분석 파이프라인 (운동/식단 이미지)
+- 🔍 벡터 검색 시스템 (BGE-M3 + Milvus)
+- 💬 RAG 체인 (Qwen3-30B-A3B-2507 via Ollama)
+- 🖥️ 터미널 채팅 인터페이스
+- 🧠 대화 메모리 관리 (최근 5턴)
+- ⚡ Lazy Loading 메모리 최적화
+
+**새로운 의존성:**
+- `langchain>=0.3.0`
+- `pymilvus>=2.4.0`
+- `sentence-transformers>=3.0.0`
+- `ollama>=0.1.0`
+- `FlagEmbedding` (BGE-M3)
+- `pdf2image`, `pypdf` (PDF 처리)
+
+**새로운 파일:**
+- `src/rag_chatbot/` 디렉토리 전체
+- `docker-compose.milvus.yml`
+- `docs/RAG_CHATBOT_PLAN.md`
 
 ### v2.0.0 (2024-01-XX) - 설정 기반 리팩토링
 
