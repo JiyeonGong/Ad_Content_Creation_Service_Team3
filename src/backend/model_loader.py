@@ -63,24 +63,13 @@ class ModelLoader:
         # 파이프라인 이름 표시 (T2I/I2I 구분)
         prefix = f"[{pipe_name}] " if pipe_name else "  "
 
-        # FLUX 전용: Sequential CPU offload (더 공격적인 메모리 절약)
-        if model_type == "flux" and memory_config.get("enable_cpu_offload", False):
-            try:
-                pipe.enable_sequential_cpu_offload()
-                print(f"{prefix}✓ Sequential CPU 오프로드 활성화 (FLUX 전용, 메모리 70% 절약)")
-            except Exception as e:
-                print(f"{prefix}⚠️ Sequential CPU offload 실패: {e}")
-                try:
-                    pipe.enable_model_cpu_offload()
-                    print(f"{prefix}✓ 일반 CPU 오프로드로 폴백")
-                except:
-                    pass
-        elif memory_config.get("enable_cpu_offload", False):
+        # Model CPU offload (GPU 최대 활용 + 메모리 절약)
+        if memory_config.get("enable_cpu_offload", False):
             try:
                 pipe.enable_model_cpu_offload()
-                print(f"{prefix}✓ CPU 오프로드 활성화")
-            except:
-                pass
+                print(f"{prefix}✓ Model CPU 오프로드 활성화 (GPU 최대 활용)")
+            except Exception as e:
+                print(f"{prefix}⚠️ Model CPU offload 실패: {e}")
 
         # VAE Tiling (고해상도 처리)
         if hasattr(pipe, 'vae'):
