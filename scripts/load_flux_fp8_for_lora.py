@@ -11,7 +11,7 @@ FLUX.1-dev FP8 양자화 모델 로딩 (LoRA 학습용)
 """
 import torch
 from diffusers import FluxTransformer2DModel, DiffusionPipeline
-from torchao.quantization import quantize_, int8_weight_only
+from torchao.quantization import quantize_, Int8WeightOnlyConfig
 import gc
 
 
@@ -51,10 +51,10 @@ def load_flux_fp8_for_lora(
         allocated = torch.cuda.memory_allocated() / 1024**3
         print(f"📊 양자화 전 GPU 메모리: {allocated:.2f} GB")
 
-    # 2. FP8 양자화 적용
-    print("\n🔄 FP8 양자화 적용 중... (5-15분 소요)")
-    quantize_(transformer, int8_weight_only())
-    print("✅ FP8 양자화 완료")
+    # 2. INT8 양자화 적용 (레이어별로 GPU 전송)
+    print("\n🔄 INT8 양자화 적용 중... (5-15분 소요)")
+    quantize_(transformer, Int8WeightOnlyConfig(), device=device)
+    print("✅ INT8 양자화 완료")
 
     # GPU 메모리 확인 (양자화 후)
     if torch.cuda.is_available():

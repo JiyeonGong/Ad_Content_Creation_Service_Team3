@@ -167,7 +167,7 @@ class ModelLoader:
                         # FP8 양자화 (TorchAO)
                         # ⚠️ FP8 양자화 모델은 저장 불가능 - 매번 양자화 수행 (5-15분)
                         print("  📥 FP8 Transformer 로딩 중...")
-                        from torchao.quantization import quantize_, int8_weight_only
+                        from torchao.quantization import quantize_, Int8WeightOnlyConfig
 
                         # Transformer 로드 (CPU 메모리에)
                         transformer = FluxTransformer2DModel.from_pretrained(
@@ -177,11 +177,11 @@ class ModelLoader:
                             cache_dir=self.cache_dir
                         )
 
-                        # FP8 양자화 적용 (레이어별로 GPU에서 양자화)
-                        print("  🔄 FP8 양자화 적용 중... (5-15분 소요)")
+                        # INT8 양자화 적용 (레이어별로 GPU에서 양자화)
+                        print("  🔄 INT8 양자화 적용 중... (5-15분 소요)")
                         print("  ℹ️  레이어별로 GPU로 전송하여 양자화 (메모리 절약)")
-                        quantize_(transformer, int8_weight_only(), device=self.device)
-                        print("  ✓ FP8 양자화 적용 완료")
+                        quantize_(transformer, Int8WeightOnlyConfig(), device=self.device)
+                        print("  ✓ INT8 양자화 적용 완료")
 
                         # 전체 파이프라인 구성 (양자화된 transformer 사용)
                         print("  🔧 파이프라인 구성 중...")
