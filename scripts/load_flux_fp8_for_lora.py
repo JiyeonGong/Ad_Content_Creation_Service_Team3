@@ -35,14 +35,14 @@ def load_flux_fp8_for_lora(
     print("FLUX.1-dev FP8 양자화 로딩 (LoRA 학습용)")
     print("=" * 60)
 
-    # 1. Transformer를 device_map="auto"로 로드 (GPU 우선, 넘치면 CPU 분산)
+    # 1. Transformer를 device_map="balanced"로 로드 (GPU 우선, 넘치면 CPU 분산)
     print("\n📥 FLUX Transformer 로딩 중...")
-    print("⚠️  CPU 메모리 16GB 부족 → device_map='auto' 사용 (GPU 우선, 넘치면 CPU 분산)")
+    print("⚠️  CPU 메모리 16GB 부족 → device_map='balanced' 사용 (GPU 우선, 넘치면 CPU 분산)")
     transformer = FluxTransformer2DModel.from_pretrained(
         model_path,
         subfolder="transformer",
         torch_dtype=dtype,
-        device_map="auto"  # GPU 우선, 부족하면 CPU로 분산
+        device_map="balanced"  # GPU 우선, 부족하면 CPU로 분산
     )
     print("✅ Transformer 로드 완료")
 
@@ -67,7 +67,7 @@ def load_flux_fp8_for_lora(
         model_path,
         transformer=transformer,
         torch_dtype=dtype,
-        device_map="auto"  # 나머지도 자동 분산
+        device_map="balanced"  # 나머지도 분산
     )
     print("✅ 파이프라인 구성 완료")
 

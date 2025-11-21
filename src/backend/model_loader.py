@@ -169,13 +169,13 @@ class ModelLoader:
                         print("  📥 FP8 Transformer 로딩 중...")
                         from torchao.quantization import quantize_, int8_weight_only
 
-                        # Transformer 로드 후 양자화 (device_map="auto"로 GPU 우선, 넘치면 CPU)
+                        # Transformer 로드 후 양자화 (device_map="balanced"로 GPU 우선, 넘치면 CPU)
                         transformer = FluxTransformer2DModel.from_pretrained(
                             model_id,
                             subfolder="transformer",
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir,
-                            device_map="auto"  # GPU 우선, 넘치면 CPU 분산
+                            device_map="balanced"  # GPU 우선, 넘치면 CPU 분산
                         )
 
                         # FP8 양자화 적용
@@ -190,7 +190,7 @@ class ModelLoader:
                             transformer=transformer,
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir,
-                            device_map="auto"  # 나머지 컴포넌트도 자동 분산
+                            device_map="balanced"  # 나머지 컴포넌트도 자동 분산
                         )
 
                     elif quant_type == "nf4":
@@ -210,7 +210,7 @@ class ModelLoader:
                             quantization_config=nf4_config,
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir,
-                            device_map="auto"  # GPU 우선, 넘치면 CPU 분산
+                            device_map="balanced"  # GPU 우선, 넘치면 CPU 분산
                         )
                         print("  ✓ NF4 양자화 로드 완료")
 
@@ -221,11 +221,11 @@ class ModelLoader:
                             transformer=transformer,
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir,
-                            device_map="auto"  # 나머지 컴포넌트도 자동 분산
+                            device_map="balanced"  # 나머지 컴포넌트도 자동 분산
                         )
 
-                    # device_map="auto" 사용으로 이미 자동 배치됨
-                    print(f"  ✓ {quant_type.upper()} 모델 device_map='auto' 적용 (GPU 우선, 넘치면 CPU 분산)")
+                    # device_map="balanced" 사용으로 이미 자동 배치됨
+                    print(f"  ✓ {quant_type.upper()} 모델 device_map='balanced' 적용 (GPU 우선, 넘치면 CPU 분산)")
                     print(f"  ✅ {quant_type.upper()} 양자화 로딩 완료")
 
                 except Exception as e:
@@ -234,13 +234,13 @@ class ModelLoader:
                     # 폴백: 일반 로딩
                     load_kwargs["device_map"] = "auto"
                     t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
-                    print(f"  ✓ device_map='auto' 적용 (GPU 우선, 넘치면 CPU 분산)")
+                    print(f"  ✓ device_map='balanced' 적용 (GPU 우선, 넘치면 CPU 분산)")
             else:
                 # 일반 FLUX 로딩 (양자화 미사용)
-                # device_map="auto"로 GPU 우선, 넘치면 CPU 분산
+                # device_map="balanced"로 GPU 우선, 넘치면 CPU 분산
                 load_kwargs["device_map"] = "auto"
                 t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
-                print(f"  ✓ device_map='auto' 적용 (GPU 우선, 넘치면 CPU 분산)")
+                print(f"  ✓ device_map='balanced' 적용 (GPU 우선, 넘치면 CPU 분산)")
 
             # I2I 파이프라인 생성 시도
             try:
