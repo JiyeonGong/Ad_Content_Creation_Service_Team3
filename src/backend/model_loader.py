@@ -158,45 +158,47 @@ class ModelLoader:
             if use_quantization:
                 try:
                     if quant_type == "fp8":
-                        # FP8 양자화 (optimum-quanto)
-                        # device_map + max_memory로 분산 로드 후 양자화 적용
-                        print("  📥 FLUX 모델 분산 로딩 중...")
-                        from diffusers import FluxPipeline
-                        try:
-                            from optimum.quanto import freeze, qfloat8, quantize
-                        except ImportError:
-                            import subprocess
-                            subprocess.check_call(["pip", "install", "-q", "optimum-quanto"])
-                            from optimum.quanto import freeze, qfloat8, quantize
+                        # FP8 양자화 (QuantoConfig 사용)
+                        # 로드하면서 바로 양자화 적용
+                        from diffusers import FluxPipeline, FluxTransformer2DModel, QuantoConfig
+                        from transformers import T5EncoderModel, BitsAndBytesConfig as T5BnbConfig
 
-                        # GPU/CPU 메모리 할당 지정
-                        max_memory = {0: "20GiB", "cpu": "14GiB"}
+                        quanto_config = QuantoConfig(weights_dtype="float8")
 
-                        t2i = FluxPipeline.from_pretrained(
+                        # 1. Transformer FP8 양자화 로드
+                        print("  📥 Transformer FP8 로딩 중...")
+                        transformer = FluxTransformer2DModel.from_pretrained(
                             model_id,
+                            subfolder="transformer",
+                            quantization_config=quanto_config,
                             torch_dtype=self.dtype,
-                            device_map="balanced",
-                            max_memory=max_memory,
                             cache_dir=self.cache_dir
                         )
-                        print("  ✓ 분산 로드 완료")
+                        print("  ✓ Transformer FP8 로드 완료")
 
-                        # FP8 양자화 적용
-                        print("  🔄 Transformer FP8 양자화 중...")
-                        quantize(t2i.transformer, weights=qfloat8)
-                        freeze(t2i.transformer)
-                        print("  ✓ Transformer 양자화 완료")
+                        # 2. T5 인코더 8bit 양자화 로드 (transformers용 BitsAndBytes)
+                        print("  📥 T5 인코더 8bit 로딩 중...")
+                        t5_bnb_config = T5BnbConfig(load_in_8bit=True)
+                        text_encoder_2 = T5EncoderModel.from_pretrained(
+                            model_id,
+                            subfolder="text_encoder_2",
+                            quantization_config=t5_bnb_config,
+                            torch_dtype=self.dtype,
+                            cache_dir=self.cache_dir
+                        )
+                        print("  ✓ T5 인코더 8bit 로드 완료")
 
-                        print("  🔄 T5 인코더 FP8 양자화 중...")
-                        quantize(t2i.text_encoder_2, weights=qfloat8)
-                        freeze(t2i.text_encoder_2)
-                        print("  ✓ T5 인코더 양자화 완료")
-
-                        # device_map 제거 후 GPU로 이동
-                        print("  🔄 모델을 GPU로 이동 중...")
-                        t2i.reset_device_map()
-                        t2i = t2i.to(self.device)
-                        print(f"  ✓ 모델 GPU 이동 완료 (device: {self.device})")
+                        # 3. 파이프라인 구성
+                        print("  🔧 파이프라인 구성 중...")
+                        t2i = FluxPipeline.from_pretrained(
+                            model_id,
+                            transformer=transformer,
+                            text_encoder_2=text_encoder_2,
+                            torch_dtype=self.dtype,
+                            cache_dir=self.cache_dir
+                        )
+                        t2i.enable_model_cpu_offload()
+                        print("  ✓ FP8 파이프라인 구성 완료 (CPU offload 활성화)")
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
