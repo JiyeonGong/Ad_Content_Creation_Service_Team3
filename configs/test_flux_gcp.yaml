@@ -4,7 +4,7 @@
 # 모델 경로 (사전 양자화 모델 사용)
 model:
   name: "flux-dev-fp8"  # 사전 양자화된 FP8 모델 (diffusers/FLUX.1-dev-torchao-fp8)
-  path: "diffusers/FLUX.1-dev-torchao-fp8"
+  path: "/home/shared/models"  # 모델 캐시 디렉토리
   type: "flux-quantized"
 
 # 출력 디렉토리
