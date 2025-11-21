@@ -151,7 +151,7 @@ runtime:
   #   - 디스크: 첫 실행 시 ~12GB 다운로드 (한 번만)
   # ========================================
 
-  primary_model: "flux-dev-fp8"  # 기본값: 사전 양자화 모델 (빠름, 변경: flux-dev-gcp)
+  primary_model: "flux-dev-gcp"  # 기본값: 원본 모델 (FP8 사전 양자화 모델 없음)
 
   # 폴백 모델 체인 (순서대로 시도)
   fallback_models:

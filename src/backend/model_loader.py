@@ -165,20 +165,45 @@ class ModelLoader:
                 try:
                     if quant_type == "fp8":
                         # FP8 양자화 (TorchAO)
-                        print("  📥 FP8 Transformer 로딩 중...")
-                        from torchao.quantization import quantize_, int8_weight_only
+                        # 저장 경로 설정
+                        quantized_path = "/home/shared/FLUX.1-dev-fp8"
 
-                        # Transformer 로드 후 양자화
-                        transformer = FluxTransformer2DModel.from_pretrained(
-                            model_id,
-                            subfolder="transformer",
-                            torch_dtype=self.dtype,
-                            cache_dir=self.cache_dir
-                        )
+                        # 저장된 양자화 모델이 있는지 확인
+                        import os
+                        if os.path.exists(os.path.join(quantized_path, "config.json")):
+                            print(f"  ✅ 저장된 FP8 모델 발견 - 로딩 중: {quantized_path}")
+                            # 저장된 양자화 모델 로드
+                            transformer = FluxTransformer2DModel.from_pretrained(
+                                quantized_path,
+                                torch_dtype=self.dtype,
+                                cache_dir=self.cache_dir
+                            )
+                            print("  ✓ 저장된 FP8 모델 로드 완료 (양자화 과정 생략)")
+                        else:
+                            print("  📥 FP8 Transformer 로딩 중...")
+                            from torchao.quantization import quantize_, int8_weight_only
 
-                        # FP8 양자화 적용
-                        quantize_(transformer, int8_weight_only())
-                        print("  ✓ FP8 양자화 적용 완료")
+                            # Transformer 로드 후 양자화
+                            transformer = FluxTransformer2DModel.from_pretrained(
+                                model_id,
+                                subfolder="transformer",
+                                torch_dtype=self.dtype,
+                                cache_dir=self.cache_dir
+                            )
+
+                            # FP8 양자화 적용
+                            print("  🔄 FP8 양자화 적용 중... (5-15분 소요)")
+                            quantize_(transformer, int8_weight_only())
+                            print("  ✓ FP8 양자화 적용 완료")
+
+                            # 양자화된 모델 저장
+                            try:
+                                print(f"  💾 양자화 모델 저장 중: {quantized_path}")
+                                os.makedirs(quantized_path, exist_ok=True)
+                                transformer.save_pretrained(quantized_path)
+                                print(f"  ✅ 양자화 모델 저장 완료 (다음 실행부터 빠르게 로드)")
+                            except Exception as save_err:
+                                print(f"  ⚠️ 양자화 모델 저장 실패 (다음에도 양자화 수행): {save_err}")
 
                         # 전체 파이프라인 구성
                         print("  🔧 파이프라인 구성 중...")
@@ -191,6 +216,16 @@ class ModelLoader:
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
+                        # 저장 경로 설정
+                        quantized_path = "/home/shared/FLUX.1-dev-nf4"
+
+                        # 저장된 양자화 모델이 있는지 확인
+                        import os
+                        if os.path.exists(os.path.join(quantized_path, "config.json")):
+                            print(f"  ✅ 저장된 NF4 모델 발견 - 로딩 중: {quantized_path}")
+                            # NF4는 저장/로드가 복잡하므로 매번 양자화 (개선 필요)
+                            print("  ⚠️ NF4는 저장된 모델 로드 미지원 - 재양자화 수행")
+
                         print("  📥 NF4 Transformer 로딩 중...")
                         nf4_config = BitsAndBytesConfig(
                             load_in_4bit=True,
@@ -206,6 +241,7 @@ class ModelLoader:
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir
                         )
+                        print("  ✓ NF4 양자화 로드 완료")
 
                         # 전체 파이프라인 구성
                         print("  🔧 파이프라인 구성 중...")
