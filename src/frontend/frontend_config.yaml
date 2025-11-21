@@ -7,7 +7,7 @@ app:
   
 api:
   base_url: "http://localhost:8000"  # 환경변수 API_BASE_URL로 오버라이드 가능
-  timeout: 900  # 초
+  timeout: 3600  # 초 (60분, CPU offload 사용 시)
   retry_attempts: 2  # GPU OOM 시 재시도 횟수
 
 # 페이지 설정
