@@ -139,7 +139,7 @@ runtime:
   
   # 메모리 최적화 (ai-ad 방식)
   memory:
-    enable_cpu_offload: true  # CPU 오프로드 (FLUX는 sequential 사용)
+    enable_cpu_offload: false  # L4 GPU (23GB)는 메모리 충분 → 속도 우선
     enable_attention_slicing: false  # 어텐션 슬라이싱 (선택적)
     enable_vae_slicing: true  # VAE 슬라이싱
     use_8bit: false  # 8비트 양자화 (더 느리지만 메모리 50% 절약)
