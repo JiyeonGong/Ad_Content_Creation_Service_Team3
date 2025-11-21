@@ -192,8 +192,9 @@ class ModelLoader:
                         freeze(t2i.text_encoder_2)
                         print("  ✓ T5 인코더 양자화 완료")
 
-                        # meta 디바이스 텐서를 GPU로 이동
+                        # device_map 제거 후 GPU로 이동
                         print("  🔄 모델을 GPU로 이동 중...")
+                        t2i.reset_device_map()
                         t2i = t2i.to(self.device)
                         print(f"  ✓ 모델 GPU 이동 완료 (device: {self.device})")
 
