@@ -165,45 +165,23 @@ class ModelLoader:
                 try:
                     if quant_type == "fp8":
                         # FP8 양자화 (TorchAO)
-                        # 저장 경로 설정
-                        quantized_path = "/home/shared/FLUX.1-dev-fp8"
+                        # ⚠️ FP8 양자화 모델은 저장 불가능 - 매번 양자화 수행 (5-15분)
+                        print("  📥 FP8 Transformer 로딩 중...")
+                        from torchao.quantization import quantize_, int8_weight_only
 
-                        # 저장된 양자화 모델이 있는지 확인
-                        import os
-                        if os.path.exists(os.path.join(quantized_path, "config.json")):
-                            print(f"  ✅ 저장된 FP8 모델 발견 - 로딩 중: {quantized_path}")
-                            # 저장된 양자화 모델 로드
-                            transformer = FluxTransformer2DModel.from_pretrained(
-                                quantized_path,
-                                torch_dtype=self.dtype,
-                                cache_dir=self.cache_dir
-                            )
-                            print("  ✓ 저장된 FP8 모델 로드 완료 (양자화 과정 생략)")
-                        else:
-                            print("  📥 FP8 Transformer 로딩 중...")
-                            from torchao.quantization import quantize_, int8_weight_only
+                        # Transformer 로드 후 양자화 (device_map="auto"로 GPU 우선, 넘치면 CPU)
+                        transformer = FluxTransformer2DModel.from_pretrained(
+                            model_id,
+                            subfolder="transformer",
+                            torch_dtype=self.dtype,
+                            cache_dir=self.cache_dir,
+                            device_map="auto"  # GPU 우선, 넘치면 CPU 분산
+                        )
 
-                            # Transformer 로드 후 양자화
-                            transformer = FluxTransformer2DModel.from_pretrained(
-                                model_id,
-                                subfolder="transformer",
-                                torch_dtype=self.dtype,
-                                cache_dir=self.cache_dir
-                            )
-
-                            # FP8 양자화 적용
-                            print("  🔄 FP8 양자화 적용 중... (5-15분 소요)")
-                            quantize_(transformer, int8_weight_only())
-                            print("  ✓ FP8 양자화 적용 완료")
-
-                            # 양자화된 모델 저장
-                            try:
-                                print(f"  💾 양자화 모델 저장 중: {quantized_path}")
-                                os.makedirs(quantized_path, exist_ok=True)
-                                transformer.save_pretrained(quantized_path)
-                                print(f"  ✅ 양자화 모델 저장 완료 (다음 실행부터 빠르게 로드)")
-                            except Exception as save_err:
-                                print(f"  ⚠️ 양자화 모델 저장 실패 (다음에도 양자화 수행): {save_err}")
+                        # FP8 양자화 적용
+                        print("  🔄 FP8 양자화 적용 중... (5-15분 소요)")
+                        quantize_(transformer, int8_weight_only())
+                        print("  ✓ FP8 양자화 적용 완료")
 
                         # 전체 파이프라인 구성
                         print("  🔧 파이프라인 구성 중...")
@@ -211,21 +189,13 @@ class ModelLoader:
                             model_id,
                             transformer=transformer,
                             torch_dtype=self.dtype,
-                            cache_dir=self.cache_dir
+                            cache_dir=self.cache_dir,
+                            device_map="auto"  # 나머지 컴포넌트도 자동 분산
                         )
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
-                        # 저장 경로 설정
-                        quantized_path = "/home/shared/FLUX.1-dev-nf4"
-
-                        # 저장된 양자화 모델이 있는지 확인
-                        import os
-                        if os.path.exists(os.path.join(quantized_path, "config.json")):
-                            print(f"  ✅ 저장된 NF4 모델 발견 - 로딩 중: {quantized_path}")
-                            # NF4는 저장/로드가 복잡하므로 매번 양자화 (개선 필요)
-                            print("  ⚠️ NF4는 저장된 모델 로드 미지원 - 재양자화 수행")
-
+                        # ⚠️ NF4 양자화 모델은 저장/로드 복잡 - 매번 양자화 수행
                         print("  📥 NF4 Transformer 로딩 중...")
                         nf4_config = BitsAndBytesConfig(
                             load_in_4bit=True,
@@ -239,7 +209,8 @@ class ModelLoader:
                             subfolder="transformer",
                             quantization_config=nf4_config,
                             torch_dtype=self.dtype,
-                            cache_dir=self.cache_dir
+                            cache_dir=self.cache_dir,
+                            device_map="auto"  # GPU 우선, 넘치면 CPU 분산
                         )
                         print("  ✓ NF4 양자화 로드 완료")
 
@@ -249,31 +220,27 @@ class ModelLoader:
                             model_id,
                             transformer=transformer,
                             torch_dtype=self.dtype,
-                            cache_dir=self.cache_dir
+                            cache_dir=self.cache_dir,
+                            device_map="auto"  # 나머지 컴포넌트도 자동 분산
                         )
 
-                    # 양자화 사용 시 GPU로 직접 이동 (CPU offload 불필요)
-                    if self.device == "cuda":
-                        t2i = t2i.to(self.device)
-                        print(f"  ✓ {quant_type.upper()} 모델을 {self.device}로 이동 (CPU offload 불필요)")
-
+                    # device_map="auto" 사용으로 이미 자동 배치됨
+                    print(f"  ✓ {quant_type.upper()} 모델 device_map='auto' 적용 (GPU 우선, 넘치면 CPU 분산)")
                     print(f"  ✅ {quant_type.upper()} 양자화 로딩 완료")
 
                 except Exception as e:
                     print(f"  ⚠️ {quant_type.upper()} 로딩 실패, 일반 모드로 폴백: {e}")
                     use_quantization = False
                     # 폴백: 일반 로딩
+                    load_kwargs["device_map"] = "auto"
                     t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
-                    if not memory_config.get("enable_cpu_offload", False):
-                        t2i = t2i.to(self.device)
+                    print(f"  ✓ device_map='auto' 적용 (GPU 우선, 넘치면 CPU 분산)")
             else:
                 # 일반 FLUX 로딩 (양자화 미사용)
+                # device_map="auto"로 GPU 우선, 넘치면 CPU 분산
+                load_kwargs["device_map"] = "auto"
                 t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
-
-                # CPU offload 미사용 시에만 .to(device)
-                if not memory_config.get("enable_cpu_offload", False):
-                    t2i = t2i.to(self.device)
-                    print(f"  ✓ 모델을 {self.device}로 이동")
+                print(f"  ✓ device_map='auto' 적용 (GPU 우선, 넘치면 CPU 분산)")
 
             # I2I 파이프라인 생성 시도
             try:

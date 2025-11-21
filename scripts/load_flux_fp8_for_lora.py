@@ -35,33 +35,41 @@ def load_flux_fp8_for_lora(
     print("FLUX.1-dev FP8 양자화 로딩 (LoRA 학습용)")
     print("=" * 60)
 
-    # 1. Transformer 로드
+    # 1. Transformer를 device_map="auto"로 로드 (GPU 우선, 넘치면 CPU 분산)
     print("\n📥 FLUX Transformer 로딩 중...")
+    print("⚠️  CPU 메모리 16GB 부족 → device_map='auto' 사용 (GPU 우선, 넘치면 CPU 분산)")
     transformer = FluxTransformer2DModel.from_pretrained(
         model_path,
         subfolder="transformer",
-        torch_dtype=dtype
+        torch_dtype=dtype,
+        device_map="auto"  # GPU 우선, 부족하면 CPU로 분산
     )
     print("✅ Transformer 로드 완료")
+
+    # GPU 메모리 확인 (양자화 전)
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1024**3
+        print(f"📊 양자화 전 GPU 메모리: {allocated:.2f} GB")
 
     # 2. FP8 양자화 적용
     print("\n🔄 FP8 양자화 적용 중... (5-15분 소요)")
     quantize_(transformer, int8_weight_only())
     print("✅ FP8 양자화 완료")
 
+    # GPU 메모리 확인 (양자화 후)
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1024**3
+        print(f"📊 양자화 후 GPU 메모리: {allocated:.2f} GB")
+
     # 3. 파이프라인 구성
     print("\n🔧 파이프라인 구성 중...")
     pipe = DiffusionPipeline.from_pretrained(
         model_path,
         transformer=transformer,
-        torch_dtype=dtype
+        torch_dtype=dtype,
+        device_map="auto"  # 나머지도 자동 분산
     )
     print("✅ 파이프라인 구성 완료")
-
-    # 4. GPU로 이동
-    print(f"\n🚀 GPU로 이동 중... (device: {device})")
-    pipe = pipe.to(device)
-    print("✅ GPU 이동 완료")
 
     # 5. 메모리 사용량 출력
     if device == "cuda":
