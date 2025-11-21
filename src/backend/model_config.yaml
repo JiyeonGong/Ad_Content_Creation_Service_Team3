@@ -50,11 +50,11 @@ models:
       max_size: [2048, 2048]
     description: "GCP VM용 FLUX.1-dev (로컬)"
 
-  # 사전 양자화된 FP8 모델 (로딩 빠름, 매번 양자화 불필요) ⭐ 권장
+  # FP8 양자화 모델 (optimum-quanto 사용) ⭐ 권장
   flux-dev-fp8:
-    id: "diffusers/FLUX.1-dev-torchao-fp8"
-    type: "flux-quantized"  # 사전 양자화 타입
-    requires_auth: false
+    id: "black-forest-labs/FLUX.1-dev"  # 원본 모델 (양자화는 런타임에)
+    type: "flux-quantized"  # optimum-quanto FP8 양자화
+    requires_auth: true  # FLUX.1-dev 라이선스 동의 필요
     params:
       default_steps: 28
       max_steps: 50
@@ -64,7 +64,7 @@ models:
       max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
-    description: "FLUX.1-dev FP8 (사전 양자화, 빠른 로딩, ~12GB)"
+    description: "FLUX.1-dev FP8 (optimum-quanto, ~12GB)"
   
   # Stable Diffusion XL (안정적, 폴백용)
   sdxl:
