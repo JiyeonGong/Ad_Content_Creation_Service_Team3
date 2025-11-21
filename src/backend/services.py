@@ -239,12 +239,23 @@ def generate_t2i_core(prompt: str, width: int, height: int, steps: int, guidance
         print(f"   Guidance: {gen_params['guidance_scale']}")
 
     # 생성
-    result = model_loader.t2i_pipe(**gen_params)
-    image = result.images[0]
+    try:
+        result = model_loader.t2i_pipe(**gen_params)
+        image = result.images[0]
 
-    buf = io.BytesIO()
-    image.save(buf, format="PNG")
-    return buf.getvalue()
+        # 이미지 크기 확인
+        print(f"✅ 생성 완료: 실제 크기 = {image.size}")
+
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        image_bytes = buf.getvalue()
+        print(f"✅ PNG 변환 완료: {len(image_bytes)} bytes")
+        return image_bytes
+    except Exception as gen_err:
+        print(f"❌ 이미지 생성 또는 변환 실패: {gen_err}")
+        import traceback
+        traceback.print_exc()
+        raise RuntimeError(f"이미지 생성 실패: {gen_err}")
 
 # ===========================
 # 이미지 편집 (I2I)
