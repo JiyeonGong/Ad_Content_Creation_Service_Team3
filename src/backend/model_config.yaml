@@ -52,7 +52,7 @@ models:
 
   # 사전 양자화된 FP8 모델 (로딩 빠름, 매번 양자화 불필요)
   flux-dev-fp8:
-    id: "sayakpaul/FLUX.1-dev-int8-pkg"  # 공식 FP8 모델
+    id: "Kijai/flux-fp8"  # 공식 FP8 모델
     type: "flux"
     requires_auth: false
     params:
