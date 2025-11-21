@@ -232,13 +232,13 @@ class ModelLoader:
                     print(f"  ⚠️ {quant_type.upper()} 로딩 실패, 일반 모드로 폴백: {e}")
                     use_quantization = False
                     # 폴백: 일반 로딩
-                    load_kwargs["device_map"] = "auto"
+                    load_kwargs["device_map"] = "balanced"
                     t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
                     print(f"  ✓ device_map='balanced' 적용 (GPU 우선, 넘치면 CPU 분산)")
             else:
                 # 일반 FLUX 로딩 (양자화 미사용)
                 # device_map="balanced"로 GPU 우선, 넘치면 CPU 분산
-                load_kwargs["device_map"] = "auto"
+                load_kwargs["device_map"] = "balanced"
                 t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
                 print(f"  ✓ device_map='balanced' 적용 (GPU 우선, 넘치면 CPU 분산)")
 
