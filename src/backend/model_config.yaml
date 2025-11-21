@@ -50,10 +50,10 @@ models:
       max_size: [2048, 2048]
     description: "GCP VM용 FLUX.1-dev (로컬)"
 
-  # FP8 양자화 모델 (optimum-quanto 사용) ⭐ 권장
+  # GCP VM 전용 flux-dev (quantization_type 설정에 따라 동작) ⭐ 권장
   flux-dev-fp8:
     id: "/home/shared/FLUX.1-dev"  # GCP 로컬 경로 (이미 다운로드됨)
-    type: "flux-quantized"  # optimum-quanto FP8 양자화
+    type: "flux"  # quantization_type 설정에 따라 none/fp8/nf4 양자화
     requires_auth: false  # 로컬 모델
     params:
       default_steps: 28
@@ -64,7 +64,7 @@ models:
       max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
-    description: "FLUX.1-dev FP8 (optimum-quanto, 로컬, ~12GB)"
+    description: "FLUX.1-dev (로컬, quantization_type 설정 적용)"
   
   # Stable Diffusion XL (안정적, 폴백용)
   sdxl:

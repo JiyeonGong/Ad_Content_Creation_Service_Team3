@@ -159,39 +159,7 @@ class ModelLoader:
                 print("  ✓ 8-bit 양자화 모드 (deprecated)")
 
         # 모델 타입별 로딩
-        if model_type == "flux-quantized":
-            # FLUX 모델 로드 (device_map + max_memory로 GPU/CPU 분산)
-            # CPU 메모리 16GB 환경에서도 작동
-            print("  📥 FLUX 모델 로딩 중 (device_map + max_memory)...")
-            print("  ℹ️  GPU 우선 로드, 넘치면 CPU 분산")
-
-            from diffusers import FluxPipeline
-
-            # GPU/CPU 메모리 할당 지정
-            max_memory = {0: "20GiB", "cpu": "14GiB"}
-
-            t2i = FluxPipeline.from_pretrained(
-                model_id,
-                torch_dtype=self.dtype,
-                device_map="balanced",
-                max_memory=max_memory,
-                cache_dir=self.cache_dir
-            )
-            print(f"  ✓ 모델 로드 완료 (device_map='balanced')")
-
-            # GPU 메모리 확인
-            if self.device == "cuda":
-                allocated = torch.cuda.memory_allocated() / 1024**3
-                print(f"  📊 GPU 메모리: {allocated:.2f} GB")
-
-            # I2I 파이프라인 생성 시도
-            try:
-                i2i = AutoPipelineForImage2Image.from_pipe(t2i)
-            except:
-                i2i = t2i
-                print("  ⚠️ I2I 파이프라인 공유")
-
-        elif model_type == "flux":
+        if model_type == "flux":
             # FLUX 계열: FP8 / NF4 양자화 지원
             if use_quantization:
                 try:
