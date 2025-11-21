@@ -137,9 +137,21 @@ runtime:
     translate_korean: true
     max_length_by_model: true  # 모델별 토큰 제한 준수
   
-  # 메모리 최적화 (ai-ad 방식)
+  # 메모리 최적화 및 속도 개선
   memory:
-    enable_cpu_offload: true  # L4 GPU 메모리 부족 → Sequential CPU offload 필수
-    enable_attention_slicing: true  # FlashAttention과 별개, 추가 메모리 절약
+    # 양자화 설정 (FLUX 전용, 22GB → 12GB 압축)
+    # 옵션: "fp8" (품질 우선, 2-2.6배), "nf4" (속도 우선, 3-4배), "none" (양자화 안 함)
+    quantization_type: "fp8"  # 기본값: FP8 (품질 99%+, 속도 2-2.6배)
+
+    # CPU offload (양자화 사용 시 자동 비활성화됨)
+    enable_cpu_offload: true  # 양자화 미사용 시에만 적용
+
+    # Attention 최적화 (양자화와 함께 사용 시 추가 속도 개선)
+    use_sage_attention: true  # SageAttention2++ (실패 시 자동으로 기본 attention)
+    enable_attention_slicing: true  # 추가 메모리 절약
+
+    # VAE 최적화
     enable_vae_slicing: true  # VAE 슬라이싱
-    use_8bit: false  # 8비트 양자화 (더 느리지만 메모리 50% 절약)
+
+    # 기타 (deprecated)
+    use_8bit: false  # 사용 안 함 (quantization_type 사용)
