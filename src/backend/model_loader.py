@@ -160,73 +160,24 @@ class ModelLoader:
 
         # 모델 타입별 로딩
         if model_type == "flux-quantized":
-            # FLUX FP8 양자화 (optimum-quanto 사용)
-            # → torchao 사전 양자화 모델보다 안정적
-            print("  📥 FLUX FP8 양자화 로딩 중 (optimum-quanto)...")
-            print("  ℹ️  Transformer + T5 인코더 양자화 (~12GB)")
+            # FLUX 모델 로드 (device_map + max_memory로 GPU/CPU 분산)
+            # CPU 메모리 16GB 환경에서도 작동
+            print("  📥 FLUX 모델 로딩 중 (device_map + max_memory)...")
+            print("  ℹ️  GPU 우선 로드, 넘치면 CPU 분산")
 
-            from diffusers import FluxPipeline, FluxTransformer2DModel
-            from transformers import T5EncoderModel
+            from diffusers import FluxPipeline
 
-            try:
-                from optimum.quanto import freeze, qfloat8, quantize
-            except ImportError:
-                print("  ⚠️ optimum-quanto 미설치, 설치 중...")
-                import subprocess
-                subprocess.check_call(["pip", "install", "-q", "optimum-quanto"])
-                from optimum.quanto import freeze, qfloat8, quantize
+            # GPU/CPU 메모리 할당 지정
+            max_memory = {0: "20GiB", "cpu": "14GiB"}
 
-            # 원본 모델 경로 (config에서 가져옴 - 로컬 또는 HuggingFace)
-            base_model = model_id  # model_config.yaml의 id 사용
-
-            # 1. Transformer 로드 및 양자화
-            print("  📥 Transformer 로딩 중...")
-            transformer = FluxTransformer2DModel.from_pretrained(
-                base_model,
-                subfolder="transformer",
-                torch_dtype=self.dtype,
-                cache_dir=self.cache_dir
-            )
-            print("  🔄 Transformer FP8 양자화 중...")
-            quantize(transformer, weights=qfloat8)
-            freeze(transformer)
-            transformer = transformer.to(self.device)
-            print("  ✓ Transformer 양자화 완료")
-
-            # GPU 메모리 확인
-            if self.device == "cuda":
-                allocated = torch.cuda.memory_allocated() / 1024**3
-                print(f"  📊 Transformer GPU 메모리: {allocated:.2f} GB")
-
-            # 2. T5 인코더 로드 및 양자화
-            print("  📥 T5 인코더 로딩 중...")
-            text_encoder_2 = T5EncoderModel.from_pretrained(
-                base_model,
-                subfolder="text_encoder_2",
-                torch_dtype=self.dtype,
-                cache_dir=self.cache_dir
-            )
-            print("  🔄 T5 인코더 FP8 양자화 중...")
-            quantize(text_encoder_2, weights=qfloat8)
-            freeze(text_encoder_2)
-            text_encoder_2 = text_encoder_2.to(self.device)
-            print("  ✓ T5 인코더 양자화 완료")
-
-            # GPU 메모리 확인
-            if self.device == "cuda":
-                allocated = torch.cuda.memory_allocated() / 1024**3
-                print(f"  📊 총 GPU 메모리: {allocated:.2f} GB")
-
-            # 3. 파이프라인 구성
-            print("  🔧 파이프라인 구성 중...")
             t2i = FluxPipeline.from_pretrained(
-                base_model,
-                transformer=transformer,
-                text_encoder_2=text_encoder_2,
+                model_id,
                 torch_dtype=self.dtype,
+                device_map="balanced",
+                max_memory=max_memory,
                 cache_dir=self.cache_dir
-            ).to(self.device)
-            print(f"  ✓ FP8 양자화 모델 로드 완료 (device: {self.device})")
+            )
+            print(f"  ✓ 모델 로드 완료 (device_map='balanced')")
 
             # GPU 메모리 확인
             if self.device == "cuda":
