@@ -508,15 +508,25 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         help="여러 개 생성 시 각각 다른 랜덤 seed 사용 (시간: 약 30-60초/이미지)"
     )
 
-    submitted = st.button(f"🖼 이미지 생성 ({num_images}개)", type="primary")
-    
+    # 생성 중 상태 확인
+    is_generating = st.session_state.get("is_generating_t2i", False)
+
+    if is_generating:
+        st.warning("⏳ 이미지 생성 중입니다... 페이지를 이동하지 마세요!")
+        submitted = False
+    else:
+        submitted = st.button(f"🖼 이미지 생성 ({num_images}개)", type="primary")
+
     if submitted and selected_caption:
+        # 생성 시작 - 상태 설정
+        st.session_state["is_generating_t2i"] = True
+
         # 해상도 정렬
         aligned_w = align_to_64(width)
         aligned_h = align_to_64(height)
         if aligned_w != width or aligned_h != height:
             st.info(f"해상도 정렬: {width}x{height} → {aligned_w}x{aligned_h}")
-        
+
         st.session_state["generated_images"] = []
         progress = st.progress(0)
 
@@ -549,10 +559,13 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                 break
         
         progress.empty()
-        
+
+        # 생성 완료 - 상태 해제
+        st.session_state["is_generating_t2i"] = False
+
         if st.session_state.get("generated_images"):
             st.success(f"✅ {len(st.session_state['generated_images'])}개 이미지 완료!")
-            
+
             cols = st.columns(len(st.session_state["generated_images"]))
             for idx, img_data in enumerate(st.session_state["generated_images"]):
                 with cols[idx]:
