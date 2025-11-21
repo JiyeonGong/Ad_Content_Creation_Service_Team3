@@ -165,18 +165,19 @@ class ModelLoader:
 
                         quanto_config = QuantoConfig(weights_dtype="float8")
 
-                        # 1. Transformer FP8 양자화 로드
+                        # 1. Transformer FP8 양자화 로드 (GPU 직접)
                         print("  📥 Transformer FP8 로딩 중...")
                         transformer = FluxTransformer2DModel.from_pretrained(
                             model_id,
                             subfolder="transformer",
                             quantization_config=quanto_config,
                             torch_dtype=self.dtype,
+                            device_map="auto",
                             cache_dir=self.cache_dir
                         )
                         print("  ✓ Transformer FP8 로드 완료")
 
-                        # 2. T5 인코더 8bit 양자화 로드 (transformers용 BitsAndBytes)
+                        # 2. T5 인코더 8bit 양자화 로드 (GPU 직접)
                         print("  📥 T5 인코더 8bit 로딩 중...")
                         t5_bnb_config = T5BnbConfig(load_in_8bit=True)
                         text_encoder_2 = T5EncoderModel.from_pretrained(
@@ -184,6 +185,7 @@ class ModelLoader:
                             subfolder="text_encoder_2",
                             quantization_config=t5_bnb_config,
                             torch_dtype=self.dtype,
+                            device_map="auto",
                             cache_dir=self.cache_dir
                         )
                         print("  ✓ T5 인코더 8bit 로드 완료")
