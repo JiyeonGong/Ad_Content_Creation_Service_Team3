@@ -176,8 +176,8 @@ class ModelLoader:
                 subprocess.check_call(["pip", "install", "-q", "optimum-quanto"])
                 from optimum.quanto import freeze, qfloat8, quantize
 
-            # 원본 모델 경로 (로컬 또는 HuggingFace)
-            base_model = "black-forest-labs/FLUX.1-dev"
+            # 원본 모델 경로 (config에서 가져옴 - 로컬 또는 HuggingFace)
+            base_model = model_id  # model_config.yaml의 id 사용
 
             # 1. Transformer 로드 및 양자화
             print("  📥 Transformer 로딩 중...")
