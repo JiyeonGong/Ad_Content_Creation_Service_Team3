@@ -50,10 +50,10 @@ models:
       max_size: [2048, 2048]
     description: "GCP VM용 FLUX.1-dev (로컬)"
 
-  # 사전 양자화된 FP8 모델 (로딩 빠름, 매번 양자화 불필요)
+  # 사전 양자화된 FP8 모델 (로딩 빠름, 매번 양자화 불필요) ⭐ 권장
   flux-dev-fp8:
-    id: "Kijai/flux-fp8"  # 공식 FP8 모델
-    type: "flux"
+    id: "diffusers/FLUX.1-dev-torchao-fp8"
+    type: "flux-quantized"  # 사전 양자화 타입
     requires_auth: false
     params:
       default_steps: 28
@@ -64,7 +64,7 @@ models:
       max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
-    description: "FLUX.1-dev FP8 (사전 양자화, 빠른 로딩)"
+    description: "FLUX.1-dev FP8 (사전 양자화, 빠른 로딩, ~12GB)"
   
   # Stable Diffusion XL (안정적, 폴백용)
   sdxl:
@@ -163,7 +163,7 @@ runtime:
   #   - 서버 시작: 매번 5-15분 (양자화)
   # ========================================
 
-  primary_model: "flux-dev-gcp"  # 고정 (원본 모델 경로)
+  primary_model: "flux-dev-fp8"  # 사전 양자화 모델 (권장)
 
   # 폴백 모델 체인 (순서대로 시도)
   fallback_models:

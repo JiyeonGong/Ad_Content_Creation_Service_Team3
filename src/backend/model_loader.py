@@ -159,7 +159,34 @@ class ModelLoader:
                 print("  ✓ 8-bit 양자화 모드 (deprecated)")
 
         # 모델 타입별 로딩
-        if model_type == "flux":
+        if model_type == "flux-quantized":
+            # 사전 양자화된 FLUX 모델 (diffusers/FLUX.1-dev-torchao-fp8)
+            print("  📥 사전 양자화된 FLUX 모델 로딩 중...")
+            print("  ℹ️  양자화 과정 불필요 - 바로 로딩!")
+
+            from diffusers import FluxPipeline
+            t2i = FluxPipeline.from_pretrained(
+                model_id,
+                torch_dtype=self.dtype,
+                use_safetensors=False,  # torchao 양자화 모델은 pickle 형식
+                device_map="balanced",  # GPU 우선, 넘치면 CPU 분산
+                cache_dir=self.cache_dir
+            )
+            print(f"  ✓ 사전 양자화 모델 로드 완료 (device_map='balanced')")
+
+            # GPU 메모리 확인
+            if self.device == "cuda":
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                print(f"  📊 GPU 메모리: {allocated:.2f} GB")
+
+            # I2I 파이프라인 생성 시도
+            try:
+                i2i = AutoPipelineForImage2Image.from_pipe(t2i)
+            except:
+                i2i = t2i
+                print("  ⚠️ I2I 파이프라인 공유")
+
+        elif model_type == "flux":
             # FLUX 계열: FP8 / NF4 양자화 지원
             if use_quantization:
                 try:
