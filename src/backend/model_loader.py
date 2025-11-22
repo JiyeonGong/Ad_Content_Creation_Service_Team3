@@ -218,20 +218,19 @@ class ModelLoader:
                             allocated = torch.cuda.memory_allocated() / 1024**3
                             print(f"  📊 GPU 메모리: {allocated:.2f} GB")
 
-                        # 4. 파이프라인 로드 후 컴포넌트 교체
+                        # 4. 파이프라인 구성 (양자화된 컴포넌트 전달, 나머지만 로드)
                         print("  🔧 파이프라인 구성 중...")
                         t2i = FluxPipeline.from_pretrained(
                             model_id,
+                            transformer=transformer,
+                            text_encoder_2=text_encoder_2,
+                            vae=vae,
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir
                         )
-                        # 먼저 파이프라인 전체를 GPU로 이동
-                        t2i = t2i.to(self.device)
-                        # 양자화된 컴포넌트로 교체 (이미 GPU에 있음)
-                        t2i.transformer = transformer
-                        t2i.text_encoder_2 = text_encoder_2
-                        t2i.vae = vae
-                        print("  ✓ FP8 파이프라인 구성 완료 (컴포넌트 교체 방식)")
+                        # text_encoder (CLIP)만 GPU로 이동 (작음)
+                        t2i.text_encoder = t2i.text_encoder.to(self.device)
+                        print("  ✓ FP8 파이프라인 구성 완료")
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
