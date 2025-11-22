@@ -108,11 +108,8 @@ def optimize_prompt(text: str, model_config) -> str:
     if not opt_config.get("enabled", True):
         return text
     
-    # 이미 영어인 경우 스킵
+    # 한글 번역 비활성화 설정 확인
     if not opt_config.get("translate_korean", True):
-        return text
-    
-    if all(ord(char) < 128 for char in text[:20]):
         return text
     
     try:
