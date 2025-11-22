@@ -316,10 +316,13 @@ class ModelLoader:
             except:
                 i2i = t2i
         
-        # 메모리 최적화 적용 (실제 양자화 여부 전달)
-        t2i = self._apply_memory_optimizations(t2i, model_type, "T2I", use_quantization)
-        if i2i != t2i:
-            i2i = self._apply_memory_optimizations(i2i, model_type, "I2I", use_quantization)
+        # 메모리 최적화 적용 (사전 양자화 모델은 CPU offload 하면 안 됨)
+        if model_type == "flux-fp8-pretrained":
+            print("  ℹ️ 사전 양자화 모델 - CPU offload 비활성화")
+        else:
+            t2i = self._apply_memory_optimizations(t2i, model_type, "T2I", use_quantization)
+            if i2i != t2i:
+                i2i = self._apply_memory_optimizations(i2i, model_type, "I2I", use_quantization)
 
         return t2i, i2i
     
