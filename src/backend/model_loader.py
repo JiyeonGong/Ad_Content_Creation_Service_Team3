@@ -232,9 +232,7 @@ class ModelLoader:
                         t2i.transformer = transformer
                         t2i.text_encoder_2 = text_encoder_2
                         t2i.vae = vae  # VAE도 교체 (원본)
-                        # CPU offload 활성화
-                        t2i.enable_model_cpu_offload()
-                        print("  ✓ FP8 파이프라인 구성 완료 (CPU offload)")
+                        print("  ✓ FP8 파이프라인 구성 완료")
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
