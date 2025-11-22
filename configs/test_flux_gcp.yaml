@@ -1,11 +1,14 @@
 # GCP VM FLUX 테스트 설정
 # 실험용 프롬프트와 파라미터를 이 파일에서 관리합니다.
 
-# 모델 경로 (사전 양자화 모델 사용)
+# 모델 설정
+# 선택 가능한 모델:
+# - "flux-dev-fp8-pre": 사전 양자화 FP8 모델 (HuggingFace) ⭐ 권장
+# - "flux-dev-fp8": 로컬 모델 + 직접 양자화 (디버깅용)
+# - "flux-dev-gcp": 로컬 모델 원본
 model:
-  name: "flux-dev-fp8"  # 사전 양자화된 FP8 모델 (diffusers/FLUX.1-dev-torchao-fp8)
+  name: "flux-dev-fp8-pre"  # 사전 양자화된 FP8 모델 (권장)
   path: "/home/shared/models"  # 모델 캐시 디렉토리
-  type: "flux-quantized"
 
 # 출력 디렉토리
 output:
