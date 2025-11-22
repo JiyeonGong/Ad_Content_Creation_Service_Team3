@@ -225,7 +225,9 @@ class ModelLoader:
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir
                         )
-                        # 양자화된 컴포넌트로 교체
+                        # 먼저 파이프라인 전체를 GPU로 이동
+                        t2i = t2i.to(self.device)
+                        # 양자화된 컴포넌트로 교체 (이미 GPU에 있음)
                         t2i.transformer = transformer
                         t2i.text_encoder_2 = text_encoder_2
                         t2i.vae = vae
