@@ -44,26 +44,6 @@ dependencies = [
 ]
 
 # ----------------------------------------------------
-# 🖐️ HandRefiner 선택적 의존성
-# * manopth, chumpy는 플랫폼 호환성 문제로 수동 설치 필요
-# * 설치 방법: docs/HANDREFINER_SETUP.md 참조
-# ----------------------------------------------------
-[project.optional-dependencies]
-handrefiner = [
-    "opencv-python>=4.8.0",  # 이미지 처리
-    "mediapipe>=0.10.0",  # 손 감지
-    "trimesh>=4.0.0",  # 3D 메시 처리
-    "rtree>=1.0.0",  # 메시 공간 인덱싱
-    "timm>=0.9.0",  # HRNet 가중치 다운로드
-    "pytorch-lightning>=2.0.0",  # ControlNet 학습 프레임워크
-    "einops>=0.6.0",  # 텐서 연산
-    "omegaconf>=2.3.0",  # 설정 파일
-    # 아래 패키지들은 수동 설치 필요:
-    # uv pip install manopth
-    # uv pip install pip && uv pip install --no-build-isolation chumpy
-]
-
-# ----------------------------------------------------
 # ⚠️ PyTorch/CUDA 관련 참고 사항
 # * GPU 버전 설치는 별도 명령을 사용해야 합니다.
 # uv sync로 설치된 torch를 삭제하고 다시 cuda가 반영된 torch를 설치합니다.
