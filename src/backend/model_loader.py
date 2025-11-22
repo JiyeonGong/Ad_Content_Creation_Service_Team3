@@ -202,16 +202,33 @@ class ModelLoader:
                             allocated = torch.cuda.memory_allocated() / 1024**3
                             print(f"  📊 GPU 메모리: {allocated:.2f} GB")
 
-                        # 3. 파이프라인 구성 (CPU offload 없이 GPU에서 실행)
+                        # 3. VAE 원본으로 로드 (양자화하면 이미지 깨짐)
+                        from diffusers import AutoencoderKL
+                        print("  📥 VAE 로딩 중 (원본, 양자화 안 함)...")
+                        vae = AutoencoderKL.from_pretrained(
+                            model_id,
+                            subfolder="vae",
+                            torch_dtype=self.dtype,
+                            cache_dir=self.cache_dir
+                        ).to(self.device)
+                        print("  ✓ VAE 원본 로드 완료 → GPU")
+
+                        # GPU 메모리 확인
+                        if torch.cuda.is_available():
+                            allocated = torch.cuda.memory_allocated() / 1024**3
+                            print(f"  📊 GPU 메모리: {allocated:.2f} GB")
+
+                        # 4. 파이프라인 구성 (CPU offload 없이 GPU에서 실행)
                         print("  🔧 파이프라인 구성 중...")
                         t2i = FluxPipeline.from_pretrained(
                             model_id,
                             transformer=transformer,
                             text_encoder_2=text_encoder_2,
+                            vae=vae,
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir
                         ).to(self.device)
-                        print("  ✓ FP8 파이프라인 구성 완료 (GPU 전용, CPU offload 없음)")
+                        print("  ✓ FP8 파이프라인 구성 완료 (GPU 전용, VAE 원본)")
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
