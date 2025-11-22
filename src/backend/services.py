@@ -129,7 +129,7 @@ Focus on visual elements, style, mood, and composition.
 IMPORTANT - Quality keywords to prevent AI artifacts:
 
 1. If the scene involves people:
-   - Hands: "detailed hands, five fingers, natural hand pose, anatomically correct hands"
+   - Hands: "detailed hands, five fingers, natural hand pose, anatomically correct hands, correct thumb direction, thumbs pointing outward"
    - Faces: "detailed face, clear facial features, symmetric face"
    - Body: "correct human anatomy, natural body proportions"
 
