@@ -21,9 +21,14 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL_GPT_MINI = "gpt-5-mini"
 
 # HF cache location
+# GCP: /home/shared 사용 (이미 다운로드된 모델 재사용)
+# 로컬: project_root/cache/hf_models 사용
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-hf_cache_dir = os.path.join(project_root, "cache", "hf_models")
-os.makedirs(hf_cache_dir, exist_ok=True)
+if os.path.exists("/home/shared"):
+    hf_cache_dir = "/home/shared"
+else:
+    hf_cache_dir = os.path.join(project_root, "cache", "hf_models")
+    os.makedirs(hf_cache_dir, exist_ok=True)
 
 # 전역 인스턴스
 openai_client: Optional[OpenAI] = None
