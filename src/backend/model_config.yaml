@@ -66,7 +66,7 @@ models:
       max_size: [2048, 2048]
     description: "FLUX.1-dev (로컬, quantization_type 설정 적용)"
 
-  # 사전 양자화 FP8 모델 (HuggingFace) ⭐ 권장
+  # 사전 양자화 FP8 모델 (HuggingFace) - torchao 버전 호환 문제
   flux-dev-fp8-pre:
     id: "diffusers/FLUX.1-dev-torchao-fp8"  # 사전 양자화 모델
     type: "flux-fp8-pretrained"  # 사전 양자화 타입
@@ -80,7 +80,23 @@ models:
       max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
-    description: "FLUX.1-dev FP8 사전 양자화 (HuggingFace)"
+    description: "FLUX.1-dev FP8 사전 양자화 (torchao 버전 문제로 사용 불가)"
+
+  # 사전 양자화 8-bit 모델 (bitsandbytes) ⭐ 권장
+  flux-dev-bnb-8bit:
+    id: "diffusers/FLUX.1-dev-bnb-8bit"
+    type: "flux-bnb-8bit"
+    requires_auth: false
+    params:
+      default_steps: 28
+      max_steps: 50
+      use_negative_prompt: false
+      guidance_scale: 3.5
+      supports_i2i: true
+      max_tokens: 512
+      default_size: [1024, 1024]
+      max_size: [2048, 2048]
+    description: "FLUX.1-dev 8-bit 사전 양자화 (bitsandbytes)"
   
   # Stable Diffusion XL (안정적, 폴백용)
   sdxl:
@@ -183,7 +199,7 @@ runtime:
   # - "flux-dev-fp8-pre": 사전 양자화 FP8 모델 (HuggingFace) ⭐ 권장
   # - "flux-dev-fp8": 로컬 모델 + 직접 양자화 (디버깅용)
   # - "flux-dev-gcp": 로컬 모델 원본
-  primary_model: "flux-dev-fp8-pre"  # 사전 양자화 모델 (권장)
+  primary_model: "flux-dev-bnb-8bit"  # 사전 양자화 8-bit 모델 (권장)
 
   # 폴백 모델 체인 (순서대로 시도)
   fallback_models:

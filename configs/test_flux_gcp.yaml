@@ -3,11 +3,12 @@
 
 # 모델 설정
 # 선택 가능한 모델:
-# - "flux-dev-fp8-pre": 사전 양자화 FP8 모델 (HuggingFace) ⭐ 권장
+# - "flux-dev-bnb-8bit": 사전 양자화 8-bit 모델 (bitsandbytes) ⭐ 권장
+# - "flux-dev-fp8-pre": 사전 양자화 FP8 모델 (torchao 버전 문제로 사용 불가)
 # - "flux-dev-fp8": 로컬 모델 + 직접 양자화 (디버깅용)
 # - "flux-dev-gcp": 로컬 모델 원본
 model:
-  name: "flux-dev-fp8-pre"  # 사전 양자화된 FP8 모델 (권장)
+  name: "flux-dev-bnb-8bit"  # 사전 양자화 8-bit 모델 (권장)
   path: "/home/shared/models"  # 모델 캐시 디렉토리
 
 # 출력 디렉토리
