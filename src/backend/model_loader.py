@@ -158,43 +158,51 @@ class ModelLoader:
             if use_quantization:
                 try:
                     if quant_type == "fp8":
-                        # FP8 양자화 (QuantoConfig 사용)
-                        # 로드하면서 바로 양자화 적용
-                        from diffusers import FluxPipeline, FluxTransformer2DModel, QuantoConfig
-                        from transformers import T5EncoderModel, BitsAndBytesConfig as T5BnbConfig
+                        # FP8 양자화 (optimum-quanto 사용)
+                        # CPU에서 양자화 후 GPU로 이동 (GPU OOM 방지)
+                        from diffusers import FluxPipeline, FluxTransformer2DModel
+                        from transformers import T5EncoderModel
+                        from optimum.quanto import freeze, qfloat8, quantize
 
-                        # modules_to_not_convert 명시적으로 빈 리스트 전달 (None 버그 방지)
-                        quanto_config = QuantoConfig(
-                            weights_dtype="float8",
-                            modules_to_not_convert=[]
-                        )
-
-                        # 1. Transformer FP8 양자화 로드 (GPU 직접)
-                        print("  📥 Transformer FP8 로딩 중...")
+                        # 1. Transformer CPU 로드 → 양자화 → GPU
+                        print("  📥 Transformer 로딩 중 (CPU)...")
                         transformer = FluxTransformer2DModel.from_pretrained(
                             model_id,
                             subfolder="transformer",
-                            quantization_config=quanto_config,
                             torch_dtype=self.dtype,
-                            device_map="auto",
                             cache_dir=self.cache_dir
                         )
-                        print("  ✓ Transformer FP8 로드 완료")
+                        print("  🔄 Transformer FP8 양자화 중...")
+                        quantize(transformer, weights=qfloat8)
+                        freeze(transformer)
+                        transformer = transformer.to(self.device)
+                        print("  ✓ Transformer FP8 완료 → GPU")
 
-                        # 2. T5 인코더 8bit 양자화 로드 (GPU 직접)
-                        print("  📥 T5 인코더 8bit 로딩 중...")
-                        t5_bnb_config = T5BnbConfig(load_in_8bit=True)
+                        # GPU 메모리 확인
+                        if torch.cuda.is_available():
+                            allocated = torch.cuda.memory_allocated() / 1024**3
+                            print(f"  📊 GPU 메모리: {allocated:.2f} GB")
+
+                        # 2. T5 인코더 CPU 로드 → 양자화 → GPU
+                        print("  📥 T5 인코더 로딩 중 (CPU)...")
                         text_encoder_2 = T5EncoderModel.from_pretrained(
                             model_id,
                             subfolder="text_encoder_2",
-                            quantization_config=t5_bnb_config,
                             torch_dtype=self.dtype,
-                            device_map="auto",
                             cache_dir=self.cache_dir
                         )
-                        print("  ✓ T5 인코더 8bit 로드 완료")
+                        print("  🔄 T5 인코더 FP8 양자화 중...")
+                        quantize(text_encoder_2, weights=qfloat8)
+                        freeze(text_encoder_2)
+                        text_encoder_2 = text_encoder_2.to(self.device)
+                        print("  ✓ T5 인코더 FP8 완료 → GPU")
 
-                        # 3. 파이프라인 구성
+                        # GPU 메모리 확인
+                        if torch.cuda.is_available():
+                            allocated = torch.cuda.memory_allocated() / 1024**3
+                            print(f"  📊 GPU 메모리: {allocated:.2f} GB")
+
+                        # 3. 파이프라인 구성 (CPU offload 없이 GPU에서 실행)
                         print("  🔧 파이프라인 구성 중...")
                         t2i = FluxPipeline.from_pretrained(
                             model_id,
@@ -202,9 +210,8 @@ class ModelLoader:
                             text_encoder_2=text_encoder_2,
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir
-                        )
-                        t2i.enable_model_cpu_offload()
-                        print("  ✓ FP8 파이프라인 구성 완료 (CPU offload 활성화)")
+                        ).to(self.device)
+                        print("  ✓ FP8 파이프라인 구성 완료 (GPU 전용, CPU offload 없음)")
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
