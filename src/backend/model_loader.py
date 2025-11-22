@@ -158,10 +158,11 @@ class ModelLoader:
             if use_quantization:
                 try:
                     if quant_type == "fp8":
-                        # FP8 양자화 (TorchAO) - 원본 방식
+                        # FP8 양자화 (TorchAO)
                         # Transformer만 양자화, 나머지는 원본
                         print("  📥 FP8 Transformer 로딩 중...")
-                        from torchao.quantization import quantize_, int8_weight_only
+                        from torchao.quantization import quantize_
+                        from torchao.quantization.quant_api import Float8WeightOnlyConfig
 
                         # Transformer 로드 후 양자화
                         transformer = FluxTransformer2DModel.from_pretrained(
@@ -171,9 +172,14 @@ class ModelLoader:
                             cache_dir=self.cache_dir
                         )
 
-                        # FP8 양자화 적용
-                        quantize_(transformer, int8_weight_only())
+                        # FP8 양자화 적용 (Float8WeightOnlyConfig 사용)
+                        quantize_(transformer, Float8WeightOnlyConfig())
                         print("  ✓ FP8 양자화 적용 완료")
+
+                        # GPU 메모리 확인
+                        if torch.cuda.is_available():
+                            allocated = torch.cuda.memory_allocated() / 1024**3
+                            print(f"  📊 Transformer GPU 메모리: {allocated:.2f} GB")
 
                         # 전체 파이프라인 구성
                         print("  🔧 파이프라인 구성 중...")
@@ -187,6 +193,11 @@ class ModelLoader:
                         # GPU로 이동
                         t2i = t2i.to(self.device)
                         print(f"  ✓ FP8 모델을 {self.device}로 이동")
+
+                        # 최종 GPU 메모리 확인
+                        if torch.cuda.is_available():
+                            allocated = torch.cuda.memory_allocated() / 1024**3
+                            print(f"  📊 전체 GPU 메모리: {allocated:.2f} GB")
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
