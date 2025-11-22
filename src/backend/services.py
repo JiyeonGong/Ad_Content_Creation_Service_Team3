@@ -128,6 +128,25 @@ def optimize_prompt(text: str, model_config) -> str:
 Translate Korean marketing text to optimized English prompts.
 Focus on visual elements, style, mood, and composition.
 {constraint}
+
+IMPORTANT - Quality keywords to prevent AI artifacts:
+
+1. If the scene involves people:
+   - Hands: "detailed hands, five fingers, natural hand pose, anatomically correct hands"
+   - Faces: "detailed face, clear facial features, symmetric face"
+   - Body: "correct human anatomy, natural body proportions"
+
+2. If the scene involves objects being held or touched:
+   - "proper object interaction, object not clipping through body"
+   - "realistic grip, natural holding pose"
+   - "physically accurate, no overlapping body parts with objects"
+
+3. If the scene involves fitness/gym/sports equipment:
+   - "equipment not penetrating body, proper form"
+   - "hands gripping equipment correctly, realistic weight interaction"
+
+Always include relevant keywords based on the scene content.
+
 Output ONLY the English prompt, no explanations."""
 
         resp = openai_client.responses.create(
