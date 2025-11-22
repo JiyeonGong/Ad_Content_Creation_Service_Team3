@@ -155,7 +155,7 @@ Output ONLY the English prompt, no explanations."""
         
         result = getattr(resp, "output_text", None) or str(resp)
         optimized = result.strip()
-        print(f"🔄 프롬프트 최적화:\n  원본: {text[:80]}...\n  최적화: {optimized[:80]}...")
+        print(f"🔄 프롬프트 최적화:\n  원본: {text}\n  최적화: {optimized}")
         return optimized
         
     except Exception as e:
