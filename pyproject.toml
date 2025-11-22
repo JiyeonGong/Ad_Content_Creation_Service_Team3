@@ -27,10 +27,10 @@ dependencies = [
     "requests>=2.31",
     # AI 모델 및 유틸리티
     "openai>=1.12",
-    "diffusers>=0.26",
+    "diffusers>=0.26,<0.35",
     "Pillow>=10.2",
     "python-dotenv>=1.0",
-    "transformers>=4.57.1",
+    "transformers>=4.44.0,<4.57.0",
     "accelerate>=1.11.0",
     "pyyaml>=6.0.3",
     "sentencepiece>=0.2.0",  # FLUX 토크나이저 필수
@@ -40,7 +40,7 @@ dependencies = [
     "tokenizers>=0.15.0",  # 토크나이저
     # 최적화 라이브러리
     "bitsandbytes>=0.41.0",  # NF4 양자화 (FLUX 속도 3-4배 개선)
-    "torchao==0.7.0",  # FP8 양자화 (사전 양자화 모델 호환 버전)
+    "torchao>=0.9.0",  # FP8 양자화 (FLUX 품질 우선, 속도 2-2.6배 개선)
 ]
 
 # ----------------------------------------------------

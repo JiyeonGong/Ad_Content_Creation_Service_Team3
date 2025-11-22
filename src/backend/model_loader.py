@@ -155,7 +155,7 @@ class ModelLoader:
         # 모델 타입별 로딩
         if model_type == "flux-fp8-pretrained":
             # 사전 양자화 FP8 모델 (diffusers/FLUX.1-dev-torchao-fp8)
-            # CPU offload 지원 안 함 - GPU 직접 로드
+            # 공식 문서: device_map="balanced" 사용 필수
             from diffusers import FluxPipeline
             print("  📥 사전 양자화 FP8 모델 로딩 중...")
             print("  ⚠️ 첫 로드 시 다운로드에 시간이 걸릴 수 있습니다.")
@@ -164,8 +164,9 @@ class ModelLoader:
                 model_id,
                 torch_dtype=self.dtype,
                 use_safetensors=False,
+                device_map="balanced",
                 cache_dir=self.cache_dir
-            ).to(self.device)
+            )
             print("  ✓ 사전 양자화 FP8 모델 로드 완료")
 
             # GPU 메모리 확인
