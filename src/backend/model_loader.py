@@ -163,7 +163,11 @@ class ModelLoader:
                         from diffusers import FluxPipeline, FluxTransformer2DModel, QuantoConfig
                         from transformers import T5EncoderModel, BitsAndBytesConfig as T5BnbConfig
 
-                        quanto_config = QuantoConfig(weights_dtype="float8")
+                        # modules_to_not_convert 명시적으로 빈 리스트 전달 (None 버그 방지)
+                        quanto_config = QuantoConfig(
+                            weights_dtype="float8",
+                            modules_to_not_convert=[]
+                        )
 
                         # 1. Transformer FP8 양자화 로드 (GPU 직접)
                         print("  📥 Transformer FP8 로딩 중...")
@@ -236,12 +240,18 @@ class ModelLoader:
                     print(f"  ✅ {quant_type.upper()} 양자화 로딩 완료")
 
                 except Exception as e:
-                    print(f"  ⚠️ {quant_type.upper()} 로딩 실패, 일반 모드로 폴백: {e}")
+                    print(f"  ⚠️ {quant_type.upper()} 로딩 실패: {e}")
+                    print(f"  🔄 CPU offload 모드로 폴백 시도...")
                     use_quantization = False
-                    # 폴백: 일반 로딩
-                    load_kwargs["device_map"] = "balanced"
-                    t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
-                    print(f"  ✓ device_map='balanced' 적용 (GPU 우선, 넘치면 CPU 분산)")
+                    # 폴백: CPU offload 모드 (CPU 16GB로는 분산로딩 불가)
+                    # enable_sequential_cpu_offload 방식 사용
+                    t2i = DiffusionPipeline.from_pretrained(
+                        model_id,
+                        torch_dtype=self.dtype,
+                        cache_dir=self.cache_dir
+                    )
+                    t2i.enable_sequential_cpu_offload()
+                    print(f"  ✓ Sequential CPU offload 적용 (느리지만 메모리 안정적)")
             else:
                 # 일반 FLUX 로딩 (양자화 미사용)
                 # device_map="balanced"로 GPU 우선, 넘치면 CPU 분산
