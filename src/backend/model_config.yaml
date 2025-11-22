@@ -1,88 +1,13 @@
 # model_config.yaml
 # 이미지 생성 모델 설정 파일
-# 새 모델 추가 시 이 파일만 수정하면 됨
 
 models:
-  # FLUX 모델 (최신, 고품질, 한국어 지원 우수)
-  flux-schnell:
-    id: "black-forest-labs/FLUX.1-schnell"
-    type: "flux"
-    requires_auth: true
-    params:
-      default_steps: 4
-      max_steps: 8
-      use_negative_prompt: false
-      guidance_scale: null
-      supports_i2i: true
-      max_tokens: 512
-      default_size: [1024, 1024]
-      max_size: [2048, 2048]
-    description: "빠른 생성, 4 steps 권장"
-    
-  flux-dev:
-    id: "black-forest-labs/FLUX.1-dev"
-    type: "flux"
-    requires_auth: true
-    params:
-      default_steps: 28
-      max_steps: 50
-      use_negative_prompt: false
-      guidance_scale: 3.5
-      supports_i2i: true
-      max_tokens: 512
-      default_size: [1024, 1024]
-      max_size: [2048, 2048]
-    description: "고품질, 느림"
-
-  # GCP VM 전용 flux-dev (로컬 경로)
-  flux-dev-gcp:
-    id: "/home/shared/FLUX.1-dev"  # GCP VM 로컬 경로
-    type: "flux"
-    requires_auth: false  # 이미 다운로드됨
-    params:
-      default_steps: 28
-      max_steps: 50
-      use_negative_prompt: false
-      guidance_scale: 3.5
-      supports_i2i: true
-      max_tokens: 512
-      default_size: [1024, 1024]
-      max_size: [2048, 2048]
-    description: "GCP VM용 FLUX.1-dev (로컬)"
-
-  # GCP VM 전용 flux-dev (quantization_type 설정에 따라 동작)
-  flux-dev-fp8:
-    id: "/home/shared/FLUX.1-dev"  # GCP 로컬 경로 (이미 다운로드됨)
-    type: "flux"  # quantization_type 설정에 따라 none/fp8/nf4 양자화
-    requires_auth: false  # 로컬 모델
-    params:
-      default_steps: 28
-      max_steps: 50
-      use_negative_prompt: false
-      guidance_scale: 3.5
-      supports_i2i: true
-      max_tokens: 512
-      default_size: [1024, 1024]
-      max_size: [2048, 2048]
-    description: "FLUX.1-dev (로컬, quantization_type 설정 적용)"
-
-  # 사전 양자화 FP8 모델 (HuggingFace) - torchao 버전 호환 문제
-  flux-dev-fp8-pre:
-    id: "diffusers/FLUX.1-dev-torchao-fp8"  # 사전 양자화 모델
-    type: "flux-fp8-pretrained"  # 사전 양자화 타입
-    requires_auth: false
-    params:
-      default_steps: 28
-      max_steps: 50
-      use_negative_prompt: false
-      guidance_scale: 3.5
-      supports_i2i: true
-      max_tokens: 512
-      default_size: [1024, 1024]
-      max_size: [2048, 2048]
-    description: "FLUX.1-dev FP8 사전 양자화 (torchao 버전 문제로 사용 불가)"
-
+  # ========================================
   # 사전 양자화 8-bit 모델 (bitsandbytes) ⭐ 권장
+  # ========================================
+  # - 속도: ~77초/이미지 (1024x1024, 28 steps)
+  # - GPU 메모리: ~21GB
+  # - 품질: 99%+
   flux-dev-bnb-8bit:
     id: "diffusers/FLUX.1-dev-bnb-8bit"
     type: "flux-bnb-8bit"
@@ -96,145 +21,49 @@ models:
       max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
-    description: "FLUX.1-dev 8-bit 사전 양자화 (bitsandbytes)"
-  
-  # Stable Diffusion XL (안정적, 폴백용)
-  sdxl:
-    id: "stabilityai/stable-diffusion-xl-base-1.0"
-    type: "sdxl"
+    description: "FLUX.1-dev 8-bit 양자화 (77초/이미지, 권장)"
+
+  # ========================================
+  # GCP VM 전용 원본 모델 (CPU offload 필요)
+  # ========================================
+  # - 속도: ~50분/이미지
+  # - GPU 메모리: CPU offload 사용
+  # - 품질: 100%
+  flux-dev-gcp:
+    id: "/home/shared/FLUX.1-dev"
+    type: "flux"
     requires_auth: false
-    params:
-      default_steps: 30
-      max_steps: 50
-      use_negative_prompt: true
-      guidance_scale: 7.5
-      supports_i2i: true
-      max_tokens: 77
-      default_size: [1024, 1024]
-      max_size: [2048, 2048]
-      negative_prompt: "low quality, blurry, text, watermark, distorted, ugly, tiling"
-    description: "안정적, 무료"
-  
-  # Stable Diffusion 3
-  sd3:
-    id: "stabilityai/stable-diffusion-3-medium-diffusers"
-    type: "sd3"
-    requires_auth: true
     params:
       default_steps: 28
       max_steps: 50
-      use_negative_prompt: true
-      guidance_scale: 7.0
+      use_negative_prompt: false
+      guidance_scale: 3.5
       supports_i2i: true
-      max_tokens: 77
+      max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
-      negative_prompt: "low quality, blurry, distorted"
-    description: "SD3, 텍스트 렌더링 개선"
-  
-  # Kandinsky 3 (다국어 지원)
-  kandinsky:
-    id: "kandinsky-community/kandinsky-3"
-    type: "kandinsky"
-    requires_auth: false
-    params:
-      default_steps: 25
-      max_steps: 50
-      use_negative_prompt: true
-      guidance_scale: 7.0
-      supports_i2i: true
-      max_tokens: 77
-      default_size: [1024, 1024]
-      max_size: [1536, 1536]
-      negative_prompt: "low quality, blurry"
-    description: "러시아 모델, 다국어"
-  
-  # Playground v2.5
-  playground:
-    id: "playgroundai/playground-v2.5-1024px-aesthetic"
-    type: "sdxl"
-    requires_auth: false
-    params:
-      default_steps: 25
-      max_steps: 50
-      use_negative_prompt: false
-      guidance_scale: 3.0
-      supports_i2i: true
-      max_tokens: 77
-      default_size: [1024, 1024]
-      max_size: [1536, 1536]
-    description: "미적 품질 최적화"
+    description: "FLUX.1-dev 원본 (50분/이미지, 최고 품질)"
 
+# ========================================
 # 실행 설정
+# ========================================
 runtime:
-  # ========================================
-  # 🚀 성능 모드 선택
-  # ========================================
-  # primary_model은 고정: "flux-dev-gcp"
-  # quantization_type으로 모드 선택:
-  #
-  # 모드 1: quantization_type = "none" (원본 + CPU offload)
-  #   - 속도: 50-60분/이미지
-  #   - 품질: 100%
-  #   - 메모리: Sequential CPU offload 사용
-  #   - 디스크: /home/shared/FLUX.1-dev 만 사용 (22GB)
-  #   - 서버 시작: 빠름
-  #
-  # 모드 2: quantization_type = "fp8" (FP8 양자화, 기본값)
-  #   - 속도: 19-25분/이미지 (2-2.6배 빠름)
-  #   - 품질: 99%+
-  #   - 메모리: GPU 100% 활용 (CPU offload 불필요)
-  #   - 디스크: /home/shared/FLUX.1-dev-fp8 생성 (추가 12GB)
-  #   - 서버 시작: 첫 실행 5-15분 (양자화), 이후 빠름
-  #
-  # 모드 3: quantization_type = "nf4" (NF4 양자화, 가장 빠름)
-  #   - 속도: 12-17분/이미지 (3-4배 빠름)
-  #   - 품질: 98%
-  #   - 메모리: GPU 100% 활용
-  #   - 디스크: /home/shared/FLUX.1-dev 만 사용 (NF4는 저장 미지원)
-  #   - 서버 시작: 매번 5-15분 (양자화)
-  # ========================================
+  # 기본 모델 선택
+  # - "flux-dev-bnb-8bit": 8-bit 양자화 (77초, 권장)
+  # - "flux-dev-gcp": 원본 (50분, 최고 품질)
+  primary_model: "flux-dev-bnb-8bit"
 
-  # 모델 선택:
-  # - "flux-dev-fp8-pre": 사전 양자화 FP8 모델 (HuggingFace) ⭐ 권장
-  # - "flux-dev-fp8": 로컬 모델 + 직접 양자화 (디버깅용)
-  # - "flux-dev-gcp": 로컬 모델 원본
-  primary_model: "flux-dev-bnb-8bit"  # 사전 양자화 8-bit 모델 (권장)
-
-  # 폴백 모델 체인 (순서대로 시도)
-  fallback_models:
-    - "flux-schnell"
-    - "playground"
-
-  # 폴백 활성화 여부
-  enable_fallback: false  # 디스크 용량 절약
-  
   # 프롬프트 최적화 설정
   prompt_optimization:
     enabled: true
     translate_korean: true
-    max_length_by_model: true  # 모델별 토큰 제한 준수
-  
-  # 메모리 최적화 및 속도 개선
+    max_length_by_model: true
+
+  # 메모리 최적화 (원본 모델 사용 시 필요)
   memory:
-    # ========================================
-    # 🎯 성능 모드 선택 (여기만 수정하면 됨!)
-    # ========================================
-    # "none"  → 모드 1: 원본 + CPU offload (50-60분, 품질 100%)
-    # "fp8"   → 모드 2: FP8 양자화 (19-25분, 품질 99%+) ⭐ 기본값
-    # "nf4"   → 모드 3: NF4 양자화 (12-17분, 품질 98%)
-    # ========================================
-    quantization_type: "fp8"  # 현재 모드: FP8 (변경: "none", "fp8", "nf4")
+    # CPU offload (원본 모델 사용 시 필수)
+    enable_cpu_offload: true
 
-    # CPU offload (양자화 사용 시 자동 비활성화됨)
-    enable_cpu_offload: true  # 양자화 미사용 시에만 적용
-
-    # Attention 최적화 (양자화와 함께 사용 시 추가 속도 개선)
-    use_flash_attention: false  # Flash Attention 2 (설치 복잡, 비활성화)
-    enable_attention_slicing: true  # 추가 메모리 절약
-
-    # VAE 최적화
-    enable_vae_slicing: true  # VAE 슬라이싱
-
-    # 기타 (deprecated)
-    use_8bit: false  # 사용 안 함 (quantization_type 사용)
+    # Attention/VAE 최적화
+    enable_attention_slicing: true
+    enable_vae_slicing: true
