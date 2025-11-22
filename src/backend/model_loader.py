@@ -232,6 +232,8 @@ class ModelLoader:
                         t2i.transformer = transformer
                         t2i.text_encoder_2 = text_encoder_2
                         t2i.vae = vae  # VAE도 교체 (원본)
+                        # text_encoder(CLIP)도 GPU로 이동
+                        t2i.text_encoder = t2i.text_encoder.to(self.device)
                         print("  ✓ FP8 파이프라인 구성 완료")
 
                     elif quant_type == "nf4":
