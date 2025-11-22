@@ -172,14 +172,24 @@ class ModelLoader:
                             cache_dir=self.cache_dir
                         )
 
-                        # FP8 양자화 적용 (Float8WeightOnlyConfig 사용)
-                        quantize_(transformer, Float8WeightOnlyConfig())
-                        print("  ✓ FP8 양자화 적용 완료")
+                        # 양자화 전 모델 크기 확인
+                        param_size_before = sum(p.numel() * p.element_size() for p in transformer.parameters()) / 1024**3
+                        print(f"  📊 양자화 전 Transformer 크기: {param_size_before:.2f} GB")
 
-                        # GPU 메모리 확인
-                        if torch.cuda.is_available():
-                            allocated = torch.cuda.memory_allocated() / 1024**3
-                            print(f"  📊 Transformer GPU 메모리: {allocated:.2f} GB")
+                        # FP8 양자화 적용 (Float8WeightOnlyConfig 사용)
+                        print("  🔄 FP8 양자화 적용 중...")
+                        quantize_(transformer, Float8WeightOnlyConfig())
+
+                        # 양자화 후 모델 크기 확인
+                        param_size_after = sum(p.numel() * p.element_size() for p in transformer.parameters()) / 1024**3
+                        print(f"  📊 양자화 후 Transformer 크기: {param_size_after:.2f} GB")
+
+                        # 양자화 성공 여부 확인
+                        if param_size_after < param_size_before * 0.7:
+                            print(f"  ✓ FP8 양자화 성공 (크기 {param_size_before:.2f}GB → {param_size_after:.2f}GB)")
+                        else:
+                            print(f"  ⚠️ FP8 양자화 실패 또는 미적용 (크기 변화 없음)")
+                            raise RuntimeError("FP8 양자화가 적용되지 않았습니다")
 
                         # 전체 파이프라인 구성
                         print("  🔧 파이프라인 구성 중...")
