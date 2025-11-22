@@ -238,3 +238,15 @@ runtime:
 
     # 기타 (deprecated)
     use_8bit: false  # 사용 안 함 (quantization_type 사용)
+
+  # ========================================
+  # 손 보정 설정 (HandRefiner)
+  # ========================================
+  # MeshGraphormer 기반 3D 손 메시 재구성으로 손가락 5개 보장
+  # 설치 필요: docs/HANDREFINER_SETUP.md 참조
+  handrefiner:
+    enable: false  # true로 변경하면 HandRefiner 활성화
+    model_path: "models/handrefiner"  # HandRefiner 저장소 경로
+    weights_path: "models/handrefiner/inpaint_depth_control.ckpt"  # ControlNet 가중치
+    control_strength: 0.6  # ControlNet 강도 (0.4-0.8 권장)
+    inpaint_steps: 20  # Inpainting 스텝 수

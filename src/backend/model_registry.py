@@ -151,6 +151,10 @@ class ModelRegistry:
     def get_memory_config(self) -> Dict[str, Any]:
         """메모리 최적화 설정"""
         return self.runtime_config.get("memory", {})
+
+    def get_handrefiner_config(self) -> Dict[str, Any]:
+        """HandRefiner 설정"""
+        return self.runtime_config.get("handrefiner", {})
     
     def list_models(self) -> List[str]:
         """사용 가능한 모델 목록"""

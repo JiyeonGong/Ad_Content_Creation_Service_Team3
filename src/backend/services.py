@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from .model_registry import get_registry
 from .model_loader import ModelLoader
+from .handrefiner_wrapper import HandRefinerWrapper
 
 # Load env
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
@@ -33,6 +34,7 @@ else:
 # 전역 인스턴스
 openai_client: Optional[OpenAI] = None
 model_loader: Optional[ModelLoader] = None
+handrefiner: Optional[HandRefinerWrapper] = None
 registry = get_registry()
 
 # Initialize OpenAI client
@@ -70,20 +72,20 @@ def init_image_pipelines():
     """
     설정 파일 기반으로 이미지 생성 모델 로드
     """
-    global model_loader
-    
+    global model_loader, handrefiner
+
     # 이미 로드된 경우 스킵
     if model_loader and model_loader.is_loaded():
         print("ℹ️ 이미지 파이프라인 이미 로드됨 — 스킵")
         return
-    
+
     # ModelLoader 생성
     if model_loader is None:
         model_loader = ModelLoader(cache_dir=hf_cache_dir)
-    
+
     # 폴백 체인으로 로딩 시도
     success = model_loader.load_with_fallback()
-    
+
     if success:
         info = model_loader.get_current_model_info()
         print(f"✅ 이미지 생성 준비 완료")
@@ -91,6 +93,14 @@ def init_image_pipelines():
         print(f"   장치: {info['device']}")
     else:
         print("❌ 모든 모델 로딩 실패 - 이미지 생성 불가")
+
+    # HandRefiner 초기화 (Lazy loading - 실제 사용 시 로드됨)
+    handrefiner_config = registry.get_handrefiner_config()
+    if handrefiner_config.get("enable", False):
+        handrefiner = HandRefinerWrapper(handrefiner_config)
+        print(f"✅ HandRefiner 준비 완료 (lazy loading)")
+    else:
+        print("ℹ️ HandRefiner 비활성화됨 (config.handrefiner.enable=false)")
 
 # ===========================
 # 프롬프트 최적화
@@ -250,6 +260,11 @@ def generate_t2i_core(prompt: str, width: int, height: int, steps: int, guidance
 
         # 이미지 크기 확인
         print(f"✅ 생성 완료: 실제 크기 = {image.size}")
+
+        # HandRefiner 손 보정 (활성화된 경우)
+        if handrefiner and handrefiner.is_enabled():
+            print("🖐️ HandRefiner로 손 보정 중...")
+            image = handrefiner.refine_hands(image, optimized_prompt)
 
         buf = io.BytesIO()
         image.save(buf, format="PNG")
