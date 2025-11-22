@@ -1354,6 +1354,20 @@ git push origin feature/amazing-feature
 
 ## 📝 업데이트 로그
 
+### v3.1.0 (2025-11-22) - GCP FLUX 8-bit 양자화 지원
+
+**주요 변경사항:**
+- ⚡ FLUX 8-bit 사전 양자화 모델 지원 (`diffusers/FLUX.1-dev-bnb-8bit`)
+- 🚀 이미지 생성 속도 대폭 개선 (50-60분 → 77초)
+- 💾 bitsandbytes 8-bit 양자화 (Transformer + T5 인코더)
+
+**GCP L4 GPU 테스트 결과:**
+- 모델: `flux-dev-bnb-8bit`
+- GPU 메모리: ~21GB
+- 생성 시간: 77초/이미지 (1024x1024, 28 steps)
+
+**상세 설정 가이드:** [docs/GCP_FLUX_8BIT_SETUP.md](docs/GCP_FLUX_8BIT_SETUP.md)
+
 ### v3.0.0 (2025-01-XX) - RAG 챗봇 시스템 추가
 
 **주요 변경사항:**
