@@ -158,83 +158,35 @@ class ModelLoader:
             if use_quantization:
                 try:
                     if quant_type == "fp8":
-                        # FP8 양자화 (optimum-quanto 사용)
-                        # CPU에서 양자화 후 GPU로 이동 (GPU OOM 방지)
-                        from diffusers import FluxPipeline, FluxTransformer2DModel
-                        from transformers import T5EncoderModel
-                        from optimum.quanto import freeze, qfloat8, quantize
+                        # FP8 양자화 (TorchAO) - 원본 방식
+                        # Transformer만 양자화, 나머지는 원본
+                        print("  📥 FP8 Transformer 로딩 중...")
+                        from torchao.quantization import quantize_, int8_weight_only
 
-                        # 1. Transformer CPU 로드 → 양자화 → GPU
-                        print("  📥 Transformer 로딩 중 (CPU)...")
+                        # Transformer 로드 후 양자화
                         transformer = FluxTransformer2DModel.from_pretrained(
                             model_id,
                             subfolder="transformer",
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir
                         )
-                        print("  🔄 Transformer FP8 양자화 중...")
-                        quantize(transformer, weights=qfloat8)
-                        freeze(transformer)
-                        transformer = transformer.to(self.device)
-                        print("  ✓ Transformer FP8 완료 → GPU")
 
-                        # GPU 메모리 확인
-                        if torch.cuda.is_available():
-                            allocated = torch.cuda.memory_allocated() / 1024**3
-                            print(f"  📊 GPU 메모리: {allocated:.2f} GB")
+                        # FP8 양자화 적용
+                        quantize_(transformer, int8_weight_only())
+                        print("  ✓ FP8 양자화 적용 완료")
 
-                        # 2. T5 인코더 CPU 로드 → 양자화 → GPU
-                        print("  📥 T5 인코더 로딩 중 (CPU)...")
-                        text_encoder_2 = T5EncoderModel.from_pretrained(
-                            model_id,
-                            subfolder="text_encoder_2",
-                            torch_dtype=self.dtype,
-                            cache_dir=self.cache_dir
-                        )
-                        print("  🔄 T5 인코더 FP8 양자화 중...")
-                        quantize(text_encoder_2, weights=qfloat8)
-                        freeze(text_encoder_2)
-                        text_encoder_2 = text_encoder_2.to(self.device)
-                        print("  ✓ T5 인코더 FP8 완료 → GPU")
-
-                        # GPU 메모리 확인
-                        if torch.cuda.is_available():
-                            allocated = torch.cuda.memory_allocated() / 1024**3
-                            print(f"  📊 GPU 메모리: {allocated:.2f} GB")
-
-                        # 3. VAE 원본으로 로드 (양자화하면 이미지 깨짐)
-                        from diffusers import AutoencoderKL
-                        print("  📥 VAE 로딩 중 (원본, 양자화 안 함)...")
-                        vae = AutoencoderKL.from_pretrained(
-                            model_id,
-                            subfolder="vae",
-                            torch_dtype=self.dtype,
-                            cache_dir=self.cache_dir
-                        ).to(self.device)
-                        print("  ✓ VAE 원본 로드 완료 → GPU")
-
-                        # GPU 메모리 확인
-                        if torch.cuda.is_available():
-                            allocated = torch.cuda.memory_allocated() / 1024**3
-                            print(f"  📊 GPU 메모리: {allocated:.2f} GB")
-
-                        # 4. 파이프라인 구성 (공식 문서 방식)
-                        # transformer, text_encoder_2를 None으로 로드 제외 후 교체
+                        # 전체 파이프라인 구성
                         print("  🔧 파이프라인 구성 중...")
-                        t2i = FluxPipeline.from_pretrained(
+                        t2i = DiffusionPipeline.from_pretrained(
                             model_id,
-                            transformer=None,
-                            text_encoder_2=None,
+                            transformer=transformer,
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir
                         )
-                        # 양자화된 컴포넌트로 교체
-                        t2i.transformer = transformer
-                        t2i.text_encoder_2 = text_encoder_2
-                        t2i.vae = vae  # VAE도 교체 (원본)
-                        # text_encoder(CLIP)도 GPU로 이동
-                        t2i.text_encoder = t2i.text_encoder.to(self.device)
-                        print("  ✓ FP8 파이프라인 구성 완료")
+
+                        # GPU로 이동
+                        t2i = t2i.to(self.device)
+                        print(f"  ✓ FP8 모델을 {self.device}로 이동")
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
