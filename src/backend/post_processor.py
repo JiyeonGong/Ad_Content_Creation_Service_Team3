@@ -64,11 +64,13 @@ class PostProcessor:
         # YOLO 모델 (사람/물체 감지)
         self.yolo_model: Optional[YOLO] = None
 
-        # MediaPipe (손/얼굴 상세 감지)
+        # MediaPipe (손/얼굴/포즈 상세 감지)
         self.mp_hands = mp.solutions.hands
         self.mp_face = mp.solutions.face_detection
+        self.mp_pose = mp.solutions.pose
         self.hands_detector = None
         self.face_detector = None
+        self.pose_detector = None
 
         print(f"✅ PostProcessor 초기화 (device: {self.device})")
 
@@ -91,6 +93,12 @@ class PostProcessor:
         if self.face_detector is None:
             self.face_detector = self.mp_face.FaceDetection(
                 model_selection=1,  # 0: 2m 이내, 1: 5m 이내
+                min_detection_confidence=0.5
+            )
+        if self.pose_detector is None:
+            self.pose_detector = self.mp_pose.Pose(
+                static_image_mode=True,
+                model_complexity=1,  # 0: lite, 1: full, 2: heavy
                 min_detection_confidence=0.5
             )
 
@@ -331,6 +339,109 @@ class PostProcessor:
 
         return detections
 
+    def detect_body_object_penetration(
+        self,
+        image: Image.Image,
+        target_objects: List[str] = ["sports ball", "baseball bat", "tennis racket"]
+    ) -> Dict[str, Any]:
+        """
+        MediaPipe Pose + YOLO로 물체가 신체를 관통하는 이상 감지
+
+        바벨/운동기구가 다리나 몸을 뚫고 지나가는 것처럼 보이는 경우 감지
+
+        Args:
+            image: 입력 이미지
+            target_objects: 관통 체크할 물체 목록 (YOLO 클래스명)
+
+        Returns:
+            {"has_penetration": bool, "issues": [...], "affected_boxes": [...]}
+        """
+        self._load_mediapipe()
+        self._load_yolo()
+
+        img_np = np.array(image)
+        img_rgb = img_np if img_np.shape[2] == 3 else img_np[:, :, :3]
+        h, w = img_rgb.shape[:2]
+
+        issues = []
+        affected_boxes = []
+
+        # 1. YOLO로 물체 감지 (바벨 바는 "sports ball" 또는 직접 감지 안 될 수 있음)
+        yolo_boxes = self.detect_with_yolo(image)
+
+        # 바벨/바 형태 물체 찾기 (가로로 긴 물체)
+        bar_like_objects = []
+        for box in yolo_boxes:
+            aspect_ratio = box.width / max(box.height, 1)
+            # 가로로 긴 물체 (aspect ratio > 3) 또는 특정 운동기구
+            if aspect_ratio > 3 or box.label in target_objects:
+                bar_like_objects.append(box)
+
+        if not bar_like_objects:
+            return {"has_penetration": False, "issues": [], "affected_boxes": []}
+
+        # 2. MediaPipe Pose로 신체 키포인트 감지
+        pose_results = self.pose_detector.process(img_rgb)
+
+        if not pose_results.pose_landmarks:
+            return {"has_penetration": False, "issues": [], "affected_boxes": []}
+
+        landmarks = pose_results.pose_landmarks.landmark
+
+        # 다리 영역 세그먼트 계산
+        leg_segments = []
+
+        # 왼쪽 다리
+        if landmarks[23].visibility > 0.5 and landmarks[27].visibility > 0.5:
+            left_hip = (int(landmarks[23].x * w), int(landmarks[23].y * h))
+            left_knee = (int(landmarks[25].x * w), int(landmarks[25].y * h))
+            left_ankle = (int(landmarks[27].x * w), int(landmarks[27].y * h))
+            leg_segments.append(("left_thigh", left_hip, left_knee))
+            leg_segments.append(("left_shin", left_knee, left_ankle))
+
+        # 오른쪽 다리
+        if landmarks[24].visibility > 0.5 and landmarks[28].visibility > 0.5:
+            right_hip = (int(landmarks[24].x * w), int(landmarks[24].y * h))
+            right_knee = (int(landmarks[26].x * w), int(landmarks[26].y * h))
+            right_ankle = (int(landmarks[28].x * w), int(landmarks[28].y * h))
+            leg_segments.append(("right_thigh", right_hip, right_knee))
+            leg_segments.append(("right_shin", right_knee, right_ankle))
+
+        # 3. 바 형태 물체가 다리 세그먼트를 관통하는지 체크
+        for bar_box in bar_like_objects:
+            bar_y_center = (bar_box.y1 + bar_box.y2) // 2
+            bar_x_left = bar_box.x1
+            bar_x_right = bar_box.x2
+
+            for seg_name, seg_start, seg_end in leg_segments:
+                # 세그먼트의 x 범위
+                seg_x_min = min(seg_start[0], seg_end[0])
+                seg_x_max = max(seg_start[0], seg_end[0])
+                # 세그먼트의 y 범위
+                seg_y_min = min(seg_start[1], seg_end[1])
+                seg_y_max = max(seg_start[1], seg_end[1])
+
+                # 바가 세그먼트의 x 범위를 가로지르는지
+                if bar_x_left < seg_x_max and bar_x_right > seg_x_min:
+                    # 바의 y 위치가 세그먼트 내에 있는지
+                    if seg_y_min < bar_y_center < seg_y_max:
+                        # 관통 비율 계산
+                        penetration_ratio = (bar_y_center - seg_y_min) / max(seg_y_max - seg_y_min, 1)
+
+                        # 10%~90% 위치에서 교차하면 관통으로 판단 (끝부분 제외)
+                        if 0.1 < penetration_ratio < 0.9:
+                            issues.append(f"물체가 {seg_name}을 관통 (교차율: {penetration_ratio:.1%})")
+                            affected_boxes.append(bar_box)
+
+        # 중복 제거
+        unique_issues = list(set(issues))
+
+        return {
+            "has_penetration": len(unique_issues) > 0,
+            "issues": unique_issues,
+            "affected_boxes": affected_boxes
+        }
+
     def create_mask_from_boxes(
         self,
         image_size: Tuple[int, int],
@@ -429,6 +540,7 @@ class PostProcessor:
         image: Image.Image,
         check_hands: bool = True,
         check_overlap: bool = True,
+        check_penetration: bool = True,
         fingers_per_hand: int = 5,
         min_fingers_allowed: int = 4
     ) -> Dict[str, Any]:
@@ -436,10 +548,12 @@ class PostProcessor:
         이미지 이상 감지
         - 손가락 개수 이상
         - 물체 겹침
+        - 물체-신체 관통 (바벨이 다리를 뚫는 등)
 
         Args:
             fingers_per_hand: 손당 손가락 개수 (기본 5)
             min_fingers_allowed: 최소 허용 손가락 (그립에서 엄지 가려짐 허용, 기본 4)
+            check_penetration: 물체-신체 관통 체크 여부
 
         Returns:
             {"has_anomaly": bool, "anomalies": [...], "boxes": [...]}
@@ -479,6 +593,13 @@ class PostProcessor:
                     if iou > 0.5:  # 50% 이상 겹침
                         anomalies.append(f"사람-{obj.label} 과도한 겹침 (IoU={iou:.2f})")
 
+        # 물체-신체 관통 체크
+        if check_penetration:
+            penetration_result = self.detect_body_object_penetration(image)
+            if penetration_result["has_penetration"]:
+                anomalies.extend(penetration_result["issues"])
+                boxes.extend(penetration_result["affected_boxes"])
+
         return {
             "has_anomaly": len(anomalies) > 0,
             "anomalies": anomalies,
@@ -512,7 +633,8 @@ class PostProcessor:
         adetailer_targets: List[str] = ["hand"],
         adetailer_strength: float = 0.4,
         fingers_per_hand: int = 5,
-        min_fingers_allowed: int = 4
+        min_fingers_allowed: int = 4,
+        check_penetration: bool = True
     ) -> Tuple[Image.Image, Dict[str, Any]]:
         """
         전체 후처리 파이프라인
@@ -527,6 +649,7 @@ class PostProcessor:
             adetailer_strength: Inpaint 강도
             fingers_per_hand: 손당 손가락 개수 (기본 5)
             min_fingers_allowed: 최소 허용 손가락 (기본 4, 그립에서 엄지 가려짐 허용)
+            check_penetration: 물체-신체 관통 체크 여부 (기본 True)
 
         Returns:
             (처리된 이미지, 처리 정보)
@@ -546,7 +669,8 @@ class PostProcessor:
             anomaly_result = self.detect_anomalies(
                 image,
                 fingers_per_hand=fingers_per_hand,
-                min_fingers_allowed=min_fingers_allowed
+                min_fingers_allowed=min_fingers_allowed,
+                check_penetration=check_penetration
             )
             info["anomalies_detected"] = anomaly_result["anomalies"]
 
@@ -579,6 +703,9 @@ class PostProcessor:
         if self.face_detector:
             self.face_detector.close()
             self.face_detector = None
+        if self.pose_detector:
+            self.pose_detector.close()
+            self.pose_detector = None
         if self.yolo_model:
             del self.yolo_model
             self.yolo_model = None
