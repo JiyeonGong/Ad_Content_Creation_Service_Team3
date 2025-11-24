@@ -77,10 +77,13 @@ class PostProcessor:
     def _load_yolo(self):
         """YOLO 모델 로드 (지연 로딩)"""
         if self.yolo_model is None:
-            print("📥 YOLO 모델 로딩 중...")
-            # YOLOv8n (nano) - 가벼움, 사람 감지용
-            self.yolo_model = YOLO("yolov8n.pt")
-            print("✅ YOLO 모델 로드 완료")
+            print("📥YOLO 모델 로딩 중...")
+            # 원하는 경로를 명시적으로 지정
+            weights_path = "./models/yolov8n.pt"
+            if not os.path.exists(weights_path):
+                raise FileNotFoundError(f"YOLO 가중치가 없습니다: {weights_path}")
+            self.yolo_model = YOLO(weights_path)
+            print("✅YOLO 모델 로드 완료")
 
     def _load_mediapipe(self):
         """MediaPipe 감지기 로드"""
