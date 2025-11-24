@@ -153,7 +153,33 @@ class ModelLoader:
                 print("  ✓ 8-bit 양자화 모드 (deprecated)")
 
         # 모델 타입별 로딩
-        if model_type == "flux-bnb-8bit":
+        if model_type == "flux-bnb-4bit":
+            # 사전 양자화 4-bit 모델 (diffusers/FLUX.1-dev-bnb-4bit)
+            from diffusers import FluxPipeline
+            print("  📥 사전 양자화 4-bit 모델 (bitsandbytes) 로딩 중...")
+            print("  ⚠️ 첫 로드 시 다운로드에 시간이 걸릴 수 있습니다.")
+
+            t2i = FluxPipeline.from_pretrained(
+                model_id,
+                torch_dtype=self.dtype,
+                cache_dir=self.cache_dir
+            )
+            t2i = t2i.to(self.device)
+            print("  ✓ 사전 양자화 4-bit 모델 로드 완료")
+
+            # GPU 메모리 확인
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                print(f"  📊 GPU 메모리: {allocated:.2f} GB")
+
+            # I2I 파이프라인
+            try:
+                i2i = AutoPipelineForImage2Image.from_pipe(t2i)
+            except:
+                i2i = t2i
+                print("  ⚠️ I2I 파이프라인 공유")
+
+        elif model_type == "flux-bnb-8bit":
             # 사전 양자화 8-bit 모델 (diffusers/FLUX.1-dev-bnb-8bit)
             from diffusers import FluxPipeline
             print("  📥 사전 양자화 8-bit 모델 (bitsandbytes) 로딩 중...")
