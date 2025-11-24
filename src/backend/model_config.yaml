@@ -69,9 +69,13 @@ models:
 # ========================================
 runtime:
   # 기본 모델 선택
+  # - "flux-dev-bnb-4bit": 4-bit 양자화 (~8GB VRAM)
   # - "flux-dev-bnb-8bit": 8-bit 양자화 (77초, 권장)
   # - "flux-dev-gcp": 원본 (50분, 최고 품질)
   primary_model: "flux-dev-bnb-8bit"
+
+  # 폴백 비활성화 (primary 실패 시 에러로 처리)
+  enable_fallback: false
 
   # 프롬프트 최적화 설정
   prompt_optimization:
