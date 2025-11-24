@@ -21,9 +21,14 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL_GPT_MINI = "gpt-5-mini"
 
 # HF cache location
+# GCP: /home/shared 사용 (이미 다운로드된 모델 재사용)
+# 로컬: project_root/cache/hf_models 사용
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-hf_cache_dir = os.path.join(project_root, "cache", "hf_models")
-os.makedirs(hf_cache_dir, exist_ok=True)
+if os.path.exists("/home/shared"):
+    hf_cache_dir = "/home/shared"
+else:
+    hf_cache_dir = os.path.join(project_root, "cache", "hf_models")
+    os.makedirs(hf_cache_dir, exist_ok=True)
 
 # 전역 인스턴스
 openai_client: Optional[OpenAI] = None
@@ -103,11 +108,8 @@ def optimize_prompt(text: str, model_config) -> str:
     if not opt_config.get("enabled", True):
         return text
     
-    # 이미 영어인 경우 스킵
+    # 한글 번역 비활성화 설정 확인
     if not opt_config.get("translate_korean", True):
-        return text
-    
-    if all(ord(char) < 128 for char in text[:20]):
         return text
     
     try:
@@ -123,6 +125,25 @@ def optimize_prompt(text: str, model_config) -> str:
 Translate Korean marketing text to optimized English prompts.
 Focus on visual elements, style, mood, and composition.
 {constraint}
+
+IMPORTANT - Quality keywords to prevent AI artifacts:
+
+1. If the scene involves people:
+   - Hands: "detailed hands, five fingers, natural hand pose, anatomically correct hands, Hand Position Left Right Proper Position, correct thumb direction"
+   - Faces: "detailed face, clear facial features, symmetric face, symmetric eyes, natural eye shape"
+   - Body: "correct human anatomy, natural body proportions, well-fitted clothing"
+
+2. If the scene involves objects being held or touched:
+   - "proper object interaction, object not clipping through body"
+   - "realistic grip, natural holding pose"
+   - "physically accurate, no overlapping body parts with objects"
+
+3. If the scene involves fitness/gym/sports equipment:
+   - "equipment not penetrating body, proper form"
+   - "hands gripping equipment correctly, realistic weight interaction"
+
+Always include relevant keywords based on the scene content.
+
 Output ONLY the English prompt, no explanations."""
 
         resp = openai_client.responses.create(
@@ -134,7 +155,7 @@ Output ONLY the English prompt, no explanations."""
         
         result = getattr(resp, "output_text", None) or str(resp)
         optimized = result.strip()
-        print(f"🔄 프롬프트 최적화:\n  원본: {text[:80]}...\n  최적화: {optimized[:80]}...")
+        print(f"🔄 프롬프트 최적화:\n  원본: {text}\n  최적화: {optimized}")
         return optimized
         
     except Exception as e:
@@ -190,49 +211,137 @@ def generate_caption_core(info: dict, tone: str) -> str:
 # ===========================
 # 이미지 생성 (T2I)
 # ===========================
-def generate_t2i_core(prompt: str, width: int, height: int, steps: int) -> bytes:
+def generate_t2i_core(
+    prompt: str,
+    width: int,
+    height: int,
+    steps: int,
+    guidance_scale: float = None,
+    enable_adetailer: bool = True,
+    adetailer_targets: list = None
+) -> bytes:
     global model_loader
-    
+
     if not model_loader or not model_loader.is_loaded():
         raise RuntimeError("이미지 파이프라인이 초기화되지 않았습니다.")
-    
+
     model_config = model_loader.current_model_config
-    
+
     # 프롬프트 최적화
     optimized_prompt = optimize_prompt(prompt, model_config)
-    
+
     # Steps 검증
     if steps < 1:
         steps = model_config.default_steps
     steps = min(steps, model_config.max_steps)
-    
+
+    # 랜덤 seed 생성 (매번 다른 이미지)
+    import random
+    random_seed = random.randint(0, 2**32 - 1)
+    generator = torch.Generator(device=model_loader.device).manual_seed(random_seed)
+
     # 생성 파라미터 구성
     gen_params = {
         "prompt": optimized_prompt,
         "width": width,
         "height": height,
         "num_inference_steps": steps,
+        "generator": generator,
     }
-    
+
     # 조건부 파라미터 추가
     if model_config.use_negative_prompt:
         gen_params["negative_prompt"] = model_config.negative_prompt
-    
-    if model_config.guidance_scale is not None:
+
+    # guidance_scale: 사용자 지정값 우선, 없으면 모델 기본값
+    if guidance_scale is not None:
+        gen_params["guidance_scale"] = guidance_scale
+    elif model_config.guidance_scale is not None:
         gen_params["guidance_scale"] = model_config.guidance_scale
-    
+
     print(f"🎨 이미지 생성 중")
     print(f"   모델: {model_loader.current_model_name}")
     print(f"   Steps: {steps}")
     print(f"   크기: {width}x{height}")
-    
+    print(f"   Seed: {random_seed}")
+    if "guidance_scale" in gen_params:
+        print(f"   Guidance: {gen_params['guidance_scale']}")
+
     # 생성
-    result = model_loader.t2i_pipe(**gen_params)
-    image = result.images[0]
-    
-    buf = io.BytesIO()
-    image.save(buf, format="PNG")
-    return buf.getvalue()
+    try:
+        result = model_loader.t2i_pipe(**gen_params)
+        image = result.images[0]
+
+        # 이미지 크기 확인
+        print(f"✅ 생성 완료: 실제 크기 = {image.size}")
+
+        # ADetailer 후처리 (손/얼굴 개선)
+        if enable_adetailer:
+            image = apply_adetailer(
+                image=image,
+                prompt=optimized_prompt,
+                targets=adetailer_targets or ["hand"]
+            )
+
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        image_bytes = buf.getvalue()
+        print(f"✅ PNG 변환 완료: {len(image_bytes)} bytes")
+        return image_bytes
+    except Exception as gen_err:
+        print(f"❌ 이미지 생성 또는 변환 실패: {gen_err}")
+        import traceback
+        traceback.print_exc()
+        raise RuntimeError(f"이미지 생성 실패: {gen_err}")
+
+
+# ===========================
+# ADetailer 후처리
+# ===========================
+def apply_adetailer(
+    image: Image,
+    prompt: str,
+    targets: list = None,
+    strength: float = 0.4
+) -> Image:
+    """
+    ADetailer 스타일 후처리
+    - 손/얼굴 감지 후 해당 영역만 Inpaint로 재생성
+    """
+    global model_loader
+
+    if targets is None:
+        targets = ["hand"]
+
+    try:
+        from .post_processor import get_post_processor
+
+        print(f"🔧 ADetailer 후처리 시작 (targets: {targets})")
+
+        post_processor = get_post_processor()
+
+        # I2I 파이프라인을 Inpaint용으로 사용
+        inpaint_pipe = model_loader.i2i_pipe
+
+        processed_image, info = post_processor.full_pipeline(
+            image=image,
+            inpaint_pipeline=inpaint_pipe,
+            prompt=prompt,
+            auto_detect=True,
+            adetailer_targets=targets,
+            adetailer_strength=strength
+        )
+
+        if info["processed"]:
+            print(f"✅ ADetailer 처리 완료")
+        else:
+            print(f"ℹ️ ADetailer: 이상 없음, 원본 유지")
+
+        return processed_image
+
+    except Exception as e:
+        print(f"⚠️ ADetailer 실패, 원본 반환: {e}")
+        return image
 
 # ===========================
 # 이미지 편집 (I2I)
@@ -289,6 +398,54 @@ def generate_i2i_core(input_image_bytes: bytes, prompt: str, strength: float,
     return buf.getvalue()
 
 # ===========================
+# 모델 전환
+# ===========================
+def switch_model(model_name: str) -> dict:
+    """
+    다른 모델로 전환
+    Returns: {"success": bool, "message": str, "model_info": dict}
+    """
+    global model_loader
+
+    if not model_loader:
+        model_loader = ModelLoader(cache_dir=hf_cache_dir)
+
+    # 모델 존재 여부 확인
+    model_config = registry.get_model(model_name)
+    if not model_config:
+        return {
+            "success": False,
+            "message": f"알 수 없는 모델: {model_name}",
+            "model_info": None
+        }
+
+    # 이미 로드된 경우
+    if model_loader.is_loaded() and model_loader.current_model_name == model_name:
+        return {
+            "success": True,
+            "message": f"모델 '{model_name}' 이미 로드됨",
+            "model_info": model_loader.get_current_model_info()
+        }
+
+    # 모델 로드
+    print(f"🔄 모델 전환 중: {model_name}")
+    success = model_loader.load_model(model_name)
+
+    if success:
+        info = model_loader.get_current_model_info()
+        return {
+            "success": True,
+            "message": f"모델 '{model_name}' 로드 성공",
+            "model_info": info
+        }
+    else:
+        return {
+            "success": False,
+            "message": f"모델 '{model_name}' 로드 실패",
+            "model_info": None
+        }
+
+# ===========================
 # 상태 조회
 # ===========================
 def get_service_status() -> dict:
@@ -297,8 +454,8 @@ def get_service_status() -> dict:
         "gpt_ready": openai_client is not None,
         "image_ready": model_loader and model_loader.is_loaded(),
     }
-    
+
     if model_loader:
         status.update(model_loader.get_current_model_info())
-    
+
     return status
