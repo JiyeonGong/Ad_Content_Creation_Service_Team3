@@ -1,5 +1,6 @@
 # main.py (개선)
 import base64
+import time
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -8,6 +9,9 @@ import asyncio
 from . import services
 
 app = FastAPI(title="헬스케어 AI 콘텐츠 API (개선)")
+
+# 서버 시작 시간 (재시작 감지용)
+SERVER_START_TIME = time.time()
 
 # Pydantic schemas
 class CaptionRequest(BaseModel):
@@ -134,7 +138,9 @@ async def generate_i2i_image(req: I2IRequest):
 @app.get("/status")
 def status():
     """서비스 상태 및 사용 가능한 모델 목록 반환"""
-    return services.get_service_status()
+    result = services.get_service_status()
+    result["server_start_time"] = SERVER_START_TIME
+    return result
 
 @app.get("/models")
 def list_models():

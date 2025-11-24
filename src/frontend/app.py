@@ -72,25 +72,39 @@ class ConfigLoader:
 # ============================================================
 class APIClient:
     """백엔드 API 클라이언트"""
-    
+
     def __init__(self, config: ConfigLoader):
         self.base_url = os.getenv("API_BASE_URL") or config.get("api.base_url")
         self.timeout = config.get("api.timeout", 180)
         self.retry_attempts = config.get("api.retry_attempts", 2)
-        
+
         # 백엔드 모델 정보 캐싱
         self._model_info = None
         self._backend_status = None
+
+        # 서버 시작 시간 (재시작 감지용)
+        self._server_start_time = None
     
     def get_backend_status(self, force_refresh: bool = False) -> Optional[Dict]:
         """백엔드 상태 조회 (캐싱)"""
         if self._backend_status and not force_refresh:
             return self._backend_status
-        
+
         try:
             resp = requests.get(f"{self.base_url}/status", timeout=5)
             resp.raise_for_status()
             self._backend_status = resp.json()
+
+            # 서버 재시작 감지
+            new_start_time = self._backend_status.get("server_start_time")
+            if new_start_time and self._server_start_time:
+                if new_start_time != self._server_start_time:
+                    # 서버가 재시작됨 - 캐시 무효화
+                    self._model_info = None
+                    self._server_start_time = new_start_time
+                    return {"server_restarted": True, **self._backend_status}
+            self._server_start_time = new_start_time
+
             return self._backend_status
         except Exception as e:
             st.error(f"❌ 백엔드 연결 실패: {e}")
@@ -347,8 +361,14 @@ def main():
 
     # 백엔드 상태 표시
     with st.sidebar.expander("🔧 시스템 상태"):
-        status = api.get_backend_status()
+        status = api.get_backend_status(force_refresh=True)
         if status:
+            # 서버 재시작 감지 시 자동 새로고침
+            if status.get("server_restarted"):
+                st.warning("🔄 서버가 재시작되었습니다. 상태를 새로고침합니다...")
+                api.get_model_info(force_refresh=True)
+                st.rerun()
+
             st.json(status)
             if st.button("🔄 새로고침"):
                 api.get_backend_status(force_refresh=True)
