@@ -158,12 +158,12 @@ class ModelLoader:
             print("  📥 사전 양자화 4-bit 모델 (bitsandbytes) 로딩 중...")
             print("  ⚠️ 첫 로드 시 다운로드에 시간이 걸릴 수 있습니다.")
 
+            # bitsandbytes 모델은 자동으로 GPU에 로딩됨
             t2i = FluxPipeline.from_pretrained(
                 model_id,
                 torch_dtype=self.dtype,
                 cache_dir=self.cache_dir
             )
-            t2i = t2i.to(self.device)
             print("  ✓ 사전 양자화 4-bit 모델 로드 완료")
 
             # GPU 메모리 확인
@@ -184,6 +184,7 @@ class ModelLoader:
             print("  📥 사전 양자화 8-bit 모델 (bitsandbytes) 로딩 중...")
             print("  ⚠️ 첫 로드 시 다운로드에 시간이 걸릴 수 있습니다.")
 
+            # bitsandbytes 모델은 자동으로 GPU에 로딩됨
             t2i = FluxPipeline.from_pretrained(
                 model_id,
                 torch_dtype=self.dtype,
@@ -363,9 +364,10 @@ class ModelLoader:
             except:
                 i2i = t2i
         
-        # 메모리 최적화 적용 (사전 양자화 모델은 CPU offload 하면 안 됨)
-        if model_type == "flux-fp8-pretrained":
-            print("  ℹ️ 사전 양자화 모델 - CPU offload 비활성화")
+        # 메모리 최적화 적용 (사전 양자화 모델은 최적화 불필요)
+        is_prequantized = model_type in ["flux-bnb-4bit", "flux-bnb-8bit", "flux-fp8-pretrained"]
+        if is_prequantized:
+            print("  ℹ️ 사전 양자화 모델 - 메모리 최적화 스킵 (이미 최적화됨)")
         else:
             t2i = self._apply_memory_optimizations(t2i, model_type, "T2I", use_quantization)
             if i2i != t2i:
@@ -378,12 +380,18 @@ class ModelLoader:
         if self.is_loaded() and self.current_model_name == model_name:
             print(f"ℹ️ 모델 '{model_name}' 이미 로드됨 — 스킵")
             return True
-        
+
+        # 기존 모델 해제 (메모리 확보)
+        if self.is_loaded():
+            print(f"🧹 기존 모델 '{self.current_model_name}' 해제 중...")
+            self.unload_model()
+
+        # 모델 설정 가져오기
         model_config = self.registry.get_model(model_name)
         if not model_config:
             print(f"❌ 알 수 없는 모델: {model_name}")
             return False
-        
+
         print(f"🔄 모델 로딩 시작: {model_name}")
         print(f"  ID: {model_config.id}")
         
@@ -477,21 +485,41 @@ class ModelLoader:
     
     def unload_model(self):
         """모델 언로드 (메모리 해제)"""
+        import gc
+
         if self.t2i_pipe:
+            # 파이프라인 내부 컴포넌트도 명시적 해제
+            if hasattr(self.t2i_pipe, 'to'):
+                try:
+                    self.t2i_pipe.to('cpu')
+                except:
+                    pass
             del self.t2i_pipe
             self.t2i_pipe = None
-        
+
         if self.i2i_pipe:
+            if hasattr(self.i2i_pipe, 'to'):
+                try:
+                    self.i2i_pipe.to('cpu')
+                except:
+                    pass
             del self.i2i_pipe
             self.i2i_pipe = None
-        
+
         self.current_model_name = None
         self.current_model_config = None
-        
-        # 🆕 GPU 메모리 강제 정리
+
+        # 강제 가비지 컬렉션
+        gc.collect()
+
+        # GPU 메모리 정리
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
-            print("🗑️ 모델 언로드 및 GPU 메모리 정리 완료")
-        else:
-            print("🗑️ 모델 언로드 완료")
+            torch.cuda.synchronize()
+
+            # 메모리 상태 출력
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            reserved = torch.cuda.memory_reserved() / 1024**3
+            print(f"  📊 GPU 메모리 해제 후: 할당={allocated:.2f}GB, 예약={reserved:.2f}GB")
+
+        print("🗑️ 모델 언로드 완료")
