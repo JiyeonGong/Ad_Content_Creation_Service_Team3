@@ -25,3 +25,17 @@ Thumbs.db
 *.env
 
 # 여기서부터 우리가 새로 작성
+
+# 배진석 관련 파일
+experiments/
+gitclone/
+cache/
+# src/outfitanyone 디렉토리 전체를 무시
+src/outfitanyone
+
+# 이미지 관련 파일 전부 제외
+#assets/outputs/
+
+# 입력폴더 공유시 주석처리
+#assets/inputs/outputs/
+models/
