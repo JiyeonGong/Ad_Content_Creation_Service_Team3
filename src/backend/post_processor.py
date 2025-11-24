@@ -1,0 +1,419 @@
+# post_processor.py
+"""
+이미지 후처리 파이프라인
+- ADetailer: 손/얼굴 자동 감지 후 Inpaint로 재생성
+- YOLO: 손/물체 감지 + 마스킹
+- Inpaint: 문제 영역 재생성
+"""
+import io
+import torch
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter
+from typing import Optional, Tuple, List, Dict, Any
+from dataclasses import dataclass
+
+# YOLO (ultralytics)
+from ultralytics import YOLO
+
+# MediaPipe (손/얼굴 감지)
+import mediapipe as mp
+
+
+@dataclass
+class DetectionBox:
+    """감지된 영역 정보"""
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+    label: str
+    confidence: float
+
+    @property
+    def width(self) -> int:
+        return self.x2 - self.x1
+
+    @property
+    def height(self) -> int:
+        return self.y2 - self.y1
+
+    @property
+    def center(self) -> Tuple[int, int]:
+        return ((self.x1 + self.x2) // 2, (self.y1 + self.y2) // 2)
+
+    def expand(self, ratio: float = 1.2) -> 'DetectionBox':
+        """박스 크기 확장 (마진 추가)"""
+        w_expand = int(self.width * (ratio - 1) / 2)
+        h_expand = int(self.height * (ratio - 1) / 2)
+        return DetectionBox(
+            x1=max(0, self.x1 - w_expand),
+            y1=max(0, self.y1 - h_expand),
+            x2=self.x2 + w_expand,
+            y2=self.y2 + h_expand,
+            label=self.label,
+            confidence=self.confidence
+        )
+
+
+class PostProcessor:
+    """이미지 후처리 파이프라인"""
+
+    def __init__(self, device: str = "cuda"):
+        self.device = device if torch.cuda.is_available() else "cpu"
+
+        # YOLO 모델 (사람/물체 감지)
+        self.yolo_model: Optional[YOLO] = None
+
+        # MediaPipe (손/얼굴 상세 감지)
+        self.mp_hands = mp.solutions.hands
+        self.mp_face = mp.solutions.face_detection
+        self.hands_detector = None
+        self.face_detector = None
+
+        print(f"✅ PostProcessor 초기화 (device: {self.device})")
+
+    def _load_yolo(self):
+        """YOLO 모델 로드 (지연 로딩)"""
+        if self.yolo_model is None:
+            print("📥 YOLO 모델 로딩 중...")
+            # YOLOv8n (nano) - 가벼움, 사람 감지용
+            self.yolo_model = YOLO("yolov8n.pt")
+            print("✅ YOLO 모델 로드 완료")
+
+    def _load_mediapipe(self):
+        """MediaPipe 감지기 로드"""
+        if self.hands_detector is None:
+            self.hands_detector = self.mp_hands.Hands(
+                static_image_mode=True,
+                max_num_hands=4,
+                min_detection_confidence=0.5
+            )
+        if self.face_detector is None:
+            self.face_detector = self.mp_face.FaceDetection(
+                model_selection=1,  # 0: 2m 이내, 1: 5m 이내
+                min_detection_confidence=0.5
+            )
+
+    def detect_with_yolo(self, image: Image.Image) -> List[DetectionBox]:
+        """YOLO로 사람/물체 감지"""
+        self._load_yolo()
+
+        # PIL → numpy
+        img_np = np.array(image)
+
+        # YOLO 추론
+        results = self.yolo_model(img_np, verbose=False)
+
+        detections = []
+        for result in results:
+            for box in result.boxes:
+                cls_id = int(box.cls[0])
+                cls_name = result.names[cls_id]
+                conf = float(box.conf[0])
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+
+                detections.append(DetectionBox(
+                    x1=x1, y1=y1, x2=x2, y2=y2,
+                    label=cls_name,
+                    confidence=conf
+                ))
+
+        return detections
+
+    def detect_hands(self, image: Image.Image) -> List[DetectionBox]:
+        """MediaPipe로 손 감지"""
+        self._load_mediapipe()
+
+        img_np = np.array(image)
+        img_rgb = img_np if img_np.shape[2] == 3 else img_np[:, :, :3]
+
+        results = self.hands_detector.process(img_rgb)
+
+        detections = []
+        h, w = img_rgb.shape[:2]
+
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                # 모든 랜드마크에서 바운딩 박스 계산
+                x_coords = [lm.x * w for lm in hand_landmarks.landmark]
+                y_coords = [lm.y * h for lm in hand_landmarks.landmark]
+
+                x1, x2 = int(min(x_coords)), int(max(x_coords))
+                y1, y2 = int(min(y_coords)), int(max(y_coords))
+
+                detections.append(DetectionBox(
+                    x1=x1, y1=y1, x2=x2, y2=y2,
+                    label="hand",
+                    confidence=0.9
+                ))
+
+        return detections
+
+    def detect_faces(self, image: Image.Image) -> List[DetectionBox]:
+        """MediaPipe로 얼굴 감지"""
+        self._load_mediapipe()
+
+        img_np = np.array(image)
+        img_rgb = img_np if img_np.shape[2] == 3 else img_np[:, :, :3]
+
+        results = self.face_detector.process(img_rgb)
+
+        detections = []
+        h, w = img_rgb.shape[:2]
+
+        if results.detections:
+            for detection in results.detections:
+                bbox = detection.location_data.relative_bounding_box
+                x1 = int(bbox.xmin * w)
+                y1 = int(bbox.ymin * h)
+                x2 = int((bbox.xmin + bbox.width) * w)
+                y2 = int((bbox.ymin + bbox.height) * h)
+
+                detections.append(DetectionBox(
+                    x1=x1, y1=y1, x2=x2, y2=y2,
+                    label="face",
+                    confidence=detection.score[0]
+                ))
+
+        return detections
+
+    def create_mask_from_boxes(
+        self,
+        image_size: Tuple[int, int],
+        boxes: List[DetectionBox],
+        expand_ratio: float = 1.3,
+        feather: int = 10
+    ) -> Image.Image:
+        """감지된 박스들로부터 마스크 생성"""
+        w, h = image_size
+        mask = Image.new("L", (w, h), 0)
+        draw = ImageDraw.Draw(mask)
+
+        for box in boxes:
+            expanded = box.expand(expand_ratio)
+            # 이미지 범위 내로 클리핑
+            x1 = max(0, expanded.x1)
+            y1 = max(0, expanded.y1)
+            x2 = min(w, expanded.x2)
+            y2 = min(h, expanded.y2)
+            draw.rectangle([x1, y1, x2, y2], fill=255)
+
+        # 마스크 가장자리 부드럽게
+        if feather > 0:
+            mask = mask.filter(ImageFilter.GaussianBlur(feather))
+
+        return mask
+
+    def adetailer_process(
+        self,
+        image: Image.Image,
+        inpaint_pipeline,
+        prompt: str,
+        targets: List[str] = ["hand", "face"],
+        strength: float = 0.4,
+        steps: int = 20
+    ) -> Image.Image:
+        """
+        ADetailer 스타일 후처리
+        - 손/얼굴 감지 → 해당 영역 Inpaint로 재생성
+
+        Args:
+            image: 원본 이미지
+            inpaint_pipeline: Flux/SD Inpaint 파이프라인
+            prompt: 재생성용 프롬프트
+            targets: 감지 대상 ["hand", "face"]
+            strength: Inpaint 강도 (0.3-0.5 권장)
+            steps: 추론 스텝
+        """
+        result_image = image.copy()
+
+        all_boxes = []
+
+        # 타겟별 감지
+        if "hand" in targets:
+            hand_boxes = self.detect_hands(image)
+            all_boxes.extend(hand_boxes)
+            print(f"  🖐️ 손 감지: {len(hand_boxes)}개")
+
+        if "face" in targets:
+            face_boxes = self.detect_faces(image)
+            all_boxes.extend(face_boxes)
+            print(f"  👤 얼굴 감지: {len(face_boxes)}개")
+
+        if not all_boxes:
+            print("  ℹ️ 감지된 영역 없음 - 원본 반환")
+            return result_image
+
+        # 마스크 생성
+        mask = self.create_mask_from_boxes(
+            image.size,
+            all_boxes,
+            expand_ratio=1.3,
+            feather=15
+        )
+
+        # Inpaint 실행
+        print(f"  🎨 Inpaint 실행 중 (strength={strength}, steps={steps})...")
+
+        # Flux Inpaint 호출
+        inpaint_result = inpaint_pipeline(
+            prompt=prompt,
+            image=result_image,
+            mask_image=mask,
+            strength=strength,
+            num_inference_steps=steps,
+            guidance_scale=3.5
+        )
+
+        result_image = inpaint_result.images[0]
+        print("  ✅ ADetailer 처리 완료")
+
+        return result_image
+
+    def detect_anomalies(
+        self,
+        image: Image.Image,
+        check_hands: bool = True,
+        check_overlap: bool = True
+    ) -> Dict[str, Any]:
+        """
+        이미지 이상 감지
+        - 손가락 개수 이상
+        - 물체 겹침
+
+        Returns:
+            {"has_anomaly": bool, "anomalies": [...], "boxes": [...]}
+        """
+        anomalies = []
+        boxes = []
+
+        if check_hands:
+            hand_boxes = self.detect_hands(image)
+            boxes.extend(hand_boxes)
+
+            # 손이 너무 많거나 없는 경우
+            if len(hand_boxes) > 4:
+                anomalies.append(f"손이 너무 많음: {len(hand_boxes)}개")
+
+        if check_overlap:
+            # YOLO로 사람/물체 감지
+            yolo_boxes = self.detect_with_yolo(image)
+            person_boxes = [b for b in yolo_boxes if b.label == "person"]
+            object_boxes = [b for b in yolo_boxes if b.label != "person"]
+
+            # 사람-물체 겹침 체크 (간단한 IoU)
+            for person in person_boxes:
+                for obj in object_boxes:
+                    iou = self._calculate_iou(person, obj)
+                    if iou > 0.5:  # 50% 이상 겹침
+                        anomalies.append(f"사람-{obj.label} 과도한 겹침 (IoU={iou:.2f})")
+
+        return {
+            "has_anomaly": len(anomalies) > 0,
+            "anomalies": anomalies,
+            "boxes": boxes
+        }
+
+    def _calculate_iou(self, box1: DetectionBox, box2: DetectionBox) -> float:
+        """두 박스의 IoU (Intersection over Union) 계산"""
+        x1 = max(box1.x1, box2.x1)
+        y1 = max(box1.y1, box2.y1)
+        x2 = min(box1.x2, box2.x2)
+        y2 = min(box1.y2, box2.y2)
+
+        if x2 <= x1 or y2 <= y1:
+            return 0.0
+
+        intersection = (x2 - x1) * (y2 - y1)
+        area1 = box1.width * box1.height
+        area2 = box2.width * box2.height
+        union = area1 + area2 - intersection
+
+        return intersection / union if union > 0 else 0.0
+
+    def full_pipeline(
+        self,
+        image: Image.Image,
+        inpaint_pipeline,
+        prompt: str,
+        auto_detect: bool = True,
+        force_adetailer: bool = False,
+        adetailer_targets: List[str] = ["hand"],
+        adetailer_strength: float = 0.4
+    ) -> Tuple[Image.Image, Dict[str, Any]]:
+        """
+        전체 후처리 파이프라인
+
+        Args:
+            image: 원본 이미지
+            inpaint_pipeline: Inpaint 파이프라인
+            prompt: 프롬프트
+            auto_detect: True면 이상 감지 후 필요시만 처리
+            force_adetailer: True면 무조건 ADetailer 실행
+            adetailer_targets: ADetailer 타겟 ["hand", "face"]
+            adetailer_strength: Inpaint 강도
+
+        Returns:
+            (처리된 이미지, 처리 정보)
+        """
+        info = {
+            "original_size": image.size,
+            "processed": False,
+            "anomalies_detected": [],
+            "adetailer_applied": False
+        }
+
+        result = image
+
+        # 1. 이상 감지 (auto_detect일 때)
+        if auto_detect and not force_adetailer:
+            print("🔍 이상 감지 중...")
+            anomaly_result = self.detect_anomalies(image)
+            info["anomalies_detected"] = anomaly_result["anomalies"]
+
+            if anomaly_result["has_anomaly"]:
+                print(f"  ⚠️ 이상 감지됨: {anomaly_result['anomalies']}")
+                force_adetailer = True
+            else:
+                print("  ✅ 이상 없음")
+
+        # 2. ADetailer 실행
+        if force_adetailer:
+            print("🖌️ ADetailer 처리 시작...")
+            result = self.adetailer_process(
+                image=result,
+                inpaint_pipeline=inpaint_pipeline,
+                prompt=prompt,
+                targets=adetailer_targets,
+                strength=adetailer_strength
+            )
+            info["adetailer_applied"] = True
+            info["processed"] = True
+
+        return result, info
+
+    def cleanup(self):
+        """리소스 정리"""
+        if self.hands_detector:
+            self.hands_detector.close()
+            self.hands_detector = None
+        if self.face_detector:
+            self.face_detector.close()
+            self.face_detector = None
+        if self.yolo_model:
+            del self.yolo_model
+            self.yolo_model = None
+
+        torch.cuda.empty_cache()
+        print("🧹 PostProcessor 리소스 정리 완료")
+
+
+# 싱글톤 인스턴스
+_post_processor: Optional[PostProcessor] = None
+
+def get_post_processor() -> PostProcessor:
+    """PostProcessor 싱글톤 인스턴스"""
+    global _post_processor
+    if _post_processor is None:
+        _post_processor = PostProcessor()
+    return _post_processor
