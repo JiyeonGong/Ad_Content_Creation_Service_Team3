@@ -162,7 +162,7 @@ class ModelLoader:
             t2i = FluxPipeline.from_pretrained(
                 model_id,
                 torch_dtype=self.dtype,
-                device_map="balanced",
+                device_map="auto",
                 cache_dir=self.cache_dir
             )
             print("  ✓ 사전 양자화 4-bit 모델 로드 완료")
@@ -188,7 +188,7 @@ class ModelLoader:
             t2i = FluxPipeline.from_pretrained(
                 model_id,
                 torch_dtype=self.dtype,
-                device_map="balanced",
+                device_map="auto",
                 cache_dir=self.cache_dir
             )
             print("  ✓ 사전 양자화 8-bit 모델 로드 완료")
