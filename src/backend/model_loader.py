@@ -162,9 +162,8 @@ class ModelLoader:
             t2i = FluxPipeline.from_pretrained(
                 model_id,
                 torch_dtype=self.dtype,
-                device_map="balanced",
                 cache_dir=self.cache_dir
-            )
+            ).to(self.device)
             print("  ✓ 사전 양자화 4-bit 모델 로드 완료")
 
             # GPU 메모리 확인
@@ -188,9 +187,8 @@ class ModelLoader:
             t2i = FluxPipeline.from_pretrained(
                 model_id,
                 torch_dtype=self.dtype,
-                device_map="balanced",
                 cache_dir=self.cache_dir
-            )
+            ).to(self.device)
             print("  ✓ 사전 양자화 8-bit 모델 로드 완료")
 
             # GPU 메모리 확인
