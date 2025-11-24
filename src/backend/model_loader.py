@@ -474,19 +474,41 @@ class ModelLoader:
     
     def unload_model(self):
         """모델 언로드 (메모리 해제)"""
+        import gc
+
         if self.t2i_pipe:
+            # 파이프라인 내부 컴포넌트도 명시적 해제
+            if hasattr(self.t2i_pipe, 'to'):
+                try:
+                    self.t2i_pipe.to('cpu')
+                except:
+                    pass
             del self.t2i_pipe
             self.t2i_pipe = None
-        
+
         if self.i2i_pipe:
+            if hasattr(self.i2i_pipe, 'to'):
+                try:
+                    self.i2i_pipe.to('cpu')
+                except:
+                    pass
             del self.i2i_pipe
             self.i2i_pipe = None
-        
+
         self.current_model_name = None
         self.current_model_config = None
-        
+
+        # 강제 가비지 컬렉션
+        gc.collect()
+
         # GPU 메모리 정리
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        
+            torch.cuda.synchronize()
+
+            # 메모리 상태 출력
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            reserved = torch.cuda.memory_reserved() / 1024**3
+            print(f"  📊 GPU 메모리 해제 후: 할당={allocated:.2f}GB, 예약={reserved:.2f}GB")
+
         print("🗑️ 모델 언로드 완료")
