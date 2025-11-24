@@ -298,16 +298,9 @@ class PostProcessor:
                     "has_joint_anomaly": not joint_check["is_valid"]
                 })
 
-        # 이상 판정: 손가락 개수 이상 OR 관절 이상
-        has_anomaly = any(
-            h["fingers"] != 5 or h["has_joint_anomaly"]
-            for h in hands_info
-        ) if hands_info else False
-
         return {
             "hands": hands_info,
-            "hand_count": len(hands_info),
-            "has_anomaly": has_anomaly
+            "hand_count": len(hands_info)
         }
 
     def detect_faces(self, image: Image.Image) -> List[DetectionBox]:
@@ -435,12 +428,18 @@ class PostProcessor:
         self,
         image: Image.Image,
         check_hands: bool = True,
-        check_overlap: bool = True
+        check_overlap: bool = True,
+        fingers_per_hand: int = 5,
+        min_fingers_allowed: int = 4
     ) -> Dict[str, Any]:
         """
         이미지 이상 감지
         - 손가락 개수 이상
         - 물체 겹침
+
+        Args:
+            fingers_per_hand: 손당 손가락 개수 (기본 5)
+            min_fingers_allowed: 최소 허용 손가락 (그립에서 엄지 가려짐 허용, 기본 4)
 
         Returns:
             {"has_anomaly": bool, "anomalies": [...], "boxes": [...]}
@@ -449,12 +448,23 @@ class PostProcessor:
         boxes = []
 
         if check_hands:
-            hand_boxes = self.detect_hands(image)
-            boxes.extend(hand_boxes)
+            finger_info = self.count_fingers(image)
 
-            # 손이 너무 많거나 없는 경우
-            if len(hand_boxes) > 4:
-                anomalies.append(f"손이 너무 많음: {len(hand_boxes)}개")
+            if finger_info["hand_count"] > 0:
+                for i, hand in enumerate(finger_info["hands"]):
+                    boxes.append(hand["box"])
+                    # 손가락 개수 이상 (min_fingers_allowed ~ fingers_per_hand 범위는 정상)
+                    finger_count = hand["fingers"]
+                    if finger_count < min_fingers_allowed or finger_count > fingers_per_hand:
+                        anomalies.append(f"손 {i+1}: 손가락 {finger_count}개 ({min_fingers_allowed}~{fingers_per_hand}개 범위 벗어남)")
+                    # 관절 이상 (엄지 길이, 역방향 꺾임 등)
+                    if hand.get("has_joint_anomaly") and hand.get("joint_issues"):
+                        for issue in hand["joint_issues"]:
+                            anomalies.append(f"손 {i+1}: {issue}")
+
+            # 손이 너무 많은 경우
+            if finger_info["hand_count"] > 4:
+                anomalies.append(f"손이 너무 많음: {finger_info['hand_count']}개")
 
         if check_overlap:
             # YOLO로 사람/물체 감지
@@ -500,7 +510,9 @@ class PostProcessor:
         auto_detect: bool = True,
         force_adetailer: bool = False,
         adetailer_targets: List[str] = ["hand"],
-        adetailer_strength: float = 0.4
+        adetailer_strength: float = 0.4,
+        fingers_per_hand: int = 5,
+        min_fingers_allowed: int = 4
     ) -> Tuple[Image.Image, Dict[str, Any]]:
         """
         전체 후처리 파이프라인
@@ -513,6 +525,8 @@ class PostProcessor:
             force_adetailer: True면 무조건 ADetailer 실행
             adetailer_targets: ADetailer 타겟 ["hand", "face"]
             adetailer_strength: Inpaint 강도
+            fingers_per_hand: 손당 손가락 개수 (기본 5)
+            min_fingers_allowed: 최소 허용 손가락 (기본 4, 그립에서 엄지 가려짐 허용)
 
         Returns:
             (처리된 이미지, 처리 정보)
@@ -529,7 +543,11 @@ class PostProcessor:
         # 1. 이상 감지 (auto_detect일 때)
         if auto_detect and not force_adetailer:
             print("🔍 이상 감지 중...")
-            anomaly_result = self.detect_anomalies(image)
+            anomaly_result = self.detect_anomalies(
+                image,
+                fingers_per_hand=fingers_per_hand,
+                min_fingers_allowed=min_fingers_allowed
+            )
             info["anomalies_detected"] = anomaly_result["anomalies"]
 
             if anomaly_result["has_anomaly"]:
