@@ -48,7 +48,12 @@ async def startup_event():
     """앱 시작 시 모델을 1회만 로드"""
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, services.init_image_pipelines)
-    print("✅ FastAPI 시작 완료 - 모델 로드됨")
+
+    # 로드 결과 확인
+    if services.model_loader and services.model_loader.is_loaded():
+        print(f"✅ FastAPI 시작 완료 - 모델 로드됨: {services.model_loader.current_model_name}")
+    else:
+        print("❌ FastAPI 시작 완료 - 모델 로드 실패!")
 
 # 🆕 개선: reload 시 모델 재로딩 방지를 위한 shutdown 핸들러 제거
 # (기존에 있었다면) - uvicorn reload 시 메모리에 모델 유지
