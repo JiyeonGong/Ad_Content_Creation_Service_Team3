@@ -129,7 +129,7 @@ Focus on visual elements, style, mood, and composition.
 IMPORTANT - Quality keywords to prevent AI artifacts:
 
 1. If the scene involves people:
-   - Hands: "detailed hands, five fingers, natural hand pose, anatomically correct hands, correct thumb direction"
+   - Hands: "detailed hands, five fingers, natural hand pose, anatomically correct hands, Hand Position Left Right Proper Position, correct thumb direction"
    - Faces: "detailed face, clear facial features, symmetric face, symmetric eyes, natural eye shape"
    - Body: "correct human anatomy, natural body proportions, well-fitted clothing"
 
@@ -211,7 +211,15 @@ def generate_caption_core(info: dict, tone: str) -> str:
 # ===========================
 # 이미지 생성 (T2I)
 # ===========================
-def generate_t2i_core(prompt: str, width: int, height: int, steps: int, guidance_scale: float = None) -> bytes:
+def generate_t2i_core(
+    prompt: str,
+    width: int,
+    height: int,
+    steps: int,
+    guidance_scale: float = None,
+    enable_adetailer: bool = True,
+    adetailer_targets: list = None
+) -> bytes:
     global model_loader
 
     if not model_loader or not model_loader.is_loaded():
@@ -267,6 +275,14 @@ def generate_t2i_core(prompt: str, width: int, height: int, steps: int, guidance
         # 이미지 크기 확인
         print(f"✅ 생성 완료: 실제 크기 = {image.size}")
 
+        # ADetailer 후처리 (손/얼굴 개선)
+        if enable_adetailer:
+            image = apply_adetailer(
+                image=image,
+                prompt=optimized_prompt,
+                targets=adetailer_targets or ["hand"]
+            )
+
         buf = io.BytesIO()
         image.save(buf, format="PNG")
         image_bytes = buf.getvalue()
@@ -277,6 +293,55 @@ def generate_t2i_core(prompt: str, width: int, height: int, steps: int, guidance
         import traceback
         traceback.print_exc()
         raise RuntimeError(f"이미지 생성 실패: {gen_err}")
+
+
+# ===========================
+# ADetailer 후처리
+# ===========================
+def apply_adetailer(
+    image: Image,
+    prompt: str,
+    targets: list = None,
+    strength: float = 0.4
+) -> Image:
+    """
+    ADetailer 스타일 후처리
+    - 손/얼굴 감지 후 해당 영역만 Inpaint로 재생성
+    """
+    global model_loader
+
+    if targets is None:
+        targets = ["hand"]
+
+    try:
+        from .post_processor import get_post_processor
+
+        print(f"🔧 ADetailer 후처리 시작 (targets: {targets})")
+
+        post_processor = get_post_processor()
+
+        # I2I 파이프라인을 Inpaint용으로 사용
+        inpaint_pipe = model_loader.i2i_pipe
+
+        processed_image, info = post_processor.full_pipeline(
+            image=image,
+            inpaint_pipeline=inpaint_pipe,
+            prompt=prompt,
+            auto_detect=True,
+            adetailer_targets=targets,
+            adetailer_strength=strength
+        )
+
+        if info["processed"]:
+            print(f"✅ ADetailer 처리 완료")
+        else:
+            print(f"ℹ️ ADetailer: 이상 없음, 원본 유지")
+
+        return processed_image
+
+    except Exception as e:
+        print(f"⚠️ ADetailer 실패, 원본 반환: {e}")
+        return image
 
 # ===========================
 # 이미지 편집 (I2I)
