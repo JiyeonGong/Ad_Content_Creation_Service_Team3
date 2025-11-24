@@ -340,7 +340,7 @@ class ModelLoader:
                 t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
                 print(f"  ✓ device_map='balanced' 적용 (GPU 우선, 넘치면 CPU 분산)")
 
-            # I2I 파이프라인 생성
+            # I2I 파이프라인 생성 시도
             try:
                 i2i = AutoPipelineForImage2Image.from_pipe(t2i)
             except:
