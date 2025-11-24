@@ -149,6 +149,167 @@ class PostProcessor:
 
         return detections
 
+    def _calculate_angle(self, p1, p2, p3) -> float:
+        """
+        세 점으로 각도 계산 (p2가 꼭지점)
+        Returns: 각도 (degrees, 0-180)
+        """
+        import math
+        v1 = (p1[0] - p2[0], p1[1] - p2[1])
+        v2 = (p3[0] - p2[0], p3[1] - p2[1])
+
+        dot = v1[0] * v2[0] + v1[1] * v2[1]
+        mag1 = math.sqrt(v1[0]**2 + v1[1]**2)
+        mag2 = math.sqrt(v2[0]**2 + v2[1]**2)
+
+        if mag1 * mag2 == 0:
+            return 180.0
+
+        cos_angle = max(-1, min(1, dot / (mag1 * mag2)))
+        return math.degrees(math.acos(cos_angle))
+
+    def _check_finger_joint_angles(self, hand_landmarks, w: int, h: int) -> Dict[str, Any]:
+        """
+        손가락 관절 각도 검증
+        - 비정상적으로 꺾인 관절 감지
+        - 엄지 길이 비율 검증
+
+        Returns: {"is_valid": bool, "issues": [...]}
+        """
+        import math
+        issues = []
+
+        # MediaPipe Hand Landmarks:
+        # 0: WRIST
+        # 1-4: THUMB (CMC, MCP, IP, TIP)
+        # 5-8: INDEX (MCP, PIP, DIP, TIP)
+        # 9-12: MIDDLE
+        # 13-16: RING
+        # 17-20: PINKY
+
+        def get_point(idx):
+            lm = hand_landmarks.landmark[idx]
+            return (lm.x * w, lm.y * h)
+
+        # 1. 손가락 관절 각도 검증 (PIP, DIP 관절)
+        # 정상 범위: 0° (펴짐) ~ 120° (굽힘)
+        # 역방향 굽힘 (과신전): > 180° 또는 음의 각도
+        finger_joints = {
+            "index": [(5, 6, 7), (6, 7, 8)],   # MCP-PIP-DIP, PIP-DIP-TIP
+            "middle": [(9, 10, 11), (10, 11, 12)],
+            "ring": [(13, 14, 15), (14, 15, 16)],
+            "pinky": [(17, 18, 19), (18, 19, 20)]
+        }
+
+        for finger_name, joints in finger_joints.items():
+            for joint_indices in joints:
+                p1 = get_point(joint_indices[0])
+                p2 = get_point(joint_indices[1])
+                p3 = get_point(joint_indices[2])
+
+                angle = self._calculate_angle(p1, p2, p3)
+
+                # 관절이 역방향으로 꺾인 경우 (과신전, angle < 160도인데 손가락이 반대로)
+                # 또는 너무 심하게 꺾인 경우 (angle < 30도)
+                if angle < 30:
+                    issues.append(f"{finger_name} 관절 과도하게 꺾임 ({angle:.0f}°)")
+
+        # 2. 엄지 검증
+        # 엄지 길이 비율: TIP-IP / IP-MCP 가 너무 크면 비정상
+        thumb_tip = get_point(4)
+        thumb_ip = get_point(3)
+        thumb_mcp = get_point(2)
+
+        tip_to_ip = math.sqrt((thumb_tip[0]-thumb_ip[0])**2 + (thumb_tip[1]-thumb_ip[1])**2)
+        ip_to_mcp = math.sqrt((thumb_ip[0]-thumb_mcp[0])**2 + (thumb_ip[1]-thumb_mcp[1])**2)
+
+        if ip_to_mcp > 0:
+            thumb_ratio = tip_to_ip / ip_to_mcp
+            # 정상 범위: 0.5 ~ 1.5
+            if thumb_ratio > 2.0:
+                issues.append(f"엄지 끝마디 비정상적으로 김 (비율: {thumb_ratio:.1f})")
+            elif thumb_ratio < 0.3:
+                issues.append(f"엄지 끝마디 비정상적으로 짧음 (비율: {thumb_ratio:.1f})")
+
+        # 3. 엄지 관절 각도 (CMC-MCP-IP, MCP-IP-TIP)
+        thumb_cmc = get_point(1)
+        thumb_angle1 = self._calculate_angle(thumb_cmc, thumb_mcp, thumb_ip)
+        thumb_angle2 = self._calculate_angle(thumb_mcp, thumb_ip, thumb_tip)
+
+        if thumb_angle1 < 30:
+            issues.append(f"엄지 MCP 관절 비정상 ({thumb_angle1:.0f}°)")
+        if thumb_angle2 < 30:
+            issues.append(f"엄지 IP 관절 비정상 ({thumb_angle2:.0f}°)")
+
+        return {
+            "is_valid": len(issues) == 0,
+            "issues": issues
+        }
+
+    def count_fingers(self, image: Image.Image) -> Dict[str, Any]:
+        """
+        MediaPipe로 손가락 개수 및 관절 이상 체크
+        Returns: {"hands": [{"fingers": int, "box": DetectionBox, "joint_issues": [...]}, ...], ...}
+        """
+        self._load_mediapipe()
+
+        img_np = np.array(image)
+        img_rgb = img_np if img_np.shape[2] == 3 else img_np[:, :, :3]
+
+        results = self.hands_detector.process(img_rgb)
+
+        hands_info = []
+        h, w = img_rgb.shape[:2]
+
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                # 손가락 펴짐 감지 (간단한 방법)
+                # 각 손가락 끝(tip)이 해당 손가락 PIP 관절보다 위에 있으면 펴진 것
+                finger_tips = [4, 8, 12, 16, 20]  # 엄지, 검지, 중지, 약지, 소지 끝
+                finger_pips = [3, 6, 10, 14, 18]  # 각 손가락 PIP 관절
+
+                fingers_up = 0
+                for tip, pip in zip(finger_tips, finger_pips):
+                    tip_y = hand_landmarks.landmark[tip].y
+                    pip_y = hand_landmarks.landmark[pip].y
+                    # 엄지는 x좌표로 비교 (좌우 방향)
+                    if tip == 4:
+                        tip_x = hand_landmarks.landmark[tip].x
+                        pip_x = hand_landmarks.landmark[pip].x
+                        if abs(tip_x - pip_x) > 0.05:  # 엄지가 펴짐
+                            fingers_up += 1
+                    else:
+                        if tip_y < pip_y:  # 손가락이 펴짐
+                            fingers_up += 1
+
+                # 관절 각도 검증
+                joint_check = self._check_finger_joint_angles(hand_landmarks, w, h)
+
+                # 바운딩 박스
+                x_coords = [lm.x * w for lm in hand_landmarks.landmark]
+                y_coords = [lm.y * h for lm in hand_landmarks.landmark]
+                x1, x2 = int(min(x_coords)), int(max(x_coords))
+                y1, y2 = int(min(y_coords)), int(max(y_coords))
+
+                hands_info.append({
+                    "fingers": fingers_up,
+                    "box": DetectionBox(x1=x1, y1=y1, x2=x2, y2=y2, label="hand", confidence=0.9),
+                    "joint_issues": joint_check["issues"],
+                    "has_joint_anomaly": not joint_check["is_valid"]
+                })
+
+        # 이상 판정: 손가락 개수 이상 OR 관절 이상
+        has_anomaly = any(
+            h["fingers"] != 5 or h["has_joint_anomaly"]
+            for h in hands_info
+        ) if hands_info else False
+
+        return {
+            "hands": hands_info,
+            "hand_count": len(hands_info),
+            "has_anomaly": has_anomaly
+        }
+
     def detect_faces(self, image: Image.Image) -> List[DetectionBox]:
         """MediaPipe로 얼굴 감지"""
         self._load_mediapipe()
