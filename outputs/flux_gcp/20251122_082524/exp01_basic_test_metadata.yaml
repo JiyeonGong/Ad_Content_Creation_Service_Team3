@@ -1,0 +1,11 @@
+description: 기본 품질 확인
+generation_time_seconds: 77.8
+parameters:
+  guidance_scale: 3.5
+  height: 1024
+  seed: null
+  steps: 28
+  width: 1024
+prompt: A professional woman in her 30s holding a smartphone, smiling, bright modern
+  office background, realistic hands with 5 fingers
+scenario_name: exp01_basic_test
