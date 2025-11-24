@@ -111,20 +111,54 @@ class APIClient:
             return None
 
     def switch_model(self, model_name: str) -> Dict:
-        """모델 전환"""
+        """모델 전환 (비동기 방식)"""
+        import time
+
+        # 1. 비동기 전환 시작
         try:
             resp = requests.post(
-                f"{self.base_url}/api/switch_model",
+                f"{self.base_url}/api/switch_model_async",
                 json={"model_name": model_name},
-                timeout=60  # 모델 로딩은 시간이 걸릴 수 있음
+                timeout=10
             )
             resp.raise_for_status()
-            # 캐시 무효화
-            self._model_info = None
-            self._backend_status = None
-            return resp.json()
         except Exception as e:
-            raise Exception(f"모델 전환 실패: {e}")
+            raise Exception(f"모델 전환 시작 실패: {e}")
+
+        # 2. 폴링으로 완료 대기 (최대 5분)
+        max_wait = 300
+        poll_interval = 2
+        elapsed = 0
+
+        while elapsed < max_wait:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+            try:
+                status_resp = requests.get(
+                    f"{self.base_url}/api/switch_model_status",
+                    timeout=5
+                )
+                status_resp.raise_for_status()
+                status = status_resp.json()
+
+                # 전환 완료 확인
+                if not status.get("in_progress", True):
+                    if status.get("success"):
+                        # 캐시 무효화
+                        self._model_info = None
+                        self._backend_status = None
+                        return {
+                            "success": True,
+                            "message": status.get("message", "모델 전환 완료")
+                        }
+                    else:
+                        raise Exception(status.get("error", "모델 전환 실패"))
+            except requests.exceptions.RequestException:
+                # 네트워크 오류는 무시하고 재시도
+                pass
+
+        raise Exception("모델 전환 타임아웃 (5분 초과)")
     
     def call_caption(self, payload: Dict) -> str:
         """문구 생성 API 호출"""
