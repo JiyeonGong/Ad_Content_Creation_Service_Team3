@@ -164,11 +164,7 @@ class ModelLoader:
                 torch_dtype=self.dtype,
                 cache_dir=self.cache_dir
             )
-            # text_encoder는 양자화 안 되어 있어서 수동으로 GPU 이동
-            if hasattr(t2i, 'text_encoder') and t2i.text_encoder is not None:
-                t2i.text_encoder = t2i.text_encoder.to(self.device)
-            if hasattr(t2i, 'text_encoder_2') and t2i.text_encoder_2 is not None:
-                t2i.text_encoder_2 = t2i.text_encoder_2.to(self.device)
+            t2i = t2i.to(self.device)
             print("  ✓ 사전 양자화 4-bit 모델 로드 완료")
 
             # GPU 메모리 확인
@@ -194,11 +190,7 @@ class ModelLoader:
                 torch_dtype=self.dtype,
                 cache_dir=self.cache_dir
             )
-            # text_encoder는 양자화 안 되어 있어서 수동으로 GPU 이동
-            if hasattr(t2i, 'text_encoder') and t2i.text_encoder is not None:
-                t2i.text_encoder = t2i.text_encoder.to(self.device)
-            if hasattr(t2i, 'text_encoder_2') and t2i.text_encoder_2 is not None:
-                t2i.text_encoder_2 = t2i.text_encoder_2.to(self.device)
+            t2i = t2i.to(self.device)
             print("  ✓ 사전 양자화 8-bit 모델 로드 완료")
 
             # GPU 메모리 확인

@@ -26,8 +26,10 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "accelerate" },
+    { name = "bitsandbytes" },
     { name = "diffusers" },
     { name = "fastapi" },
+    { name = "huggingface-hub" },
     { name = "openai" },
     { name = "pillow" },
     { name = "protobuf" },
@@ -35,8 +37,11 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "requests" },
+    { name = "safetensors" },
     { name = "sentencepiece" },
     { name = "streamlit" },
+    { name = "tokenizers" },
+    { name = "torchao" },
     { name = "transformers" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -44,8 +49,10 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "accelerate", specifier = ">=1.11.0" },
-    { name = "diffusers", specifier = ">=0.26" },
+    { name = "bitsandbytes", specifier = ">=0.41.0" },
+    { name = "diffusers", specifier = ">=0.26,<0.35" },
     { name = "fastapi", specifier = ">=0.110" },
+    { name = "huggingface-hub", specifier = ">=0.20.0" },
     { name = "openai", specifier = ">=1.12" },
     { name = "pillow", specifier = ">=10.2" },
     { name = "protobuf", specifier = ">=3.20.0" },
@@ -53,9 +60,12 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "requests", specifier = ">=2.31" },
+    { name = "safetensors", specifier = ">=0.4.1" },
     { name = "sentencepiece", specifier = ">=0.2.0" },
     { name = "streamlit", specifier = ">=1.31" },
-    { name = "transformers", specifier = ">=4.57.1" },
+    { name = "tokenizers", specifier = ">=0.15.0" },
+    { name = "torchao", specifier = ">=0.9.0" },
+    { name = "transformers", specifier = ">=4.44.0,<4.57.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27" },
 ]
 
@@ -114,6 +124,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6b/5c/685e6633917e101e5dcb62b9dd76946cbb57c26e133bae9e0cd36033c0a9/attrs-25.4.0.tar.gz", hash = "sha256:16d5969b87f0859ef33a48b35d55ac1be6e42ae49d5e853b597db70c35c57e11", size = 934251, upload-time = "2025-10-06T13:54:44.725Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3a/2a/7cc015f5b9f5db42b7d48157e23356022889fc354a2813c15934b7cb5c0e/attrs-25.4.0-py3-none-any.whl", hash = "sha256:adcf7e2a1fb3b36ac48d97835bb6d8ade15b8dcce26aba8bf1d14847b57a3373", size = 67615, upload-time = "2025-10-06T13:54:43.17Z" },
+]
+
+[[package]]
+name = "bitsandbytes"
+version = "0.48.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "torch" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d5/56/e58f1eeb41c71d3789d401ad147fc0fa78fa7004ea58616ba6abc50889c8/bitsandbytes-0.48.2-py3-none-manylinux_2_24_aarch64.whl", hash = "sha256:defbfa374d93809de3811cd2bca6978d1d51ecaa39f5bdd2018e1394a4886603", size = 33764723, upload-time = "2025-10-29T21:40:36.389Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/72/f6934097c94e023967bf7eb24e50987aca8a40f4cabf4e0282957f6258c2/bitsandbytes-0.48.2-py3-none-manylinux_2_24_x86_64.whl", hash = "sha256:cd289562cb7308ee2a707e6884fecca9bbbcfc9ec33a86df2a45e0779692c1a3", size = 59399452, upload-time = "2025-10-29T21:40:39.941Z" },
+    { url = "https://files.pythonhosted.org/packages/17/2d/309b3ba276d1fe5f3db4fb5e0a6926d10654656cdbfe49881aa95f4cfcc2/bitsandbytes-0.48.2-py3-none-win_amd64.whl", hash = "sha256:a048c285eb6ff53a8d189880e9dfa421d2bfb54e8cab263311757cf5b742d865", size = 58992447, upload-time = "2025-10-29T21:40:43.921Z" },
 ]
 
 [[package]]
@@ -191,7 +216,7 @@ wheels = [
 
 [[package]]
 name = "diffusers"
-version = "0.35.2"
+version = "0.34.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
@@ -203,9 +228,9 @@ dependencies = [
     { name = "requests" },
     { name = "safetensors" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/03/68/288ca23c7c05c73e87ffe5efffc282400ac9b017f7a9bb03883f4310ea15/diffusers-0.35.2.tar.gz", hash = "sha256:30ecd552303edfcfe1724573c3918a8462ee3ab4d529bdbd4c0045f763affded", size = 3366711, upload-time = "2025-10-15T04:05:17.213Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/01/eee276cb1ffa1528d3fac8c8382c32d0deef7f089baeefbee254bbbc0a8f/diffusers-0.34.0.tar.gz", hash = "sha256:25d84e779781fb8a78de22ea0f732aac32b619c65548a04e520d0b55e29a54e7", size = 3083860, upload-time = "2025-06-24T14:56:57.438Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2a/2e/38d9824f8c6bb048c5ba21c6d4da54c29c162a46b58b3ef907a360a76d3e/diffusers-0.35.2-py3-none-any.whl", hash = "sha256:d50d5e74fdd6dcf55e5c1d304bc52cc7c2659abd1752740d736d7b54078b4db5", size = 4121649, upload-time = "2025-10-15T04:05:14.391Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/e0/d5af850081d479e5bb6f6f310e98e1e2ea6cce9e5d67e2b7978d5690497e/diffusers-0.34.0-py3-none-any.whl", hash = "sha256:b0f642cd57756357bad5d23fe95b61f2e6e30321c93f1302cca6d832a01e6d33", size = 3774402, upload-time = "2025-06-24T14:56:55.089Z" },
 ]
 
 [[package]]
@@ -1143,6 +1168,15 @@ wheels = [
 ]
 
 [[package]]
+name = "torchao"
+version = "0.14.1"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/56/19abb32bbdc55d9fdebf8d6315a8f7d8ae10e387a91c631abd92afe0056b/torchao-0.14.1-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:50f68db5e41952e88daa383fc2f358541e617654f388f508d5c7580c3bee9447", size = 7197175, upload-time = "2025-10-24T01:02:59.223Z" },
+    { url = "https://files.pythonhosted.org/packages/41/a7/b888635fbb6ae951cffd41e1318966cbed96ec762b4999815ab68269e23f/torchao-0.14.1-py3-none-any.whl", hash = "sha256:c9896e14531817bc2ca6847b3fe71c42592ab80a43628b36668b2d6d6713fb5b", size = 1067611, upload-time = "2025-10-24T01:03:01.357Z" },
+]
+
+[[package]]
 name = "tornado"
 version = "6.5.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1175,7 +1209,7 @@ wheels = [
 
 [[package]]
 name = "transformers"
-version = "4.57.1"
+version = "4.56.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
@@ -1189,9 +1223,9 @@ dependencies = [
     { name = "tokenizers" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d6/68/a39307bcc4116a30b2106f2e689130a48de8bd8a1e635b5e1030e46fcd9e/transformers-4.57.1.tar.gz", hash = "sha256:f06c837959196c75039809636cd964b959f6604b75b8eeec6fdfc0440b89cc55", size = 10142511, upload-time = "2025-10-14T15:39:26.18Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e5/82/0bcfddd134cdf53440becb5e738257cc3cf34cf229d63b57bfd288e6579f/transformers-4.56.2.tar.gz", hash = "sha256:5e7c623e2d7494105c726dd10f6f90c2c99a55ebe86eef7233765abd0cb1c529", size = 9844296, upload-time = "2025-09-19T15:16:26.778Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/71/d3/c16c3b3cf7655a67db1144da94b021c200ac1303f82428f2beef6c2e72bb/transformers-4.57.1-py3-none-any.whl", hash = "sha256:b10d05da8fa67dc41644dbbf9bc45a44cb86ae33da6f9295f5fbf5b7890bd267", size = 11990925, upload-time = "2025-10-14T15:39:23.085Z" },
+    { url = "https://files.pythonhosted.org/packages/70/26/2591b48412bde75e33bfd292034103ffe41743cacd03120e3242516cd143/transformers-4.56.2-py3-none-any.whl", hash = "sha256:79c03d0e85b26cb573c109ff9eafa96f3c8d4febfd8a0774e8bba32702dd6dde", size = 11608055, upload-time = "2025-09-19T15:16:23.736Z" },
 ]
 
 [[package]]
