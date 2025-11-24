@@ -58,31 +58,25 @@ class ModelLoader:
             "description": self.current_model_config.description
         }
     
-    def _apply_memory_optimizations(self, pipe, model_type: str, pipe_name: str = ""):
+    def _apply_memory_optimizations(self, pipe, model_type: str, pipe_name: str = "", is_quantized: bool = False):
         """메모리 최적화 및 속도 최적화 적용"""
         memory_config = self.registry.get_memory_config()
 
         # 파이프라인 이름 표시 (T2I/I2I 구분)
         prefix = f"[{pipe_name}] " if pipe_name else "  "
 
-        # 양자화 타입 확인
-        quant_type = memory_config.get("quantization_type", "none").lower()
-        use_quantization = quant_type in ["fp8", "nf4"]
-
         # CPU offload 설정 (양자화 사용 시 자동 비활성화)
-        if memory_config.get("enable_cpu_offload", False) and not use_quantization:
+        if memory_config.get("enable_cpu_offload", False) and not is_quantized:
             try:
                 # FLUX 모델은 sequential offload 사용 (더 공격적인 메모리 절약)
                 if model_type == "flux":
                     pipe.enable_sequential_cpu_offload()
-                    print(f"{prefix}✓ Sequential CPU 오프로드 활성화 (FLUX 전용, 양자화 미사용)")
+                    print(f"{prefix}✓ Sequential CPU 오프로드 활성화 (FLUX 전용)")
                 else:
                     pipe.enable_model_cpu_offload()
                     print(f"{prefix}✓ Model CPU 오프로드 활성화")
             except Exception as e:
                 print(f"{prefix}⚠️ CPU offload 실패: {e}")
-        elif use_quantization:
-            print(f"{prefix}ℹ️ {quant_type.upper()} 양자화 사용 중 - CPU offload 비활성화 (GPU 최대 활용)")
 
         # VAE Tiling (고해상도 처리)
         if hasattr(pipe, 'vae'):
@@ -159,51 +153,123 @@ class ModelLoader:
                 print("  ✓ 8-bit 양자화 모드 (deprecated)")
 
         # 모델 타입별 로딩
-        if model_type == "flux":
+        if model_type == "flux-bnb-4bit":
+            # 사전 양자화 4-bit 모델 (diffusers/FLUX.1-dev-bnb-4bit)
+            from diffusers import FluxPipeline
+            print("  📥 사전 양자화 4-bit 모델 (bitsandbytes) 로딩 중...")
+            print("  ⚠️ 첫 로드 시 다운로드에 시간이 걸릴 수 있습니다.")
+
+            t2i = FluxPipeline.from_pretrained(
+                model_id,
+                torch_dtype=self.dtype,
+                cache_dir=self.cache_dir
+            )
+            t2i = t2i.to(self.device)
+            print("  ✓ 사전 양자화 4-bit 모델 로드 완료")
+
+            # GPU 메모리 확인
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                print(f"  📊 GPU 메모리: {allocated:.2f} GB")
+
+            # I2I 파이프라인
+            try:
+                i2i = AutoPipelineForImage2Image.from_pipe(t2i)
+            except:
+                i2i = t2i
+                print("  ⚠️ I2I 파이프라인 공유")
+
+        elif model_type == "flux-bnb-8bit":
+            # 사전 양자화 8-bit 모델 (diffusers/FLUX.1-dev-bnb-8bit)
+            from diffusers import FluxPipeline
+            print("  📥 사전 양자화 8-bit 모델 (bitsandbytes) 로딩 중...")
+            print("  ⚠️ 첫 로드 시 다운로드에 시간이 걸릴 수 있습니다.")
+
+            t2i = FluxPipeline.from_pretrained(
+                model_id,
+                torch_dtype=self.dtype,
+                cache_dir=self.cache_dir
+            )
+            t2i = t2i.to(self.device)
+            print("  ✓ 사전 양자화 8-bit 모델 로드 완료")
+
+            # GPU 메모리 확인
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                print(f"  📊 GPU 메모리: {allocated:.2f} GB")
+
+            # I2I 파이프라인
+            try:
+                i2i = AutoPipelineForImage2Image.from_pipe(t2i)
+            except:
+                i2i = t2i
+                print("  ⚠️ I2I 파이프라인 공유")
+
+        elif model_type == "flux-fp8-pretrained":
+            # 사전 양자화 FP8 모델 (diffusers/FLUX.1-dev-torchao-fp8)
+            # torchao 버전 호환 문제로 사용 불가
+            from diffusers import FluxPipeline
+            print("  📥 사전 양자화 FP8 모델 로딩 중...")
+            print("  ⚠️ 첫 로드 시 다운로드에 시간이 걸릴 수 있습니다.")
+
+            t2i = FluxPipeline.from_pretrained(
+                model_id,
+                torch_dtype=self.dtype,
+                use_safetensors=False,
+                device_map="cuda:0",
+                cache_dir=self.cache_dir
+            )
+            print("  ✓ 사전 양자화 FP8 모델 로드 완료")
+
+            # GPU 메모리 확인
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                print(f"  📊 GPU 메모리: {allocated:.2f} GB")
+
+            # I2I 파이프라인
+            try:
+                i2i = AutoPipelineForImage2Image.from_pipe(t2i)
+            except:
+                i2i = t2i
+                print("  ⚠️ I2I 파이프라인 공유")
+
+        elif model_type == "flux":
             # FLUX 계열: FP8 / NF4 양자화 지원
             if use_quantization:
                 try:
                     if quant_type == "fp8":
                         # FP8 양자화 (TorchAO)
-                        # 저장 경로 설정
-                        quantized_path = "/home/shared/FLUX.1-dev-fp8"
+                        # Transformer만 양자화, 나머지는 원본
+                        print("  📥 FP8 Transformer 로딩 중...")
+                        from torchao.quantization import quantize_
+                        from torchao.quantization.quant_api import Float8WeightOnlyConfig
 
-                        # 저장된 양자화 모델이 있는지 확인
-                        import os
-                        if os.path.exists(os.path.join(quantized_path, "config.json")):
-                            print(f"  ✅ 저장된 FP8 모델 발견 - 로딩 중: {quantized_path}")
-                            # 저장된 양자화 모델 로드
-                            transformer = FluxTransformer2DModel.from_pretrained(
-                                quantized_path,
-                                torch_dtype=self.dtype,
-                                cache_dir=self.cache_dir
-                            )
-                            print("  ✓ 저장된 FP8 모델 로드 완료 (양자화 과정 생략)")
+                        # Transformer 로드 후 양자화
+                        transformer = FluxTransformer2DModel.from_pretrained(
+                            model_id,
+                            subfolder="transformer",
+                            torch_dtype=self.dtype,
+                            cache_dir=self.cache_dir
+                        )
+
+                        # 양자화 전 모델 크기 확인
+                        param_size_before = sum(p.numel() * p.element_size() for p in transformer.parameters()) / 1024**3
+                        print(f"  📊 양자화 전 Transformer 크기: {param_size_before:.2f} GB")
+
+                        # FP8 양자화 적용 (Float8WeightOnlyConfig 사용)
+                        print("  🔄 FP8 양자화 적용 중...")
+                        quantize_(transformer, Float8WeightOnlyConfig())
+
+                        # 양자화 후 모델 크기 확인
+                        param_size_after = sum(p.numel() * p.element_size() for p in transformer.parameters()) / 1024**3
+                        print(f"  📊 양자화 후 Transformer 크기: {param_size_after:.2f} GB")
+
+                        # 양자화 성공 여부 확인
+                        if param_size_after < param_size_before * 0.7:
+                            print(f"  ✓ FP8 양자화 성공 (크기 {param_size_before:.2f}GB → {param_size_after:.2f}GB)")
                         else:
-                            print("  📥 FP8 Transformer 로딩 중...")
-                            from torchao.quantization import quantize_, int8_weight_only
-
-                            # Transformer 로드 후 양자화
-                            transformer = FluxTransformer2DModel.from_pretrained(
-                                model_id,
-                                subfolder="transformer",
-                                torch_dtype=self.dtype,
-                                cache_dir=self.cache_dir
-                            )
-
-                            # FP8 양자화 적용
-                            print("  🔄 FP8 양자화 적용 중... (5-15분 소요)")
-                            quantize_(transformer, int8_weight_only())
-                            print("  ✓ FP8 양자화 적용 완료")
-
-                            # 양자화된 모델 저장
-                            try:
-                                print(f"  💾 양자화 모델 저장 중: {quantized_path}")
-                                os.makedirs(quantized_path, exist_ok=True)
-                                transformer.save_pretrained(quantized_path)
-                                print(f"  ✅ 양자화 모델 저장 완료 (다음 실행부터 빠르게 로드)")
-                            except Exception as save_err:
-                                print(f"  ⚠️ 양자화 모델 저장 실패 (다음에도 양자화 수행): {save_err}")
+                            print(f"  ⚠️ FP8 양자화 실패 또는 미적용 (크기 변화 없음)")
+                            raise RuntimeError("FP8 양자화가 적용되지 않았습니다")
 
                         # 전체 파이프라인 구성
                         print("  🔧 파이프라인 구성 중...")
@@ -214,18 +280,18 @@ class ModelLoader:
                             cache_dir=self.cache_dir
                         )
 
+                        # GPU로 이동
+                        t2i = t2i.to(self.device)
+                        print(f"  ✓ FP8 모델을 {self.device}로 이동")
+
+                        # 최종 GPU 메모리 확인
+                        if torch.cuda.is_available():
+                            allocated = torch.cuda.memory_allocated() / 1024**3
+                            print(f"  📊 전체 GPU 메모리: {allocated:.2f} GB")
+
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
-                        # 저장 경로 설정
-                        quantized_path = "/home/shared/FLUX.1-dev-nf4"
-
-                        # 저장된 양자화 모델이 있는지 확인
-                        import os
-                        if os.path.exists(os.path.join(quantized_path, "config.json")):
-                            print(f"  ✅ 저장된 NF4 모델 발견 - 로딩 중: {quantized_path}")
-                            # NF4는 저장/로드가 복잡하므로 매번 양자화 (개선 필요)
-                            print("  ⚠️ NF4는 저장된 모델 로드 미지원 - 재양자화 수행")
-
+                        # ⚠️ NF4 양자화 모델은 저장/로드 복잡 - 매번 양자화 수행
                         print("  📥 NF4 Transformer 로딩 중...")
                         nf4_config = BitsAndBytesConfig(
                             load_in_4bit=True,
@@ -251,29 +317,30 @@ class ModelLoader:
                             torch_dtype=self.dtype,
                             cache_dir=self.cache_dir
                         )
-
-                    # 양자화 사용 시 GPU로 직접 이동 (CPU offload 불필요)
-                    if self.device == "cuda":
                         t2i = t2i.to(self.device)
-                        print(f"  ✓ {quant_type.upper()} 모델을 {self.device}로 이동 (CPU offload 불필요)")
+                        print(f"  ✓ 양자화된 모델을 {self.device}로 이동")
 
                     print(f"  ✅ {quant_type.upper()} 양자화 로딩 완료")
 
                 except Exception as e:
-                    print(f"  ⚠️ {quant_type.upper()} 로딩 실패, 일반 모드로 폴백: {e}")
+                    print(f"  ⚠️ {quant_type.upper()} 로딩 실패: {e}")
+                    print(f"  🔄 CPU offload 모드로 폴백 시도...")
                     use_quantization = False
-                    # 폴백: 일반 로딩
-                    t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
-                    if not memory_config.get("enable_cpu_offload", False):
-                        t2i = t2i.to(self.device)
+                    # 폴백: CPU offload 모드 (CPU 16GB로는 분산로딩 불가)
+                    # enable_sequential_cpu_offload 방식 사용
+                    t2i = DiffusionPipeline.from_pretrained(
+                        model_id,
+                        torch_dtype=self.dtype,
+                        cache_dir=self.cache_dir
+                    )
+                    t2i.enable_sequential_cpu_offload()
+                    print(f"  ✓ Sequential CPU offload 적용 (느리지만 메모리 안정적)")
             else:
                 # 일반 FLUX 로딩 (양자화 미사용)
+                # device_map="balanced"로 GPU 우선, 넘치면 CPU 분산
+                load_kwargs["device_map"] = "balanced"
                 t2i = DiffusionPipeline.from_pretrained(model_id, **load_kwargs)
-
-                # CPU offload 미사용 시에만 .to(device)
-                if not memory_config.get("enable_cpu_offload", False):
-                    t2i = t2i.to(self.device)
-                    print(f"  ✓ 모델을 {self.device}로 이동")
+                print(f"  ✓ device_map='balanced' 적용 (GPU 우선, 넘치면 CPU 분산)")
 
             # I2I 파이프라인 생성 시도
             try:
@@ -302,11 +369,15 @@ class ModelLoader:
             except:
                 i2i = t2i
         
-        # 메모리 최적화 적용 (model_type 전달)
-        t2i = self._apply_memory_optimizations(t2i, model_type, "T2I")
-        if i2i != t2i:
-            i2i = self._apply_memory_optimizations(i2i, model_type, "I2I")
-        
+        # 메모리 최적화 적용 (사전 양자화 모델은 최적화 불필요)
+        is_prequantized = model_type in ["flux-bnb-4bit", "flux-bnb-8bit", "flux-fp8-pretrained"]
+        if is_prequantized:
+            print("  ℹ️ 사전 양자화 모델 - 메모리 최적화 스킵 (이미 최적화됨)")
+        else:
+            t2i = self._apply_memory_optimizations(t2i, model_type, "T2I", use_quantization)
+            if i2i != t2i:
+                i2i = self._apply_memory_optimizations(i2i, model_type, "I2I", use_quantization)
+
         return t2i, i2i
     
     def load_model(self, model_name: str) -> bool:
@@ -315,13 +386,18 @@ class ModelLoader:
         if self.is_loaded() and self.current_model_name == model_name:
             print(f"ℹ️ 모델 '{model_name}' 이미 로드됨 — 스킵")
             return True
-        
+
+        # 기존 모델 해제 (메모리 확보)
+        if self.is_loaded():
+            print(f"🧹 기존 모델 '{self.current_model_name}' 해제 중...")
+            self.unload_model()
+
         # 모델 설정 가져오기
         model_config = self.registry.get_model(model_name)
         if not model_config:
             print(f"❌ 알 수 없는 모델: {model_name}")
             return False
-        
+
         print(f"🔄 모델 로딩 시작: {model_name}")
         print(f"  ID: {model_config.id}")
         
@@ -400,19 +476,41 @@ class ModelLoader:
     
     def unload_model(self):
         """모델 언로드 (메모리 해제)"""
+        import gc
+
         if self.t2i_pipe:
+            # 파이프라인 내부 컴포넌트도 명시적 해제
+            if hasattr(self.t2i_pipe, 'to'):
+                try:
+                    self.t2i_pipe.to('cpu')
+                except:
+                    pass
             del self.t2i_pipe
             self.t2i_pipe = None
-        
+
         if self.i2i_pipe:
+            if hasattr(self.i2i_pipe, 'to'):
+                try:
+                    self.i2i_pipe.to('cpu')
+                except:
+                    pass
             del self.i2i_pipe
             self.i2i_pipe = None
-        
+
         self.current_model_name = None
         self.current_model_config = None
-        
+
+        # 강제 가비지 컬렉션
+        gc.collect()
+
         # GPU 메모리 정리
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        
+            torch.cuda.synchronize()
+
+            # 메모리 상태 출력
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            reserved = torch.cuda.memory_reserved() / 1024**3
+            print(f"  📊 GPU 메모리 해제 후: 할당={allocated:.2f}GB, 예약={reserved:.2f}GB")
+
         print("🗑️ 모델 언로드 완료")

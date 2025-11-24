@@ -1,5 +1,6 @@
 # main.py (개선)
 import base64
+import time
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -8,6 +9,9 @@ import asyncio
 from . import services
 
 app = FastAPI(title="헬스케어 AI 콘텐츠 API (개선)")
+
+# 서버 시작 시간 (재시작 감지용)
+SERVER_START_TIME = time.time()
 
 # Pydantic schemas
 class CaptionRequest(BaseModel):
@@ -44,7 +48,12 @@ async def startup_event():
     """앱 시작 시 모델을 1회만 로드"""
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, services.init_image_pipelines)
-    print("✅ FastAPI 시작 완료 - 모델 로드됨")
+
+    # 로드 결과 확인
+    if services.model_loader and services.model_loader.is_loaded():
+        print(f"✅ FastAPI 시작 완료 - 모델 로드됨: {services.model_loader.current_model_name}")
+    else:
+        print("❌ FastAPI 시작 완료 - 모델 로드 실패!")
 
 # 🆕 개선: reload 시 모델 재로딩 방지를 위한 shutdown 핸들러 제거
 # (기존에 있었다면) - uvicorn reload 시 메모리에 모델 유지
@@ -134,7 +143,9 @@ async def generate_i2i_image(req: I2IRequest):
 @app.get("/status")
 def status():
     """서비스 상태 및 사용 가능한 모델 목록 반환"""
-    return services.get_service_status()
+    result = services.get_service_status()
+    result["server_start_time"] = SERVER_START_TIME
+    return result
 
 @app.get("/models")
 def list_models():
@@ -155,12 +166,81 @@ def list_models():
 class SwitchModelRequest(BaseModel):
     model_name: str
 
+# 모델 전환 상태 관리
+_model_switch_status = {
+    "in_progress": False,
+    "target_model": None,
+    "success": None,
+    "message": None,
+    "error": None
+}
+_switch_task = None
+
 @app.post("/api/switch_model")
 def switch_model(req: SwitchModelRequest):
-    """모델 전환"""
+    """모델 전환 (동기 - 기존 호환)"""
     result = services.switch_model(req.model_name)
 
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
 
     return result
+
+@app.post("/api/switch_model_async")
+async def switch_model_async(req: SwitchModelRequest):
+    """모델 전환 (비동기 - 즉시 응답)"""
+    global _model_switch_status, _switch_task
+
+    # 이미 전환 중이면 거부
+    if _model_switch_status["in_progress"]:
+        raise HTTPException(
+            status_code=409,
+            detail=f"모델 전환 진행 중: {_model_switch_status['target_model']}"
+        )
+
+    # 상태 초기화
+    _model_switch_status = {
+        "in_progress": True,
+        "target_model": req.model_name,
+        "success": None,
+        "message": "모델 전환 시작...",
+        "error": None
+    }
+
+    # 백그라운드에서 모델 전환 실행
+    loop = asyncio.get_event_loop()
+    _switch_task = loop.run_in_executor(None, _do_switch_model, req.model_name)
+
+    return {
+        "status": "started",
+        "target_model": req.model_name,
+        "message": "모델 전환이 백그라운드에서 시작되었습니다. /api/switch_model_status로 상태를 확인하세요."
+    }
+
+def _do_switch_model(model_name: str):
+    """백그라운드 모델 전환 실행"""
+    global _model_switch_status
+    try:
+        result = services.switch_model(model_name)
+        _model_switch_status["success"] = result["success"]
+        _model_switch_status["message"] = result["message"]
+        if not result["success"]:
+            _model_switch_status["error"] = result["message"]
+    except Exception as e:
+        _model_switch_status["success"] = False
+        _model_switch_status["message"] = f"모델 전환 실패: {e}"
+        _model_switch_status["error"] = str(e)
+    finally:
+        _model_switch_status["in_progress"] = False
+
+@app.get("/api/switch_model_status")
+def get_switch_model_status():
+    """모델 전환 상태 조회"""
+    current_model = None
+    if services.model_loader and services.model_loader.is_loaded():
+        current_model = services.model_loader.current_model_name
+
+    return {
+        **_model_switch_status,
+        "current_model": current_model
+    }
