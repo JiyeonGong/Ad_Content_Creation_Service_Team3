@@ -37,5 +37,8 @@ src/outfitanyone
 #assets/outputs/
 
 # 입력폴더 공유시 주석처리
-#assets/inputs/outputs/
+#assets/inputs/
+data/
+outputs/
 models/
+#assets/inputs/outputs/
