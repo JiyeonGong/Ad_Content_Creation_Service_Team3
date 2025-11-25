@@ -642,126 +642,206 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                         )
 
 # ============================================================
-# 페이지 3: I2I 이미지 편집
+# 페이지 3: I2I 이미지 편집 (고도화 버전)
 # ============================================================
 def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
-    st.title("🖼️ 이미지 편집 (Image-to-Image)")
-    st.info("💡 업로드된 이미지를 AI로 편집합니다 (배경 변경, 스타일 변경 등)")
+    st.title("🖼️ 이미지 편집 / 변환 (Image-to-Image)")
+
+    st.info("""
+    💡 업로드한 이미지를 기반으로 스타일 변경, 배경 교체, 질감 개선, 현실감 향상 등 다양한 변환을 수행합니다.
     
-    # 이미지 소스
-    uploaded = st.file_uploader("이미지 업로드", type=["png", "jpg", "jpeg"])
+    • FLUX 모델 → 사람·운동·헬스케어 장면에 강함  
+    • SDXL 모델 → 일반 촬영 / 스타일 변경 / 배경 변경 작업에 적합
+    """)
+
+    # --------------------------------------------
+    # 1) 입력 이미지 확보
+    # --------------------------------------------
+    uploaded = st.file_uploader("📤 이미지 업로드", type=["png", "jpg", "jpeg"])
     preloaded = st.session_state.get("generated_images", [])
-    
+
     image_bytes = None
-    display_image = None
-    
+
     if uploaded:
         image_bytes = uploaded.getvalue()
-        display_image = image_bytes
+        st.success("원본 이미지 업로드 완료!")
     elif preloaded and connect_mode:
-        st.info("🔗 연결 모드: 페이지2 이미지 사용")
-        idx = st.selectbox("이미지 선택", range(len(preloaded)), format_func=lambda x: f"버전 {x+1}")
+        st.info("🔗 페이지2에서 생성한 이미지 사용")
+        idx = st.selectbox(
+            "이미지 선택",
+            range(len(preloaded)),
+            format_func=lambda x: f"버전 {x+1}"
+        )
         image_bytes = preloaded[idx]["bytes"].getvalue()
-        display_image = image_bytes
-    
-    if display_image:
-        st.image(display_image, caption="선택된 이미지", width=300)
+
+    if image_bytes:
+        st.image(image_bytes, caption="입력 이미지", width=300)
     else:
-        st.warning("⚠️ 이미지를 업로드하거나 페이지2에서 생성하세요")
-    
-    # 문구
-    selected_caption = ""
+        st.warning("⚠️ 이미지를 업로드하거나 페이지2에서 생성하세요.")
+        return
+
+    # --------------------------------------------
+    # 2) 문구 구성
+    # --------------------------------------------
+    st.markdown("---")
+    st.subheader("✏️ 편집 프롬프트")
+
+    # 기본 문구 (페이지 1에서 가져오거나 직접 입력)
     if connect_mode and "selected_caption" in st.session_state:
-        st.info(f"🔗 사용할 문구: {st.session_state['selected_caption']}")
-        selected_caption = st.session_state["selected_caption"]
+        base_caption = st.session_state["selected_caption"]
+        st.info(f"🔗 페이지 1 문구 사용\n\n**{base_caption}**")
     else:
-        selected_caption = st.text_input("편집 문구", placeholder=config.get("ui.placeholders.caption", ""))
-    
-    # I2I 설정
-    i2i_config = config.get("image.i2i", {})
-    strength = st.slider(
-        "✨ 변화 강도 (Strength)",
-        min_value=i2i_config.get("strength", {}).get("min", 0.0),
-        max_value=i2i_config.get("strength", {}).get("max", 1.0),
-        value=i2i_config.get("strength", {}).get("default", 0.75),
-        step=i2i_config.get("strength", {}).get("step", 0.05),
-        help="0.0: 원본 유지, 1.0: 완전히 새로운 이미지"
-    )
-    
+        base_caption = st.text_input(
+            "기본 문구 (필수)",
+            placeholder="예: 밝은 필라테스 스튜디오 분위기로 변경"
+        )
+
     edit_prompt = st.text_area(
         "추가 지시 (선택)",
-        placeholder=config.get("ui.placeholders.edit_prompt", "")
+        placeholder="예: 바닥을 나무 재질로 변경, 피부 디테일 개선"
     )
 
-    # 현재 모델 정보 가져오기 (크기 권장을 위해)
+    if not base_caption.strip():
+        st.warning("⚠️ 기본 문구를 입력하세요.")
+        return
+
+    # --------------------------------------------
+    # 3) 모델 정보 기반 UI
+    # --------------------------------------------
     model_info = api.get_model_info()
-    current_model_name = model_info.get("current") if model_info else None
-    is_flux = current_model_name and "flux" in current_model_name.lower()
+    current_model = model_info.get("current") if model_info else None
+    is_flux = current_model and "flux" in current_model.lower()
 
-    # 출력 크기 (입력 이미지가 이 크기로 리사이즈됨)
+    # --------------------------------------------
+    # 4) 출력 크기 선택
+    # --------------------------------------------
+    st.markdown("---")
+    st.subheader("📐 출력 이미지 크기")
+
     preset_sizes = config.get("image.preset_sizes", [])
-
-    # FLUX 모델 사용 시 권장 크기 표시
     size_options = []
+
     for s in preset_sizes:
         label = f"{s['name']} ({s['width']}x{s['height']})"
         if is_flux and s['width'] == 1024 and s['height'] == 1024:
-            label += " ⭐ 권장"
+            label += " ⭐ FLUX 권장"
         size_options.append(label)
 
-    selected_size = st.selectbox(
-        "출력 크기",
-        size_options,
-        help="입력 이미지가 이 크기로 리사이즈된 후 편집됩니다"
-    )
-
+    selected_size = st.selectbox("출력 크기", size_options)
     size_idx = size_options.index(selected_size)
+
     width = preset_sizes[size_idx]["width"]
     height = preset_sizes[size_idx]["height"]
+    aligned_w = align_to_64(width)
+    aligned_h = align_to_64(height)
 
-    submitted = st.button("✨ 이미지 편집", type="primary")
-    
-    if submitted:
-        if not image_bytes:
-            st.error("❌ 이미지를 먼저 업로드하세요")
-            return
-        if not selected_caption:
-            st.error("❌ 문구를 입력하세요")
-            return
-        
-        aligned_w = align_to_64(width)
-        aligned_h = align_to_64(height)
-        
-        final_prompt = caption_to_prompt(selected_caption)
-        if edit_prompt:
-            final_prompt += f", {edit_prompt}"
-        
-        payload = {
-            "input_image_base64": base64.b64encode(image_bytes).decode(),
-            "prompt": final_prompt,
-            "strength": strength,
-            "width": aligned_w,
-            "height": aligned_h,
-            "steps": 30
-        }
-        
-        try:
-            with st.spinner("편집 중..."):
-                edited = api.call_i2i(payload)
-            
-            if edited:
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("원본")
-                    st.image(image_bytes, use_container_width=True)
-                with col2:
-                    st.subheader("편집됨")
-                    st.image(edited, use_container_width=True)
-                
-                st.success("✅ 완료!")
-                st.download_button("⬇️ 편집 이미지 다운로드", edited, "edited.png", "image/png")
-        except Exception as e:
-            st.error(f"❌ 편집 실패: {e}")
+    # --------------------------------------------
+    # 5) Steps & Guidance
+    # --------------------------------------------
+    st.markdown("---")
+    st.subheader("⚙️ I2I 세부 설정")
+
+    current_cfg = model_info["models"].get(current_model, {}) if model_info else {}
+
+    default_steps = current_cfg.get("default_steps", 20)
+    default_guidance = current_cfg.get("guidance_scale")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        steps = st.slider(
+            "Steps",
+            1, 50, default_steps, 1,
+            help="추론 반복 횟수 (높을수록 더 정교하지만 느림)"
+        )
+    with col2:
+        if default_guidance is not None:
+            guidance_scale = st.slider(
+                "Guidance Scale",
+                1.0, 10.0, float(default_guidance), 0.5,
+                help="프롬프트 준수 강도"
+            )
+        else:
+            guidance_scale = None
+            st.caption("(현재 모델은 Guidance Scale을 지원하지 않음)")
+
+    # --------------------------------------------
+    # 6) Strength
+    # --------------------------------------------
+    strength_cfg = config.get("image.i2i.strength", {})
+    strength = st.slider(
+        "변화 강도 (Strength)",
+        min_value=strength_cfg.get("min", 0.0),
+        max_value=strength_cfg.get("max", 1.0),
+        value=strength_cfg.get("default", 0.7),
+        step=strength_cfg.get("step", 0.05),
+        help="0: 원본 유지, 1: 완전히 새로운 이미지"
+    )
+
+    # --------------------------------------------
+    # 7) ADetailer 옵션
+    # --------------------------------------------
+    apply_adetailer = st.checkbox(
+        "손/얼굴 자동 보정 (ADetailer)",
+        value=True if is_flux else False,
+        help="사람 장면에서 손/얼굴 부분만 정교하게 재생성"
+    )
+
+    # --------------------------------------------
+    # 8) 생성 버튼
+    # --------------------------------------------
+    st.markdown("---")
+    run_btn = st.button("✨ 이미지 편집 실행", type="primary")
+
+    if not run_btn:
+        return
+
+    # --------------------------------------------
+    # 9) 백엔드 호출 준비
+    # --------------------------------------------
+    final_prompt = caption_to_prompt(base_caption)
+    if edit_prompt:
+        final_prompt += ", " + edit_prompt
+
+    payload = {
+        "input_image_base64": base64.b64encode(image_bytes).decode(),
+        "prompt": final_prompt,
+        "strength": strength,
+        "width": aligned_w,
+        "height": aligned_h,
+        "steps": steps,
+        "guidance_scale": guidance_scale,
+        "apply_adetailer": apply_adetailer,
+    }
+
+    # --------------------------------------------
+    # 10) 백엔드 호출 (GPU 부족 → 자동 1/2 해상도 재시도)
+    # --------------------------------------------
+    try:
+        with st.spinner("이미지 편집 중... 10~30초 소요됩니다."):
+            edited_img = api.call_i2i(payload)
+    except Exception as e:
+        st.error(f"❌ 편집 실패: {e}")
+        return
+
+    # --------------------------------------------
+    # 11) 결과 출력
+    # --------------------------------------------
+    st.success("✅ 편집 완료!")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("📌 원본")
+        st.image(image_bytes, use_container_width=True)
+    with col2:
+        st.subheader("📌 편집결과")
+        st.image(edited_img, use_container_width=True)
+
+    st.download_button(
+        "⬇️ 편집 결과 다운로드",
+        edited_img,
+        "edited.png",
+        "image/png"
+    )
 
 # ============================================================
 # 실행

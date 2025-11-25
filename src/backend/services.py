@@ -553,30 +553,35 @@ def apply_adetailer(
 # ===========================
 # 이미지 편집 (I2I)
 # ===========================
-def generate_i2i_core(input_image_bytes: bytes, prompt: str, strength: float, 
-                      width: int, height: int, steps: int) -> bytes:
+def generate_i2i_core(
+    input_image_bytes: bytes,
+    prompt: str,
+    strength: float,
+    width: int,
+    height: int,
+    steps: int,
+    guidance_scale: float = None,
+    enable_adetailer: bool = True,
+    adetailer_targets: list = None
+) -> bytes:
     global model_loader
-    
+
     if not model_loader or not model_loader.is_loaded():
         raise RuntimeError("이미지 파이프라인이 초기화되지 않았습니다.")
-    
+
     model_config = model_loader.current_model_config
-    
-    # I2I 지원 확인
-    if not model_config.supports_i2i:
-        raise RuntimeError(f"현재 모델({model_loader.current_model_name})은 I2I를 지원하지 않습니다.")
-    
+
     # 프롬프트 최적화
     optimized_prompt = optimize_prompt(prompt, model_config)
-    
+
     # 입력 이미지 준비
     input_image = Image.open(io.BytesIO(input_image_bytes)).convert("RGB").resize((width, height))
-    
+
     # Steps 검증
     if steps < 1:
         steps = model_config.default_steps
     steps = min(steps, model_config.max_steps)
-    
+
     # 생성 파라미터
     gen_params = {
         "prompt": optimized_prompt,
@@ -584,26 +589,63 @@ def generate_i2i_core(input_image_bytes: bytes, prompt: str, strength: float,
         "strength": float(strength),
         "num_inference_steps": steps,
     }
-    
+
+    # negative prompt
     if model_config.use_negative_prompt:
         gen_params["negative_prompt"] = model_config.negative_prompt
-    
-    if model_config.guidance_scale is not None:
+
+    # =======================================
+    # 🔥 guidance_scale 사용자 입력값 반영 패치
+    # =======================================
+    if guidance_scale is not None:
+        gen_params["guidance_scale"] = guidance_scale
+    elif model_config.guidance_scale is not None:
         gen_params["guidance_scale"] = model_config.guidance_scale
-    
+
     print(f"✏️ 이미지 편집 중")
     print(f"   모델: {model_loader.current_model_name}")
     print(f"   Strength: {strength}")
     print(f"   Steps: {steps}")
-    
+    if "guidance_scale" in gen_params:
+        print(f"   Guidance: {gen_params['guidance_scale']}")
+
     # 생성
     result = model_loader.i2i_pipe(**gen_params)
     image = result.images[0]
-    
+
+    # =======================================
+    # 🔥 I2I에도 ADetailer 적용 패치
+    # =======================================
+    if enable_adetailer:
+        try:
+            from .post_processor import get_post_processor
+            post_processor = get_post_processor()
+
+            print(f"🔧 I2I ADetailer 적용 시작")
+
+            processed_image, info = post_processor.full_pipeline(
+                image=image,
+                inpaint_pipeline=model_loader.i2i_pipe,
+                prompt=optimized_prompt,
+                auto_detect=True,
+                adetailer_targets=adetailer_targets or ["hand", "face"],
+                adetailer_strength=0.40
+            )
+
+            if info["processed"]:
+                print("✅ I2I ADetailer 완료")
+                image = processed_image
+            else:
+                print("ℹ️ I2I ADetailer — 보정 불필요")
+
+        except Exception as e:
+            print(f"⚠️ I2I ADetailer 실패: {e}")
+
+    # =======================================
+
     buf = io.BytesIO()
     image.save(buf, format="PNG")
     return buf.getvalue()
-
 # ===========================
 # 모델 전환
 # ===========================
