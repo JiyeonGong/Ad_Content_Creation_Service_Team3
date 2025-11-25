@@ -230,6 +230,143 @@ Output ONLY the English prompt, no explanations.
         print(f"⚠️ 프롬프트 최적화 실패, 원본 사용: {e}")
         return text
 
+
+
+
+
+
+
+# def optimize_prompt(text: str, model_config) -> str:
+#     """
+#     한국어 프롬프트를 영어로 번역 및 최적화하는 하이브리드 버전
+#     - FLUX: 서술형 문장 중심 + 세부 품질 가이드 + 짧은 네거티브
+#     - SDXL/기타: 키워드/묘사 혼합형 + 고품질 인체/장비 아티팩트 방지 키워드 포함
+#     """
+#     if not openai_client:
+#         return text
+
+#     # 최적화 설정 확인
+#     opt_config = registry.get_prompt_optimization_config()
+#     if not opt_config.get("enabled", True):
+#         return text
+#     if not opt_config.get("translate_korean", True):
+#         return text
+
+#     try:
+#         # 모델 길이 제한
+#         max_tokens = model_config.max_tokens if model_config else 77
+#         if max_tokens <= 77:
+#             constraint = f"Keep it under 60 words (tight {max_tokens}-token limit)."
+#         else:
+#             constraint = "Keep it concise but descriptive (under 150 words)."
+
+#         model_type = (model_config.type if model_config else "").lower()
+
+#         # =====================================================================
+#         # FLUX: 서술형 + 디테일 + 카메라/조명 강조 + 짧은 negative
+#         # =====================================================================
+#         if "flux" in model_type:
+#             system_prompt = f"""
+# You are a senior prompt engineer specialized in FLUX image generation models.
+
+# Your task:
+# Convert short Korean marketing text into a natural, high-quality English FLUX prompt.
+
+# FLUX Style Rules:
+# 1. Use descriptive, natural sentences (NOT keyword lists).
+# 2. The prompt should follow this general structure:
+#    - Sentence 1: Main subject introduction (who/what).
+#    - Sentence 2: Action / pose / activity / context.
+#    - Sentence 3: Environment / setting of the scene.
+#    - Sentence 4: Lighting description.
+#    - Sentence 5 (optional): Camera/lens/style and a short negative phrase.
+
+# 3. Integrate these realism/quality boosters naturally when people appear:
+#    - detailed hands, five fingers, natural hand pose, anatomically correct hands, correct thumb direction
+#    - detailed face, clear facial features, symmetric face, natural eye shape
+#    - correct human anatomy, natural body proportions, well-fitted clothing
+
+# 4. If objects or equipment appear:
+#    - proper object interaction, realistic grip, natural holding pose
+#    - physically accurate, object not clipping through the body
+#    - fitness/gym equipment not penetrating the body, proper form, realistic weight interaction
+
+# 5. Negative prompt rule (FLUX-specific):
+#    - Keep negative extremely short (e.g., "no distorted face, no extra limbs").
+#    - Add it only as the last clause of the final sentence if needed.
+
+# 6. {constraint}
+
+# Output rules:
+# - Write ONLY the final FLUX-style prompt.
+# - 3–5 natural sentences.
+# - No bullets, no explanations, no formatting.
+# """
+
+#         # =====================================================================
+#         # SDXL 및 기타 모델: 묘사형 + 키워드 중심 + 품질 키워드 자동 포함
+#         # =====================================================================
+#         else:
+#             system_prompt = f"""
+# You are a professional prompt engineer for image models such as SDXL.
+
+# Task:
+# Translate the Korean marketing text into an optimized English image prompt using
+# a mix of short descriptive phrases and light sentence structure.
+
+# Guidelines:
+# - Focus on visual elements, mood, style, and composition.
+# - Incorporate descriptive keywords naturally.
+# - {constraint}
+
+# Anti-artifact quality keywords (integrate naturally if relevant):
+
+# People:
+# - detailed hands, five fingers, natural hand pose, anatomically correct hands, correct thumb direction
+# - detailed face, clear facial features, symmetric face, natural eye shape
+# - correct human anatomy, natural body proportions, well-fitted clothing
+
+# Objects interaction:
+# - proper object interaction, realistic grip, natural holding pose
+# - physically accurate, object not clipping through body
+
+# Fitness/gym equipment:
+# - equipment not penetrating body, proper form
+# - hands gripping equipment correctly, realistic weight interaction
+
+# Output rules:
+# - Output ONLY the final optimized English prompt.
+# - No explanations, no bullet points.
+# """
+
+#         # =====================================================================
+#         # 모델 호출
+#         # =====================================================================
+#         resp = openai_client.responses.create(
+#             model=MODEL_GPT_MINI,
+#             input=f"{system_prompt}\n\n[User marketing text]\n{text}",
+#             reasoning={"effort": "minimal"},
+#             max_output_tokens=200,
+#         )
+
+#         result = getattr(resp, "output_text", None) or str(resp)
+#         optimized = result.strip()
+
+#         print(f"🔄 프롬프트 최적화 완료\n  원본: {text}\n  최적화: {optimized}")
+#         return optimized
+
+#     except Exception as e:
+#         print(f"⚠️ 프롬프트 최적화 실패 → 원본 사용: {e}")
+#         return text
+
+
+
+
+
+
+
+
+
 # ===========================
 # GPT-5 Mini: 문구 생성
 # ===========================
