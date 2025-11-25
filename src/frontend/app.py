@@ -620,19 +620,26 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         if st.session_state.get("generated_images"):
             st.success(f"✅ {len(st.session_state['generated_images'])}개 이미지 완료!")
 
-            cols = st.columns(len(st.session_state["generated_images"]))
-            for idx, img_data in enumerate(st.session_state["generated_images"]):
-                with cols[idx]:
-                    st.image(img_data["bytes"], caption=f"버전 {idx+1}", use_container_width=True)
-                    st.download_button(
-                        f"⬇️ 다운로드",
-                        img_data["bytes"],
-                        f"image_v{idx+1}.png",
-                        "image/png",
-                        key=f"dl_{idx}"
-                    )
-        else:
-            st.error("❌ 이미지 생성에 실패했습니다. 백엔드 로그를 확인하세요.")
+            imgs = st.session_state["generated_images"]
+            max_cols = 3  # 한 줄 최대 3장
+            for row_start in range(0, len(imgs), max_cols):
+                row_imgs = imgs[row_start:row_start + max_cols]
+                cols = st.columns(len(row_imgs))
+                for idx, img_data in enumerate(row_imgs):
+                    with cols[idx]:
+                        st.image(
+                            img_data["bytes"],
+                            caption=f"버전 {row_start + idx + 1}",
+                            use_container_width=False,
+                            width=320,
+                        )
+                        st.download_button(
+                            "⬇️ 다운로드",
+                            img_data["bytes"],
+                            f"image_v{row_start + idx + 1}.png",
+                            "image/png",
+                            key=f"dl_{row_start + idx}"
+                        )
 
 # ============================================================
 # 페이지 3: I2I 이미지 편집
