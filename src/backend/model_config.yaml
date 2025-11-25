@@ -1,129 +1,93 @@
 # model_config.yaml
 # 이미지 생성 모델 설정 파일
-# 새 모델 추가 시 이 파일만 수정하면 됨
 
 models:
-  # FLUX 모델 (최신, 고품질, 한국어 지원 우수)
-  flux-schnell:
-    id: "black-forest-labs/FLUX.1-schnell"
-    type: "flux"
-    requires_auth: true
-    params:
-      default_steps: 4
-      max_steps: 8
-      use_negative_prompt: false
-      guidance_scale: null
-      supports_i2i: true
-      max_tokens: 512
-      default_size: [1024, 1024]
-      max_size: [2048, 2048]
-    description: "빠른 생성, 4 steps 권장"
-    
-  flux-dev:
-    id: "black-forest-labs/FLUX.1-dev"
-    type: "flux"
-    requires_auth: true
-    params:
-      default_steps: 20
-      max_steps: 50
-      use_negative_prompt: false
-      guidance_scale: null
-      supports_i2i: true
-      max_tokens: 512
-      default_size: [1024, 1024]
-      max_size: [2048, 2048]
-    description: "고품질, 느림"
-  
-  # Stable Diffusion XL (안정적, 폴백용)
-  sdxl:
-    id: "stabilityai/stable-diffusion-xl-base-1.0"
-    type: "sdxl"
+  # ========================================
+  # 사전 양자화 8-bit 모델 (bitsandbytes) ⭐ 권장
+  # ========================================
+  # - 속도: ~77초/이미지 (1024x1024, 28 steps)
+  # - GPU 메모리: ~21GB
+  # - 품질: 99%+
+  flux-dev-bnb-8bit:
+    id: "diffusers/FLUX.1-dev-bnb-8bit"
+    type: "flux-bnb-8bit"
     requires_auth: false
-    params:
-      default_steps: 30
-      max_steps: 50
-      use_negative_prompt: true
-      guidance_scale: 7.5
-      supports_i2i: true
-      max_tokens: 77
-      default_size: [1024, 1024]
-      max_size: [2048, 2048]
-      negative_prompt: "low quality, blurry, text, watermark, distorted, ugly, tiling"
-    description: "안정적, 무료"
-  
-  # Stable Diffusion 3
-  sd3:
-    id: "stabilityai/stable-diffusion-3-medium-diffusers"
-    type: "sd3"
-    requires_auth: true
     params:
       default_steps: 28
       max_steps: 50
-      use_negative_prompt: true
-      guidance_scale: 7.0
+      use_negative_prompt: false
+      guidance_scale: 3.5
       supports_i2i: true
-      max_tokens: 77
+      max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
-      negative_prompt: "low quality, blurry, distorted"
-    description: "SD3, 텍스트 렌더링 개선"
-  
-  # Kandinsky 3 (다국어 지원)
-  kandinsky:
-    id: "kandinsky-community/kandinsky-3"
-    type: "kandinsky"
+    description: "FLUX.1-dev 8-bit 양자화 (77초/이미지, 권장)"
+
+  # ========================================
+  # 사전 양자화 4-bit 모델 (bitsandbytes)
+  # ========================================
+  # - GPU 메모리: ~8GB
+  # - 품질: 98%+
+  flux-dev-bnb-4bit:
+    id: "diffusers/FLUX.1-dev-bnb-4bit"
+    type: "flux-bnb-4bit"
     requires_auth: false
     params:
-      default_steps: 25
-      max_steps: 50
-      use_negative_prompt: true
-      guidance_scale: 7.0
-      supports_i2i: true
-      max_tokens: 77
-      default_size: [1024, 1024]
-      max_size: [1536, 1536]
-      negative_prompt: "low quality, blurry"
-    description: "러시아 모델, 다국어"
-  
-  # Playground v2.5
-  playground:
-    id: "playgroundai/playground-v2.5-1024px-aesthetic"
-    type: "sdxl"
-    requires_auth: false
-    params:
-      default_steps: 25
+      default_steps: 28
       max_steps: 50
       use_negative_prompt: false
-      guidance_scale: 3.0
+      guidance_scale: 3.5
       supports_i2i: true
-      max_tokens: 77
+      max_tokens: 512
       default_size: [1024, 1024]
-      max_size: [1536, 1536]
-    description: "미적 품질 최적화"
+      max_size: [2048, 2048]
+    description: "FLUX.1-dev 4-bit 양자화 (메모리 절약)"
 
+  # ========================================
+  # GCP VM 전용 원본 모델 (CPU offload 필요)
+  # ========================================
+  # - 속도: ~50분/이미지
+  # - GPU 메모리: CPU offload 사용
+  # - 품질: 100%
+  flux-dev-gcp:
+    id: "/home/shared/FLUX.1-dev"
+    type: "flux"
+    requires_auth: false
+    params:
+      default_steps: 28
+      max_steps: 50
+      use_negative_prompt: false
+      guidance_scale: 3.5
+      supports_i2i: true
+      max_tokens: 512
+      default_size: [1024, 1024]
+      max_size: [2048, 2048]
+    description: "FLUX.1-dev 원본 (50분/이미지, 최고 품질)"
+
+# ========================================
 # 실행 설정
+# ========================================
 runtime:
-  # 기본 사용 모델 (환경변수로 오버라이드 가능)
-  primary_model: "sdxl"
+  # 기본 모델 선택
+  # - "flux-dev-bnb-4bit": 4-bit 양자화 (~8GB VRAM)
+  # - "flux-dev-bnb-8bit": 8-bit 양자화 (77초, 권장)
+  # - "flux-dev-gcp": 원본 (50분, 최고 품질)
+  primary_model: "flux-dev-bnb-8bit"
 
-  
-  # 폴백 모델 체인 (순서대로 시도)
-  fallback_models:
-    - "flux-schnell"
-    - "playground"
-  
-  # 폴백 활성화 여부
-  enable_fallback: true
-  
+  # 폴백 비활성화 (primary 실패 시 에러로 처리)
+  enable_fallback: false
+
   # 프롬프트 최적화 설정
   prompt_optimization:
     enabled: true
     translate_korean: true
-    max_length_by_model: true  # 모델별 토큰 제한 준수
-  
-  # 메모리 최적화
+    max_length_by_model: true
+
+  # 메모리 최적화 (원본 모델 사용 시 필요)
   memory:
-    enable_cpu_offload: false  # CPU 오프로드 (메모리 부족 시)
-    enable_attention_slicing: true  # 어텐션 슬라이싱
-    enable_vae_slicing: true  # VAE 슬라이싱
-    use_8bit: false  # 8비트 양자화 (더 느리지만 메모리 50% 절약)
+    # CPU offload (원본 모델 사용 시 필수)
+    enable_cpu_offload: true
+
+    # Attention/VAE 최적화
+    enable_attention_slicing: true
+    enable_vae_slicing: true

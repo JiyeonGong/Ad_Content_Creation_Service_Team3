@@ -7,7 +7,7 @@ app:
   
 api:
   base_url: "http://localhost:8000"  # 환경변수 API_BASE_URL로 오버라이드 가능
-  timeout: 900  # 초
+  timeout: 3600  # 초 (60분, CPU offload 사용 시)
   retry_attempts: 2  # GPU OOM 시 재시도 횟수
 
 # 페이지 설정
@@ -24,7 +24,7 @@ pages:
   
   - id: "i2i"
     icon: "🖼️"
-    title: "이미지 편집/합성"
+    title: "이미지 편집"
     description: "기존 이미지를 AI로 편집하고 스타일을 변경합니다"
 
 # 문구 생성 설정
@@ -46,25 +46,25 @@ caption:
 image:
   # 사전 정의된 크기 (백엔드에서 동적으로 가져올 수도 있음)
   preset_sizes:
+    - name: "정사각형 1024x1024"
+      width: 1024
+      height: 1024
+      description: "FLUX/SDXL 최적 크기"
+
     - name: "Instagram 세로 (4:5)"
       width: 1080
       height: 1350
       description: "피드 게시물 최적"
-    
+
     - name: "Instagram 정사각형 (1:1)"
       width: 1080
       height: 1080
       description: "범용"
-    
+
     - name: "Instagram 가로 (16:9)"
       width: 1080
       height: 608
       description: "풍경 이미지"
-    
-    - name: "SDXL 기본 (1:1)"
-      width: 1024
-      height: 1024
-      description: "모델 권장 크기"
   
   # Steps 범위 (모델별로 다를 수 있음)
   steps:
