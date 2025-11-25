@@ -13,6 +13,7 @@ import base64
 import yaml
 from typing import Optional, Dict, Any, List
 from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont #
 
 # ============================================================
 # 설정 로더
@@ -842,9 +843,60 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         "edited.png",
         "image/png"
     )
+#=================    
+# pillow 
+# 1. 현재 파일(app.py)의 상위 상위 폴더(Project Root)를 찾습니다.
+current_dir = os.path.dirname(os.path.abspath(__file__)) # src/frontend
+project_root = os.path.dirname(os.path.dirname(current_dir)) # Ad_Content_Creation_Service_Team3
+
+# 2. 목표 폰트 디렉토리 설정
+FONT_DIR = os.path.join(project_root, "configs", "inputs", "fonts")
+FONT_FILENAME = "PyeojinGothic-Medium.ttf"
+FONT_PATH = os.path.join(FONT_DIR, FONT_FILENAME)
+FONT_URL = "https://github.com/Jihwan-Suh/PyeojinGothic/raw/refs/heads/main/fonts/static/ttf/PyeojinGothic-Medium.ttf"
+
+def load_custom_font(size: int = 100):
+    """
+    지정된 경로(configs/inputs/fonts)에 폰트를 다운로드하고 로드합니다.
+    폴더가 없으면 자동으로 생성합니다.
+    """
+    # 1. 폴더가 없으면 생성 (이 부분이 중요합니다!)
+    if not os.path.exists(FONT_DIR):
+        try:
+            os.makedirs(FONT_DIR, exist_ok=True)
+            print(f"📁 폰트 폴더 생성 완료: {FONT_DIR}")
+        except Exception as e:
+            print(f"⚠️ 폴더 생성 실패: {e}")
+            return ImageFont.load_default()
+
+    # 2. 폰트 파일이 없으면 다운로드
+    if not os.path.exists(FONT_PATH):
+        try:
+            print(f"📥 폰트 다운로드 중... ({FONT_PATH})")
+            response = requests.get(FONT_URL)
+            response.raise_for_status()
+            with open(FONT_PATH, "wb") as f:
+                f.write(response.content)
+            print("✅ 폰트 다운로드 완료")
+        except Exception as e:
+            print(f"⚠️ 폰트 다운로드 실패, 기본 폰트 사용: {e}")
+            return ImageFont.load_default()
+
+    # 3. 폰트 로드
+    try:
+        return ImageFont.truetype(FONT_PATH, size)
+    except Exception:
+        print("⚠️ 폰트 로드 중 에러 발생, 기본 폰트 사용")
+        return ImageFont.load_default()
+
+# text_to_image 함수는 기존과 동일하게 사용하시면 됩니다.
+
+
 
 # ============================================================
 # 실행
 # ============================================================
 if __name__ == "__main__":
     main()
+
+
