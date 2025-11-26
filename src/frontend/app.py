@@ -174,6 +174,34 @@ class APIClient:
 
         raise Exception("모델 전환 타임아웃 (5분 초과)")
     
+    def load_model(self, model_name: str) -> Dict:
+        """모델 로드"""
+        try:
+            # 로딩은 시간이 걸릴 수 있으므로 타임아웃 넉넉히
+            resp = requests.post(
+                f"{self.base_url}/api/load_model",
+                json={"model_name": model_name},
+                timeout=300
+            )
+            resp.raise_for_status()
+            self._model_info = None # 캐시 초기화
+            return resp.json()
+        except Exception as e:
+            raise Exception(f"모델 로드 실패: {e}")
+
+    def unload_model(self) -> Dict:
+        """모델 언로드"""
+        try:
+            resp = requests.post(
+                f"{self.base_url}/api/unload_model",
+                timeout=60
+            )
+            resp.raise_for_status()
+            self._model_info = None # 캐시 초기화
+            return resp.json()
+        except Exception as e:
+            raise Exception(f"모델 언로드 실패: {e}")
+    
     def call_caption(self, payload: Dict) -> str:
         """문구 생성 API 호출"""
         try:
@@ -316,38 +344,72 @@ def main():
 
     model_info = api.get_model_info()
     if model_info:
-        current_model = model_info.get("current", "N/A")
+        current_model = model_info.get("current") # None이면 언로드 상태
         available_models = list(model_info.get("models", {}).keys())
+        
+        # 상태 아이콘 및 텍스트
+        if current_model:
+            st.sidebar.success(f"💡 **ON** (Loaded: {current_model})")
+        else:
+            st.sidebar.markdown(f"⚫ **OFF** (Unloaded)")
 
-        # 현재 모델 표시
-        st.sidebar.info(f"현재 모델: **{current_model}**")
+        # 모델 선택 드롭다운 (로드할 모델 또는 전환할 모델 선택)
+        # 현재 로드된 모델이 있으면 그걸 기본값으로, 없으면 첫 번째 모델
+        default_idx = 0
+        if current_model and current_model in available_models:
+            default_idx = available_models.index(current_model)
+            
+        selected_model = st.sidebar.selectbox(
+            "모델 선택",
+            available_models,
+            index=default_idx,
+            key="model_selector"
+        )
 
-        # 모델 선택 드롭다운
-        if available_models:
-            selected_model = st.sidebar.selectbox(
-                "모델 선택",
-                available_models,
-                index=available_models.index(current_model) if current_model in available_models else 0,
-                key="model_selector"
-            )
+        # 선택한 모델 설명
+        if selected_model in model_info["models"]:
+            model_desc = model_info["models"][selected_model].get("description", "")
+            if model_desc:
+                st.sidebar.caption(f"📝 {model_desc}")
 
-            # 선택한 모델 정보 표시
-            if selected_model in model_info["models"]:
-                model_desc = model_info["models"][selected_model].get("description", "")
-                if model_desc:
-                    st.sidebar.caption(f"📝 {model_desc}")
-
-            # 모델 전환 버튼
+        # 제어 버튼 영역
+        col_btn1, col_btn2 = st.sidebar.columns(2)
+        
+        if current_model:
+            # 로드된 상태: 언로드 버튼 + (다른 모델 선택 시) 전환 버튼
+            if st.sidebar.button("🔌 모델 끄기 (Unload)", type="secondary"):
+                with st.spinner("모델 언로드 중..."):
+                    try:
+                        api.unload_model()
+                        st.sidebar.success("모델이 꺼졌습니다.")
+                        api.get_model_info(force_refresh=True)
+                        st.rerun()
+                    except Exception as e:
+                        st.sidebar.error(f"❌ {e}")
+            
+            # 모델이 다르면 전환 버튼 표시
             if selected_model != current_model:
                 if st.sidebar.button("🔄 모델 전환", type="primary"):
-                    with st.spinner(f"'{selected_model}' 로딩 중..."):
+                    with st.spinner(f"'{selected_model}' 로 전환 중..."):
                         try:
+                            # 전환은 기존 switch_model 사용 (비동기)
                             result = api.switch_model(selected_model)
                             st.sidebar.success(result["message"])
                             api.get_model_info(force_refresh=True)
                             st.rerun()
                         except Exception as e:
                             st.sidebar.error(f"❌ {e}")
+        else:
+            # 언로드 상태: 로드 버튼
+            if st.sidebar.button("⚡ 모델 켜기 (Load)", type="primary"):
+                with st.spinner(f"'{selected_model}' 로딩 중... (잠시만 기다려주세요)"):
+                    try:
+                        api.load_model(selected_model)
+                        st.sidebar.success(f"'{selected_model}' 로드 완료!")
+                        api.get_model_info(force_refresh=True)
+                        st.rerun()
+                    except Exception as e:
+                        st.sidebar.error(f"❌ {e}")
     else:
         st.sidebar.warning("⚠️ 모델 정보를 가져올 수 없습니다")
 

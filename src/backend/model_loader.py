@@ -478,22 +478,12 @@ class ModelLoader:
         """모델 언로드 (메모리 해제)"""
         import gc
 
+        # 파이프라인 삭제 (CPU 이동 시도 제거 - 양자화 모델 호환성 문제 해결)
         if self.t2i_pipe:
-            # 파이프라인 내부 컴포넌트도 명시적 해제
-            if hasattr(self.t2i_pipe, 'to'):
-                try:
-                    self.t2i_pipe.to('cpu')
-                except:
-                    pass
             del self.t2i_pipe
             self.t2i_pipe = None
 
         if self.i2i_pipe:
-            if hasattr(self.i2i_pipe, 'to'):
-                try:
-                    self.i2i_pipe.to('cpu')
-                except:
-                    pass
             del self.i2i_pipe
             self.i2i_pipe = None
 

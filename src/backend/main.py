@@ -45,15 +45,9 @@ class I2IRequest(BaseModel):
 # 🆕 개선: startup에서 모델 로드 (1회만)
 @app.on_event("startup")
 async def startup_event():
-    """앱 시작 시 모델을 1회만 로드"""
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, services.init_image_pipelines)
-
-    # 로드 결과 확인
-    if services.model_loader and services.model_loader.is_loaded():
-        print(f"✅ FastAPI 시작 완료 - 모델 로드됨: {services.model_loader.current_model_name}")
-    else:
-        print("❌ FastAPI 시작 완료 - 모델 로드 실패!")
+    """앱 시작 시 초기화 (모델 자동 로딩은 하지 않음)"""
+    # 디폴트 unload 상태 유지를 위해 자동 로딩 제거
+    print("✅ FastAPI 시작 완료 - 모델은 Unload 상태입니다.")
 
 # 🆕 개선: reload 시 모델 재로딩 방지를 위한 shutdown 핸들러 제거
 # (기존에 있었다면) - uvicorn reload 시 메모리에 모델 유지
@@ -244,3 +238,17 @@ def get_switch_model_status():
         **_model_switch_status,
         "current_model": current_model
     }
+
+@app.post("/api/load_model")
+def load_model(req: SwitchModelRequest):
+    """모델 로드 (Switch Model 재사용)"""
+    # 로드도 결국 switch_model과 동일한 로직
+    result = services.switch_model(req.model_name)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+@app.post("/api/unload_model")
+def unload_model():
+    """모델 언로드"""
+    return services.unload_model_service()

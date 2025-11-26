@@ -17,6 +17,9 @@ from .model_loader import ModelLoader
 # Load env
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
+# 토크나이저 병렬 처리 경고 억제
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL_GPT_MINI = "gpt-5-mini"
 
@@ -332,9 +335,7 @@ def apply_adetailer(
             adetailer_strength=strength
         )
 
-        if info["processed"]:
-            print(f"✅ ADetailer 처리 완료")
-        else:
+        if not info["processed"]:
             print(f"ℹ️ ADetailer: 이상 없음, 원본 유지")
 
         return processed_image
@@ -459,3 +460,13 @@ def get_service_status() -> dict:
         status.update(model_loader.get_current_model_info())
 
     return status
+
+def unload_model_service() -> dict:
+    """모델 언로드"""
+    global model_loader
+    
+    if model_loader and model_loader.is_loaded():
+        model_loader.unload_model()
+        return {"success": True, "message": "모델 언로드 완료"}
+    
+    return {"success": True, "message": "이미 언로드 상태입니다."}
