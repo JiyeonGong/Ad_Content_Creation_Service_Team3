@@ -42,6 +42,21 @@ class I2IRequest(BaseModel):
     height: int = 1024
     steps: int = 4  # 🆕 FLUX-schnell은 4 steps 권장
 
+
+# class I2IRequest(BaseModel):
+#     input_image_base64: str
+#     prompt: str
+#     strength: float = 0.75
+#     width: int = 1024
+#     height: int = 1024
+#     steps: int = 4
+#     # 🆕 인페인팅 마스크 추가
+#     mask_image_base64: Optional[str] = None 
+    
+#     # 🆕 옵션: 편집 시 사용할 negative_prompt도 추가하는 것이 좋습니다.
+#     # negative_prompt: Optional[str] = None
+
+
 # 🆕 개선: startup에서 모델 로드 (1회만)
 @app.on_event("startup")
 async def startup_event():

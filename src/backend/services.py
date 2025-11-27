@@ -12,7 +12,9 @@ import os
 import io
 import random
 import traceback
-from typing import Optional, Any
+from typing import Optional, Any, Tuple
+
+import base64 # 👈 🆕 base64 임포트 추가
 
 from openai import OpenAI # OpenAI 클라이언트
 import torch              # 텐서 및 Generator (시드 관리)
@@ -425,7 +427,8 @@ def generate_i2i_core(
     steps: int,
     guidance_scale: float = None,
     enable_adetailer: bool = True,
-    adetailer_targets: list = None
+    adetailer_targets: list = None,
+    # mask_image_base64: Optional[str] = None # 🆕 마스크 이미지 인자 추가
 ) -> bytes:
     """이미지 기반 편집 (I2I)"""
     global model_loader
@@ -454,11 +457,26 @@ def generate_i2i_core(
     
     input_image = Image.open(io.BytesIO(input_image_bytes)).convert("RGB").resize((width, height))
 
+
+    # # 🆕 마스크 이미지 처리 로직
+    # mask_image_pil = None
+    # if mask_image_base64:
+    #     try:
+    #         mask_bytes = base64.b64decode(mask_image_base64)
+    #         # 마스크 이미지 로드 및 리사이즈 (원본 이미지와 크기 통일)
+    #         mask_image_pil = Image.open(io.BytesIO(mask_bytes)).convert("L").resize((width, height))
+    #         print("  ✓ 인페인팅 마스크 이미지 로드 및 적용 준비 완료")
+    #     except Exception as e:
+    #         print(f"⚠️ 마스크 이미지 처리 실패, 무시: {e}")
+
+
     gen_params = {
         "prompt": final_prompt,
         "image": input_image,
         "strength": float(strength),
         "num_inference_steps": steps,
+        # # 🆕 마스크 이미지 객체가 있으면 파라미터에 추가
+        # **({"mask_image": mask_image_pil} if mask_image_pil else {}),
     }
 
     # Negative Prompt 설정

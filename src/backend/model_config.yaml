@@ -64,6 +64,24 @@ models:
       max_size: [2048, 2048]
     description: "FLUX.1-dev 원본 (50분/이미지, 최고 품질)"
 
+# # ========================================
+# # 이미지 편집 모델 (SDXL Inpainting) - GCP 로컬 경로 설정 🆕
+# # ========================================
+# sdxl-inpaint-gcp:
+#   # 🆕 /home/shared/ 폴더 내 SDXL Inpainting 모델 경로
+#   id: "/home/shared/stable-diffusion-xl-1.0-inpainting" 
+#   type: "sdxl-inpaint" 
+#   requires_auth: false
+#   params:
+#     default_steps: 30
+#     max_steps: 60
+#     use_negative_prompt: true
+#     guidance_scale: 7.0 
+#     supports_i2i: true
+#     default_size: [1024, 1024]
+#     max_size: [2048, 2048]
+#   description: "GCP shared 폴더의 SDXL Inpainting 전용 모델 (로컬 로드)"
+
 # ========================================
 # 실행 설정
 # ========================================

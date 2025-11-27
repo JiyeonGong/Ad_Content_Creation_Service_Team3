@@ -12,7 +12,8 @@ from diffusers import (
     StableDiffusionXLImg2ImgPipeline,
     AutoPipelineForImage2Image,
     FluxTransformer2DModel,
-    BitsAndBytesConfig
+    BitsAndBytesConfig,
+    # StableDiffusionXLInpaintPipeline
 )
 
 from .model_registry import ModelConfig, get_registry
@@ -348,12 +349,35 @@ class ModelLoader:
             except:
                 i2i = t2i  # 폴백
                 print("  ⚠️ I2I 파이프라인 공유")
-        
+
         elif model_type in ["sdxl", "sd3", "playground"]:
             # SDXL 계열
             t2i = StableDiffusionXLPipeline.from_pretrained(model_id, **load_kwargs).to(self.device)
             i2i = StableDiffusionXLImg2ImgPipeline.from_pretrained(model_id, **load_kwargs).to(self.device)
+
+        # elif model_type in ["sdxl", "sd3", "playground"]:
+        #     # SDXL 계열
+        #     t2i = StableDiffusionXLPipeline.from_pretrained(model_id, **load_kwargs).to(self.device)
+        #     i2i = StableDiffusionXLImg2ImgPipeline.from_pretrained(model_id, **load_kwargs).to(self.device)
         
+        # elif model_type == "sdxl-inpaint": 
+        #     print("  ⚙️ SDXL Inpaint 파이프라인 로드 중...")
+            
+        #     pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+        #         model_id, 
+        #         torch_dtype=self.dtype, 
+        #         # variant="fp16", # 👈 로컬 로드 시 제거
+        #         use_safetensors=True,
+        #         cache_dir=self.cache_dir,
+        #         device_map="auto" # 🆕 자동 분산 로딩 추가
+        #     )
+            
+        #     pipe.to(self.device) # 👈 device_map="auto" 사용 시 불필요
+            
+        #     # T2I와 I2I 모두 인페인팅 파이프라인을 사용
+        #     t2i = pipe 
+        #     i2i = pipe
+
         elif model_type == "kandinsky":
             # Kandinsky 계열
             from diffusers import AutoPipelineForText2Image
