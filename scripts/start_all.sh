@@ -31,7 +31,7 @@ cd "$PROJECT_ROOT"
 if pgrep -f "uvicorn.*src.backend.main:app.*8000" > /dev/null; then
     echo "⚠️ Uvicorn이 이미 실행 중입니다."
 else
-    nohup uvicorn src.backend.main:app --host 0.0.0.0 --port 8000 > "$LOG_DIR/uvicorn.log" 2>&1 &
+    nohup "$PROJECT_ROOT/.venv/bin/uvicorn" src.backend.main:app --host 0.0.0.0 --port 8000 > "$LOG_DIR/uvicorn.log" 2>&1 &
     UVICORN_PID=$!
     echo $UVICORN_PID > "$LOG_DIR/uvicorn.pid"
 
@@ -55,7 +55,7 @@ echo "3️⃣ Streamlit 프론트엔드 시작 중..."
 if pgrep -f "streamlit.*src.frontend.app" > /dev/null; then
     echo "⚠️ Streamlit이 이미 실행 중입니다."
 else
-    nohup streamlit run src/frontend/app.py --server.port 8501 --server.address 0.0.0.0 > "$LOG_DIR/streamlit.log" 2>&1 &
+    nohup "$PROJECT_ROOT/.venv/bin/streamlit" run src/frontend/app.py --server.port 8501 --server.address 0.0.0.0 > "$LOG_DIR/streamlit.log" 2>&1 &
     STREAMLIT_PID=$!
     echo $STREAMLIT_PID > "$LOG_DIR/streamlit.pid"
 

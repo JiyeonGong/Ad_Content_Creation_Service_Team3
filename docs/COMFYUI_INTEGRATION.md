@@ -107,6 +107,72 @@ streamlit run src/frontend/app.py --server.port 8501
 bash scripts/stop_all.sh
 ```
 
+### 원격 서버 접속 (SSH 포트 포워딩)
+
+원격 서버(예: GPU 서버)에서 서비스를 실행하고 로컬 PC에서 접속하려면 SSH 포트 포워딩을 사용합니다.
+
+#### 전체 포트 포워딩
+
+```bash
+ssh -L 8501:localhost:8501 -L 8000:localhost:8000 -L 8188:localhost:8188 사용자@서버주소
+```
+
+**예시:**
+```bash
+ssh -L 8501:localhost:8501 -L 8000:localhost:8000 -L 8188:localhost:8188 mscho@192.168.0.9
+```
+
+#### 접속 후 사용
+
+SSH 접속이 유지된 상태에서 로컬 PC 브라우저에서:
+- `http://localhost:8501` - Streamlit UI (프론트엔드)
+- `http://localhost:8000/docs` - FastAPI Swagger 문서
+- `http://localhost:8188` - ComfyUI 웹 UI
+
+#### 포트별 설명
+
+| 포트 | 서비스 | 용도 |
+|------|--------|------|
+| 8501 | Streamlit | 메인 UI - 문구 생성, 이미지 생성 |
+| 8000 | FastAPI | Backend API - 상태 확인, 모델 관리 |
+| 8188 | ComfyUI | 워크플로우 관리 - 노드 설치, 워크플로우 편집 |
+
+#### 포트 선택적 포워딩
+
+필요한 포트만 포워딩:
+
+```bash
+# Streamlit UI만 필요한 경우
+ssh -L 8501:localhost:8501 mscho@192.168.0.9
+
+# Streamlit + FastAPI (ComfyUI 제외)
+ssh -L 8501:localhost:8501 -L 8000:localhost:8000 mscho@192.168.0.9
+
+# ComfyUI 워크플로우 편집만 필요한 경우
+ssh -L 8188:localhost:8188 mscho@192.168.0.9
+```
+
+#### 백그라운드 실행
+
+SSH 연결을 백그라운드로 유지:
+
+```bash
+ssh -fN -L 8501:localhost:8501 -L 8000:localhost:8000 -L 8188:localhost:8188 mscho@192.168.0.9
+```
+
+옵션 설명:
+- `-f`: 백그라운드 실행
+- `-N`: 원격 명령 실행 안 함 (포트 포워딩만)
+
+연결 종료:
+```bash
+# SSH 포트 포워딩 프로세스 찾기
+ps aux | grep "ssh.*8501"
+
+# PID로 종료
+kill [PID]
+```
+
 ---
 
 ## 아키텍처

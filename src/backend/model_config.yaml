@@ -43,27 +43,6 @@ models:
       max_size: [2048, 2048]
     description: "FLUX.1-dev 4-bit 양자화 (메모리 절약)"
 
-  # ========================================
-  # GCP VM 전용 원본 모델 (CPU offload 필요)
-  # ========================================
-  # - 속도: ~50분/이미지
-  # - GPU 메모리: CPU offload 사용
-  # - 품질: 100%
-  flux-dev-gcp:
-    id: "/home/shared/FLUX.1-dev"
-    type: "flux"
-    requires_auth: false
-    params:
-      default_steps: 28
-      max_steps: 50
-      use_negative_prompt: false
-      guidance_scale: 3.5
-      supports_i2i: true
-      max_tokens: 512
-      default_size: [1024, 1024]
-      max_size: [2048, 2048]
-    description: "FLUX.1-dev 원본 (50분/이미지, 최고 품질)"
-
 # ========================================
 # 실행 설정
 # ========================================

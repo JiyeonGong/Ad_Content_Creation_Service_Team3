@@ -121,7 +121,9 @@ class APIClient:
             self._model_info = resp.json()
             return self._model_info
         except Exception as e:
-            st.warning(f"⚠️ 모델 정보 조회 실패: {e}")
+            # 로그만 남기고 UI에는 표시하지 않음
+            import logging
+            logging.warning(f"모델 정보 조회 실패: {e}")
             return None
 
     def switch_model(self, model_name: str) -> Dict:
@@ -292,7 +294,9 @@ class APIClient:
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
-            st.error(f"실험 목록 조회 실패: {e}")
+            # 로그만 남기고 UI에는 표시하지 않음
+            import logging
+            logging.error(f"실험 목록 조회 실패: {e}")
             return None
 
     def check_comfyui_status(self) -> Optional[Dict]:
@@ -454,6 +458,17 @@ def main():
     else:
         st.sidebar.warning("⚠️ 모델 정보를 가져올 수 없습니다")
 
+    # ComfyUI 상태 표시 (사이드바 바로 보이게)
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔧 ComfyUI 상태")
+    comfyui_status = api.check_comfyui_status()
+    if comfyui_status and comfyui_status.get("connected"):
+        st.sidebar.success("✅ 연결됨")
+        st.sidebar.caption(f"URL: {comfyui_status.get('base_url', 'N/A')}")
+    else:
+        st.sidebar.error("❌ 연결 안됨")
+        st.sidebar.caption("ComfyUI 서버를 실행하세요")
+
     # 연결 모드
     st.sidebar.markdown("---")
     connect_mode = st.sidebar.checkbox(
@@ -462,8 +477,8 @@ def main():
     )
     st.sidebar.info(config.get("connection_mode.description", ""))
 
-    # 백엔드 상태 표시
-    with st.sidebar.expander("🔧 시스템 상태"):
+    # 백엔드 상태 표시 (expander 안에)
+    with st.sidebar.expander("📊 시스템 상태 상세"):
         status = api.get_backend_status(force_refresh=True)
         if status:
             # 서버 재시작 감지 시 자동 새로고침
@@ -473,12 +488,8 @@ def main():
                 st.rerun()
 
             st.json(status)
-            if st.button("🔄 새로고침"):
-                api.get_backend_status(force_refresh=True)
-                api.get_model_info(force_refresh=True)
-                st.rerun()
         else:
-            st.error("백엔드 연결 안됨")
+            st.error("⚠️ 백엔드 연결 안됨")
     
     # 연결 모드 OFF 시 세션 초기화
     if not connect_mode:
@@ -928,44 +939,34 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             st.error(f"❌ 편집 실패: {e}")
 
 # ============================================================
-# 🆕 페이지 4: 이미지 편집 실험
+# 🆕 페이지 4: 이미지 편집
 # ============================================================
 def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
-    st.title("🧪 이미지 편집 실험")
-    st.markdown("**BEN2 배경 제거 + 모델 비교 실험**")
-
-    # ComfyUI 상태 확인
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🔧 ComfyUI 상태")
-
-    comfyui_status = api.check_comfyui_status()
-    if comfyui_status and comfyui_status.get("connected"):
-        st.sidebar.success("✅ ComfyUI 연결됨")
-        st.sidebar.caption(f"URL: {comfyui_status.get('base_url', 'N/A')}")
-    else:
-        st.sidebar.error("❌ ComfyUI 연결 안됨")
-        error_msg = comfyui_status.get("error", "Unknown error") if comfyui_status else "연결 실패"
-        st.sidebar.caption(f"오류: {error_msg}")
-        st.warning("⚠️ ComfyUI 서버가 실행되지 않았습니다. 백그라운드에서 ComfyUI를 실행하세요.")
+    st.title("✂️ 이미지 편집")
+    st.markdown("**배경 제거 및 이미지 편집**")
 
     # 실험 목록 조회
     experiments_data = api.get_image_editing_experiments()
 
     if not experiments_data or not experiments_data.get("success"):
-        st.error("실험 목록을 불러올 수 없습니다.")
+        st.error("편집 모델 목록을 불러올 수 없습니다.")
         return
 
     experiments = experiments_data.get("experiments", [])
 
     if not experiments:
-        st.warning("사용 가능한 실험이 없습니다.")
+        st.warning("사용 가능한 편집 모델이 없습니다.")
         return
 
-    # 모델 선택
-    st.subheader("1️⃣ 모델 선택")
+    # ========================================
+    # 사이드바: 이미지 편집 모델 선택
+    # ========================================
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🎨 이미지 편집 모델")
+
     experiment_options = [f"{exp['name']}" for exp in experiments]
-    selected_experiment_name = st.selectbox(
-        "편집 모델",
+    selected_experiment_name = st.sidebar.selectbox(
+        "편집 모델 선택",
         experiment_options,
         help="배경 제거 후 사용할 이미지 편집 모델을 선택하세요"
     )
@@ -973,19 +974,20 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     selected_idx = experiment_options.index(selected_experiment_name)
     selected_experiment = experiments[selected_idx]
 
-    # 실험 정보 표시
-    with st.expander("📋 실험 정보", expanded=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown(f"**배경 제거 모델:** {selected_experiment['background_removal_model']}")
-        with col2:
-            st.markdown(f"**이미지 편집 모델:** {selected_experiment['editing_model']}")
-        st.caption(f"📝 {selected_experiment['description']}")
+    # 사이드바에 모델 정보 표시
+    with st.sidebar.expander("📋 모델 정보", expanded=True):
+        st.markdown(f"**배경 제거:** {selected_experiment['background_removal_model']}")
+        st.markdown(f"**편집 모델:** {selected_experiment['editing_model']}")
+        st.caption(f"{selected_experiment['description']}")
 
-    # 이미지 업로드
-    st.subheader("2️⃣ 입력 이미지")
+    # ========================================
+    # 메인 영역: 편집 인터페이스
+    # ========================================
+
+    # 1. 이미지 업로드
+    st.subheader("1️⃣ 이미지 업로드")
     uploaded_file = st.file_uploader(
-        "이미지 업로드",
+        "편집할 이미지 업로드",
         type=["png", "jpg", "jpeg", "webp"],
         help="배경을 제거하고 편집할 이미지를 업로드하세요"
     )
@@ -1007,8 +1009,8 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
         st.write(f"- 포맷: {image.format}")
         st.write(f"- 모드: {image.mode}")
 
-    # 편집 프롬프트 및 설정
-    st.subheader("3️⃣ 편집 설정")
+    # 2. 편집 프롬프트 및 설정
+    st.subheader("2️⃣ 편집 설정")
 
     prompt = st.text_area(
         "편집 프롬프트",
@@ -1055,14 +1057,14 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
                 help="원본 대비 변화 정도"
             )
 
-    # 생성 버튼
-    st.subheader("4️⃣ 생성")
+    # 3. 실행
+    st.subheader("3️⃣ 편집 실행")
 
     if not prompt.strip():
         st.warning("⚠️ 편집 프롬프트를 입력하세요")
         return
 
-    if st.button("🎨 이미지 편집 시작", type="primary", use_container_width=True):
+    if st.button("🎨 편집 시작", type="primary", use_container_width=True):
         # Base64 인코딩
         input_image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
@@ -1077,14 +1079,14 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
         }
 
         try:
-            with st.spinner("ComfyUI에서 이미지 편집 중... (배경 제거 + 모델 적용)"):
+            with st.spinner("이미지 편집 중... (배경 제거 + 편집 적용)"):
                 result = api.edit_with_comfyui(payload)
 
             if result and result.get("success"):
                 st.success(f"✅ 편집 완료! (소요 시간: {result.get('elapsed_time', 0):.1f}초)")
 
-                # 결과 표시
-                st.subheader("5️⃣ 결과")
+                # 4. 결과 표시
+                st.subheader("4️⃣ 결과")
 
                 # 배경 제거 이미지 (있는 경우)
                 if result.get("background_removed_image_base64"):
@@ -1150,17 +1152,6 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
 
         except Exception as e:
             st.error(f"❌ 오류 발생: {e}")
-
-    # 실험 비교 섹션
-    st.markdown("---")
-    st.subheader("💡 팁: 모델 비교하기")
-    st.info(
-        "같은 이미지로 다른 모델을 선택해서 결과를 비교해보세요!\n\n"
-        "1. 위에서 한 모델로 생성\n"
-        "2. 결과 스크린샷 저장\n"
-        "3. 모델 변경 후 다시 생성\n"
-        "4. 결과 비교"
-    )
 
 # ============================================================
 # 실행

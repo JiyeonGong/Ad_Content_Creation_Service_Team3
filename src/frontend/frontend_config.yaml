@@ -24,13 +24,13 @@ pages:
   
   - id: "i2i"
     icon: "🖼️"
-    title: "이미지 편집"
+    title: "이미지 스타일 변경"
     description: "기존 이미지를 AI로 편집하고 스타일을 변경합니다"
 
   - id: "image_editing_experiment"
-    icon: "🧪"
-    title: "이미지 편집 실험"
-    description: "BEN2 배경 제거 + 모델 비교 (FLUX.1-Fill vs Qwen-Image)"
+    icon: "✂️"
+    title: "배경 제거 + 편집"
+    description: "BEN2 배경 제거 + 이미지 편집 (FLUX.1-Fill, Qwen-Image)"
 
 # 문구 생성 설정
 caption:

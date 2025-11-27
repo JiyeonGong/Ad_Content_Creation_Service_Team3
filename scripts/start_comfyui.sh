@@ -32,7 +32,8 @@ echo "🚀 ComfyUI 백그라운드 실행 중..."
 echo "   Port: 8188"
 echo "   Log: $LOG_FILE"
 
-nohup python main.py --listen 0.0.0.0 --port 8188 > "$LOG_FILE" 2>&1 &
+# 프로젝트 가상환경의 Python 사용
+nohup "$PROJECT_ROOT/.venv/bin/python" main.py --listen 0.0.0.0 --port 8188 > "$LOG_FILE" 2>&1 &
 
 # PID 저장
 COMFYUI_PID=$!

@@ -23,7 +23,7 @@ fi
 # 2. ComfyUI 의존성 설치
 echo "📦 ComfyUI 의존성 설치 중..."
 cd "$COMFYUI_DIR"
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 
 # 3. ComfyUI Manager 설치 (노드 관리 편의성)
 echo "📦 ComfyUI Manager 설치 중..."
