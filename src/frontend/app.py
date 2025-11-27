@@ -814,7 +814,7 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                 with cols[idx]:
                     # BytesIO 객체를 st.image에 직접 전달
                     img_data["bytes"].seek(0)
-                    st.image(img_data["bytes"], caption=f"버전 {idx+1}", use_container_width=True)
+                    st.image(img_data["bytes"], caption=f"버전 {idx+1}", use_container_width=false, width=320)
                     img_data["bytes"].seek(0)
                     st.download_button(
                         f"⬇️ 다운로드",
