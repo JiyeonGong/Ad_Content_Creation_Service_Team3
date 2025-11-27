@@ -1,0 +1,174 @@
+# image_editing_config.yaml
+# 이미지 편집 실험 설정 파일
+
+# ComfyUI 연결 설정
+comfyui:
+  base_url: "http://localhost:8188"  # ComfyUI API 주소
+  timeout: 300  # 초 (5분)
+
+# 모델 저장 경로
+model_base_path: "/mnt/data4/models"
+
+# 실험용 모델 설정
+experiments:
+  # 실험 1: BEN2 + FLUX.1-Fill
+  - id: "ben2_flux_fill"
+    name: "BEN2 + FLUX.1-Fill"
+    description: "배경 제거 후 FLUX.1-Fill로 Inpainting/Outpainting"
+    background_removal:
+      model: "BEN2"
+      model_path: "/mnt/data4/models/ben2"
+      model_url: "https://github.com/PramaLLC/BEN2"
+    image_editing:
+      model: "FLUX.1-Fill-dev-Q8_0"
+      model_path: "/mnt/data4/models/flux-fill/FLUX.1-Fill-dev-Q8_0.gguf"
+      model_url: "https://huggingface.co/gpustack/FLUX.1-Fill-dev-GGUF/resolve/main/FLUX.1-Fill-dev-Q8_0.gguf"
+    workflow: "ben2_flux_fill.json"
+    params:
+      default_steps: 50
+      guidance_scale: 30.0
+      strength: 1.0
+    # 모델별 기능 정의
+    features:
+      - id: "inpainting"
+        name: "Inpainting (영역 채우기)"
+        description: "마스크 영역을 프롬프트 기반으로 채우기 (배경 교체, 객체 추가/제거)"
+        requires_mask: true
+        ui_elements:
+          - type: "mask_tool"
+            label: "편집 영역 선택"
+            options: ["auto_background", "manual_draw"]
+          - type: "text_input"
+            label: "채울 내용 설명"
+            placeholder: "예: modern office background with plants"
+
+      - id: "outpainting"
+        name: "Outpainting (이미지 확장)"
+        description: "이미지 경계를 넘어 확장"
+        requires_mask: false
+        ui_elements:
+          - type: "expansion_direction"
+            label: "확장 방향"
+            options: ["top", "bottom", "left", "right", "all"]
+          - type: "text_input"
+            label: "확장 영역 설명"
+            placeholder: "예: continue the landscape"
+
+  # 실험 2: BEN2 + Qwen-Image-Edit
+  - id: "ben2_qwen_image"
+    name: "BEN2 + Qwen-Image-Edit"
+    description: "배경 제거 후 Qwen-Image-Edit로 정밀 편집"
+    background_removal:
+      model: "BEN2"
+      model_path: "/mnt/data4/models/ben2"
+      model_url: "https://github.com/PramaLLC/BEN2"
+    image_editing:
+      model: "Qwen-Image-Edit-2509"
+      model_path: "/mnt/data4/models/qwen-image-edit"
+      model_url: "https://huggingface.co/Qwen/Qwen-Image-Edit-2509"
+    workflow: "ben2_qwen_image.json"
+    params:
+      default_steps: 30
+      guidance_scale: 7.5
+      strength: 0.8
+    # 모델별 기능 정의
+    features:
+      - id: "appearance_editing"
+        name: "Appearance Editing (외형 편집)"
+        description: "객체 추가/제거, 배경 교체, 색상/옷 변경"
+        requires_mask: false
+        ui_elements:
+          - type: "select"
+            label: "편집 유형"
+            options:
+              - "object_add_remove"
+              - "background_replace"
+              - "color_change"
+              - "clothing_change"
+          - type: "text_input"
+            label: "편집 설명"
+            placeholder: "예: change background to beach, add sunglasses"
+
+      - id: "semantic_editing"
+        name: "Semantic Editing (의미 편집)"
+        description: "스타일 변환, 포즈 변경, 캐릭터 일관성 유지"
+        requires_mask: false
+        ui_elements:
+          - type: "select"
+            label: "편집 유형"
+            options:
+              - "style_transfer"
+              - "pose_change"
+              - "object_rotation"
+              - "ip_character_consistency"
+          - type: "text_input"
+            label: "편집 설명"
+            placeholder: "예: Studio Ghibli style, rotate 90 degrees"
+          - type: "select"
+            label: "스타일 프리셋 (선택)"
+            options:
+              - "Studio Ghibli"
+              - "Anime"
+              - "Oil Painting"
+              - "Watercolor"
+              - "None"
+
+      - id: "text_editing"
+        name: "Text Editing (텍스트 편집)"
+        description: "이미지 내 텍스트 추가/삭제/수정 (중국어/영어)"
+        requires_mask: false
+        ui_elements:
+          - type: "select"
+            label: "텍스트 작업"
+            options:
+              - "add_text"
+              - "remove_text"
+              - "modify_text"
+          - type: "text_input"
+            label: "텍스트 내용"
+            placeholder: "예: Add 'SALE' in red color"
+          - type: "select"
+            label: "언어"
+            options: ["English", "Chinese"]
+
+      - id: "multi_image_editing"
+        name: "Multi-Image Editing (다중 이미지 편집)"
+        description: "여러 이미지 조합 (사람+사람, 사람+제품, 사람+배경)"
+        requires_mask: false
+        multi_image: true
+        max_images: 3
+        ui_elements:
+          - type: "file_uploader"
+            label: "추가 이미지 (최대 2개)"
+            max_count: 2
+          - type: "select"
+            label: "조합 유형"
+            options:
+              - "person_person"
+              - "person_product"
+              - "person_scene"
+          - type: "text_input"
+            label: "편집 설명"
+            placeholder: "예: merge two people in same scene"
+
+# BEN2 배경 제거 설정
+ben2:
+  model_name: "BEN2"
+  model_path: "/mnt/data4/models/ben2"
+  model_url: "https://github.com/PramaLLC/BEN2"
+  threshold: 0.5  # 배경 제거 임계값
+
+# 이미지 처리 설정
+image_processing:
+  # 지원 포맷
+  supported_formats: ["png", "jpg", "jpeg", "webp"]
+
+  # 최대 해상도
+  max_resolution:
+    width: 2048
+    height: 2048
+
+  # 기본 출력 크기
+  default_output_size:
+    width: 1024
+    height: 1024

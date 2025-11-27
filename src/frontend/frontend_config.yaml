@@ -27,6 +27,11 @@ pages:
     title: "이미지 편집"
     description: "기존 이미지를 AI로 편집하고 스타일을 변경합니다"
 
+  - id: "image_editing_experiment"
+    icon: "🧪"
+    title: "이미지 편집 실험"
+    description: "BEN2 배경 제거 + 모델 비교 (FLUX.1-Fill vs Qwen-Image)"
+
 # 문구 생성 설정
 caption:
   service_types:
@@ -79,6 +84,42 @@ image:
       max: 1.0
       default: 0.75
       step: 0.05
+
+  # 🆕 후처리 설정
+  post_processing:
+    # 후처리 방식 (none, impact_pack, adetailer)
+    methods:
+      - id: "none"
+        name: "없음 (빠름)"
+        description: "후처리 없이 빠르게 생성"
+      - id: "impact_pack"
+        name: "ComfyUI Impact Pack"
+        description: "YOLO+SAM 기반 얼굴/손 보정 (새로운 방식)"
+      - id: "adetailer"
+        name: "기존 ADetailer"
+        description: "YOLO+MediaPipe 기반 후처리 (호환성)"
+
+    # ADetailer 타겟
+    adetailer_targets:
+      - "hand"
+      - "face"
+
+  # 🆕 이미지 편집 실험 설정
+  editing_experiment:
+    strength:
+      min: 0.0
+      max: 1.0
+      default: 0.8
+      step: 0.05
+    steps:
+      min: 10
+      max: 50
+      default: 28
+    guidance_scale:
+      min: 1.0
+      max: 15.0
+      default: 3.5
+      step: 0.5
 
 # UI 텍스트
 ui:

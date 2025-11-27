@@ -1,7 +1,7 @@
 # main.py (개선)
 import base64
 import time
-from typing import Optional
+from typing import Optional, List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import asyncio
@@ -30,6 +30,9 @@ class T2IRequest(BaseModel):
     height: int = 1024
     steps: int = 4  # 🆕 FLUX-schnell은 4 steps 권장
     guidance_scale: Optional[float] = None  # FLUX-dev는 3.5 권장, schnell은 None
+    post_process_method: str = "none"  # "none", "impact_pack", "adetailer"
+    enable_adetailer: bool = False  # legacy
+    adetailer_targets: Optional[List[str]] = None
 
 class T2IResponse(BaseModel):
     image_base64: str
@@ -41,6 +44,28 @@ class I2IRequest(BaseModel):
     width: int = 1024
     height: int = 1024
     steps: int = 4  # 🆕 FLUX-schnell은 4 steps 권장
+    guidance_scale: Optional[float] = None
+    post_process_method: str = "none"  # "none", "impact_pack", "adetailer"
+    enable_adetailer: bool = False  # legacy
+    adetailer_targets: Optional[List[str]] = None
+
+# 🆕 이미지 편집 실험 스키마
+class ImageEditingRequest(BaseModel):
+    experiment_id: str  # "ben2_flux_fill" 또는 "ben2_qwen_image"
+    input_image_base64: str
+    prompt: str
+    steps: Optional[int] = None
+    guidance_scale: Optional[float] = None
+    strength: Optional[float] = None
+
+class ImageEditingResponse(BaseModel):
+    success: bool
+    experiment_id: str
+    experiment_name: str
+    output_image_base64: Optional[str] = None
+    background_removed_image_base64: Optional[str] = None
+    error: Optional[str] = None
+    elapsed_time: Optional[float] = None
 
 # 🆕 개선: startup에서 모델 로드 (1회만)
 @app.on_event("startup")
@@ -81,15 +106,22 @@ async def generate_t2i_image(req: T2IRequest):
 
     try:
         loop = asyncio.get_event_loop()
-        image_bytes = await loop.run_in_executor(
-            None,
+
+        # 후처리 파라미터 준비
+        from functools import partial
+        generate_func = partial(
             services.generate_t2i_core,
             req.prompt,
             width,
             height,
             steps,
-            guidance_scale
+            guidance_scale,
+            req.enable_adetailer,
+            req.adetailer_targets,
+            req.post_process_method
         )
+
+        image_bytes = await loop.run_in_executor(None, generate_func)
         b64 = base64.b64encode(image_bytes).decode("utf-8")
         return T2IResponse(image_base64=b64)
     except RuntimeError as re_err:
@@ -114,16 +146,24 @@ async def generate_i2i_image(req: I2IRequest):
             raise HTTPException(status_code=400, detail="입력 이미지 Base64 디코딩 실패")
 
         loop = asyncio.get_event_loop()
-        image_bytes = await loop.run_in_executor(
-            None,
+
+        # 후처리 파라미터 준비
+        from functools import partial
+        generate_func = partial(
             services.generate_i2i_core,
             input_bytes,
             req.prompt,
             strength,
             width,
             height,
-            steps
+            steps,
+            req.guidance_scale,
+            req.enable_adetailer,
+            req.adetailer_targets,
+            req.post_process_method
         )
+
+        image_bytes = await loop.run_in_executor(None, generate_func)
         b64 = base64.b64encode(image_bytes).decode("utf-8")
         return T2IResponse(image_base64=b64)
     except RuntimeError as re_err:
@@ -252,3 +292,52 @@ def load_model(req: SwitchModelRequest):
 def unload_model():
     """모델 언로드"""
     return services.unload_model_service()
+
+# 🆕 이미지 편집 실험 엔드포인트
+@app.post("/api/edit_with_comfyui", response_model=ImageEditingResponse)
+async def edit_image_with_comfyui(req: ImageEditingRequest):
+    """
+    ComfyUI를 사용한 이미지 편집 (BEN2 배경 제거 + 모델 선택)
+
+    실험 모델:
+    - ben2_flux_fill: BEN2 + FLUX.1-Fill
+    - ben2_qwen_image: BEN2 + Qwen-Image
+    """
+    try:
+        # Base64 디코딩
+        try:
+            input_bytes = base64.b64decode(req.input_image_base64)
+        except Exception:
+            raise HTTPException(status_code=400, detail="입력 이미지 Base64 디코딩 실패")
+
+        # 서비스 레이어 호출
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            services.edit_image_with_comfyui,
+            req.experiment_id,
+            input_bytes,
+            req.prompt,
+            req.steps,
+            req.guidance_scale,
+            req.strength
+        )
+
+        return ImageEditingResponse(**result)
+
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except ConnectionError as ce:
+        raise HTTPException(status_code=503, detail=str(ce))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"이미지 편집 실패: {e}")
+
+@app.get("/api/image_editing/experiments")
+def get_image_editing_experiments():
+    """사용 가능한 이미지 편집 실험 목록 조회"""
+    return services.get_image_editing_experiments()
+
+@app.get("/api/comfyui/status")
+def get_comfyui_status():
+    """ComfyUI 서버 상태 확인"""
+    return services.check_comfyui_status()

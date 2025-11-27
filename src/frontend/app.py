@@ -282,6 +282,47 @@ class APIClient:
         
         return None
 
+    def get_image_editing_experiments(self) -> Optional[Dict]:
+        """이미지 편집 실험 목록 조회"""
+        try:
+            resp = requests.get(
+                f"{self.base_url}/api/image_editing/experiments",
+                timeout=10
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            st.error(f"실험 목록 조회 실패: {e}")
+            return None
+
+    def check_comfyui_status(self) -> Optional[Dict]:
+        """ComfyUI 서버 상태 확인"""
+        try:
+            resp = requests.get(
+                f"{self.base_url}/api/comfyui/status",
+                timeout=10
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            return {"connected": False, "error": str(e)}
+
+    def edit_with_comfyui(self, payload: Dict) -> Optional[Dict]:
+        """ComfyUI를 사용한 이미지 편집"""
+        try:
+            resp = requests.post(
+                f"{self.base_url}/api/edit_with_comfyui",
+                json=payload,
+                timeout=self.timeout
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.HTTPError as e:
+            error_detail = e.response.json().get("detail", str(e))
+            raise Exception(f"이미지 편집 실패: {error_detail}")
+        except Exception as e:
+            raise Exception(f"요청 실패: {e}")
+
 # ============================================================
 # 유틸리티 함수
 # ============================================================
@@ -452,6 +493,8 @@ def main():
         render_t2i_page(config, api, connect_mode)
     elif page_id == "i2i":
         render_i2i_page(config, api, connect_mode)
+    elif page_id == "image_editing_experiment":
+        render_image_editing_experiment_page(config, api)
 
 # ============================================================
 # 페이지 1: 문구 생성
@@ -624,6 +667,35 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         help="여러 개 생성 시 각각 다른 랜덤 seed 사용 (시간: 약 30-60초/이미지)"
     )
 
+    # 후처리 방식 선택
+    st.divider()
+    st.subheader("🔧 후처리 옵션")
+
+    post_process_method = st.radio(
+        "후처리 방식",
+        options=["none", "impact_pack", "adetailer"],
+        format_func=lambda x: {
+            "none": "없음 (빠름)",
+            "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)",
+            "adetailer": "기존 ADetailer (YOLO+MediaPipe, 호환성)"
+        }[x],
+        index=0,
+        help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 새로운 방식\nADetailer: 기존 방식 (안정성)"
+    )
+
+    # ADetailer 세부 옵션 (legacy)
+    if post_process_method == "adetailer":
+        enable_adetailer = st.checkbox("ADetailer 활성화", value=True)
+        adetailer_targets = st.multiselect(
+            "후처리 대상",
+            options=["hand", "face"],
+            default=["hand"],
+            help="손/얼굴 감지 후 해당 영역 재생성"
+        )
+    else:
+        enable_adetailer = False
+        adetailer_targets = None
+
     # 생성 중 상태 확인
     is_generating = st.session_state.get("is_generating_t2i", False)
 
@@ -658,7 +730,10 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                 "width": aligned_w,
                 "height": aligned_h,
                 "steps": steps,
-                "guidance_scale": guidance_scale
+                "guidance_scale": guidance_scale,
+                "post_process_method": post_process_method,
+                "enable_adetailer": enable_adetailer,
+                "adetailer_targets": adetailer_targets
             }
 
             try:
@@ -774,6 +849,37 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
     width = preset_sizes[size_idx]["width"]
     height = preset_sizes[size_idx]["height"]
 
+    # 후처리 방식 선택
+    st.divider()
+    st.subheader("🔧 후처리 옵션")
+
+    post_process_method = st.radio(
+        "후처리 방식",
+        options=["none", "impact_pack", "adetailer"],
+        format_func=lambda x: {
+            "none": "없음 (빠름)",
+            "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)",
+            "adetailer": "기존 ADetailer (YOLO+MediaPipe, 호환성)"
+        }[x],
+        index=0,
+        help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 새로운 방식\nADetailer: 기존 방식 (안정성)",
+        key="i2i_post_process"
+    )
+
+    # ADetailer 세부 옵션 (legacy)
+    if post_process_method == "adetailer":
+        enable_adetailer = st.checkbox("ADetailer 활성화", value=True, key="i2i_enable_adetailer")
+        adetailer_targets = st.multiselect(
+            "후처리 대상",
+            options=["hand", "face"],
+            default=["hand"],
+            help="손/얼굴 감지 후 해당 영역 재생성",
+            key="i2i_adetailer_targets"
+        )
+    else:
+        enable_adetailer = False
+        adetailer_targets = None
+
     submitted = st.button("✨ 이미지 편집", type="primary")
     
     if submitted:
@@ -797,7 +903,10 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             "strength": strength,
             "width": aligned_w,
             "height": aligned_h,
-            "steps": 30
+            "steps": 30,
+            "post_process_method": post_process_method,
+            "enable_adetailer": enable_adetailer,
+            "adetailer_targets": adetailer_targets
         }
         
         try:
@@ -817,6 +926,241 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                 st.download_button("⬇️ 편집 이미지 다운로드", edited, "edited.png", "image/png")
         except Exception as e:
             st.error(f"❌ 편집 실패: {e}")
+
+# ============================================================
+# 🆕 페이지 4: 이미지 편집 실험
+# ============================================================
+def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
+    st.title("🧪 이미지 편집 실험")
+    st.markdown("**BEN2 배경 제거 + 모델 비교 실험**")
+
+    # ComfyUI 상태 확인
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔧 ComfyUI 상태")
+
+    comfyui_status = api.check_comfyui_status()
+    if comfyui_status and comfyui_status.get("connected"):
+        st.sidebar.success("✅ ComfyUI 연결됨")
+        st.sidebar.caption(f"URL: {comfyui_status.get('base_url', 'N/A')}")
+    else:
+        st.sidebar.error("❌ ComfyUI 연결 안됨")
+        error_msg = comfyui_status.get("error", "Unknown error") if comfyui_status else "연결 실패"
+        st.sidebar.caption(f"오류: {error_msg}")
+        st.warning("⚠️ ComfyUI 서버가 실행되지 않았습니다. 백그라운드에서 ComfyUI를 실행하세요.")
+
+    # 실험 목록 조회
+    experiments_data = api.get_image_editing_experiments()
+
+    if not experiments_data or not experiments_data.get("success"):
+        st.error("실험 목록을 불러올 수 없습니다.")
+        return
+
+    experiments = experiments_data.get("experiments", [])
+
+    if not experiments:
+        st.warning("사용 가능한 실험이 없습니다.")
+        return
+
+    # 모델 선택
+    st.subheader("1️⃣ 모델 선택")
+    experiment_options = [f"{exp['name']}" for exp in experiments]
+    selected_experiment_name = st.selectbox(
+        "편집 모델",
+        experiment_options,
+        help="배경 제거 후 사용할 이미지 편집 모델을 선택하세요"
+    )
+
+    selected_idx = experiment_options.index(selected_experiment_name)
+    selected_experiment = experiments[selected_idx]
+
+    # 실험 정보 표시
+    with st.expander("📋 실험 정보", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**배경 제거 모델:** {selected_experiment['background_removal_model']}")
+        with col2:
+            st.markdown(f"**이미지 편집 모델:** {selected_experiment['editing_model']}")
+        st.caption(f"📝 {selected_experiment['description']}")
+
+    # 이미지 업로드
+    st.subheader("2️⃣ 입력 이미지")
+    uploaded_file = st.file_uploader(
+        "이미지 업로드",
+        type=["png", "jpg", "jpeg", "webp"],
+        help="배경을 제거하고 편집할 이미지를 업로드하세요"
+    )
+
+    if not uploaded_file:
+        st.info("👆 이미지를 업로드하세요")
+        return
+
+    # 업로드된 이미지 표시
+    image_bytes = uploaded_file.read()
+    image = Image.open(BytesIO(image_bytes))
+
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.image(image, caption="원본 이미지", use_container_width=True)
+    with col2:
+        st.markdown("**이미지 정보**")
+        st.write(f"- 크기: {image.size[0]} x {image.size[1]}")
+        st.write(f"- 포맷: {image.format}")
+        st.write(f"- 모드: {image.mode}")
+
+    # 편집 프롬프트 및 설정
+    st.subheader("3️⃣ 편집 설정")
+
+    prompt = st.text_area(
+        "편집 프롬프트",
+        placeholder="예: modern office background, bright lighting, professional atmosphere",
+        help="배경 제거 후 어떤 스타일/배경으로 편집할지 설명하세요 (영어 권장)",
+        height=100
+    )
+
+    # 고급 설정
+    with st.expander("⚙️ 고급 설정"):
+        col1, col2, col3 = st.columns(3)
+
+        exp_config = config.get("image.editing_experiment", {})
+
+        with col1:
+            steps_config = exp_config.get("steps", {})
+            steps = st.slider(
+                "추론 단계 (Steps)",
+                min_value=steps_config.get("min", 10),
+                max_value=steps_config.get("max", 50),
+                value=steps_config.get("default", 28),
+                help="높을수록 품질 향상, 시간 증가"
+            )
+
+        with col2:
+            guidance_config = exp_config.get("guidance_scale", {})
+            guidance_scale = st.slider(
+                "Guidance Scale",
+                min_value=guidance_config.get("min", 1.0),
+                max_value=guidance_config.get("max", 15.0),
+                value=guidance_config.get("default", 3.5),
+                step=guidance_config.get("step", 0.5),
+                help="프롬프트 준수 강도"
+            )
+
+        with col3:
+            strength_config = exp_config.get("strength", {})
+            strength = st.slider(
+                "변화 강도 (Strength)",
+                min_value=strength_config.get("min", 0.0),
+                max_value=strength_config.get("max", 1.0),
+                value=strength_config.get("default", 0.8),
+                step=strength_config.get("step", 0.05),
+                help="원본 대비 변화 정도"
+            )
+
+    # 생성 버튼
+    st.subheader("4️⃣ 생성")
+
+    if not prompt.strip():
+        st.warning("⚠️ 편집 프롬프트를 입력하세요")
+        return
+
+    if st.button("🎨 이미지 편집 시작", type="primary", use_container_width=True):
+        # Base64 인코딩
+        input_image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        # API 요청 페이로드
+        payload = {
+            "experiment_id": selected_experiment["id"],
+            "input_image_base64": input_image_base64,
+            "prompt": prompt,
+            "steps": steps,
+            "guidance_scale": guidance_scale,
+            "strength": strength
+        }
+
+        try:
+            with st.spinner("ComfyUI에서 이미지 편집 중... (배경 제거 + 모델 적용)"):
+                result = api.edit_with_comfyui(payload)
+
+            if result and result.get("success"):
+                st.success(f"✅ 편집 완료! (소요 시간: {result.get('elapsed_time', 0):.1f}초)")
+
+                # 결과 표시
+                st.subheader("5️⃣ 결과")
+
+                # 배경 제거 이미지 (있는 경우)
+                if result.get("background_removed_image_base64"):
+                    bg_removed_bytes = base64.b64decode(result["background_removed_image_base64"])
+                    bg_removed_image = Image.open(BytesIO(bg_removed_bytes))
+
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.markdown("**원본**")
+                        st.image(image, use_container_width=True)
+                    with col2:
+                        st.markdown("**배경 제거**")
+                        st.image(bg_removed_image, use_container_width=True)
+                    with col3:
+                        st.markdown("**편집 결과**")
+                        output_bytes = base64.b64decode(result["output_image_base64"])
+                        output_image = Image.open(BytesIO(output_bytes))
+                        st.image(output_image, use_container_width=True)
+
+                    # 다운로드 버튼
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.download_button(
+                            "⬇️ 배경 제거 이미지 다운로드",
+                            BytesIO(bg_removed_bytes).getvalue(),
+                            f"background_removed_{selected_experiment['id']}.png",
+                            "image/png",
+                            use_container_width=True
+                        )
+                    with col2:
+                        st.download_button(
+                            "⬇️ 편집 결과 다운로드",
+                            BytesIO(output_bytes).getvalue(),
+                            f"edited_{selected_experiment['id']}.png",
+                            "image/png",
+                            use_container_width=True
+                        )
+
+                else:
+                    # 배경 제거 이미지 없이 최종 결과만
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**원본**")
+                        st.image(image, use_container_width=True)
+                    with col2:
+                        st.markdown("**편집 결과**")
+                        output_bytes = base64.b64decode(result["output_image_base64"])
+                        output_image = Image.open(BytesIO(output_bytes))
+                        st.image(output_image, use_container_width=True)
+
+                    # 다운로드 버튼
+                    st.download_button(
+                        "⬇️ 편집 결과 다운로드",
+                        BytesIO(output_bytes).getvalue(),
+                        f"edited_{selected_experiment['id']}.png",
+                        "image/png",
+                        use_container_width=True
+                    )
+
+            else:
+                error_msg = result.get("error", "알 수 없는 오류") if result else "응답 없음"
+                st.error(f"❌ 편집 실패: {error_msg}")
+
+        except Exception as e:
+            st.error(f"❌ 오류 발생: {e}")
+
+    # 실험 비교 섹션
+    st.markdown("---")
+    st.subheader("💡 팁: 모델 비교하기")
+    st.info(
+        "같은 이미지로 다른 모델을 선택해서 결과를 비교해보세요!\n\n"
+        "1. 위에서 한 모델로 생성\n"
+        "2. 결과 스크린샷 저장\n"
+        "3. 모델 변경 후 다시 생성\n"
+        "4. 결과 비교"
+    )
 
 # ============================================================
 # 실행
