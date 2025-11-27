@@ -27,10 +27,10 @@ dependencies = [
     "requests>=2.31",
     # AI 모델 및 유틸리티
     "openai>=1.12",
-    "diffusers>=0.26,<0.35",
+    "diffusers>=0.35.2",
     "Pillow>=10.2",
     "python-dotenv>=1.0",
-    "transformers>=4.44.0,<4.57.0",
+    "transformers>=4.57.0",
     "accelerate>=1.11.0",
     "pyyaml>=6.0.3",
     "sentencepiece>=0.2.0", # FLUX 토크나이저 필수
@@ -44,10 +44,13 @@ dependencies = [
     # ADetailer (손/얼굴 후처리)
     "ultralytics>=8.0.0", # YOLO 모델 (손/얼굴 감지)
     "mediapipe>=0.10.0", # 손가락 개수/관절 검증
+    # ComfyUI GGUF 지원
+    "gguf>=0.13.0", # GGUF 형식 모델 로딩 (FLUX.1-Fill 등)
 ]
 
-[tool.uv.sources]
-transformers = { git = "https://github.com/huggingface/transformers.git" }
+# [tool.uv.sources]
+# transformers = { git = "https://github.com/huggingface/transformers.git" }
+# ⚠️ 개발 버전 사용 시 diffusers와 충돌 발생, 정식 버전 사용
 
 # ----------------------------------------------------
 # ⚠️ PyTorch/CUDA 관련 참고 사항

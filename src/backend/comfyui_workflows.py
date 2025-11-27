@@ -238,8 +238,7 @@ def get_ben2_flux_fill_workflow() -> Dict[str, Any]:
     """
     BEN2 + FLUX.1-Fill 워크플로우 템플릿
 
-    주의: 이 워크플로우는 실제 ComfyUI에서 생성한 JSON을 기반으로 수정해야 합니다.
-    아래는 예시 구조입니다.
+    GGUF 형식 모델을 위한 올바른 로더 사용
     """
     workflow = {
         # 노드 1: 이미지 로드
@@ -252,53 +251,47 @@ def get_ben2_flux_fill_workflow() -> Dict[str, Any]:
 
         # 노드 2: BEN2 배경 제거
         "2": {
-            "class_type": "BEN2BackgroundRemoval",
+            "class_type": "RMBG",
             "inputs": {
                 "image": ["1", 0],  # 노드 1의 출력
-                "threshold": 0.5
+                "model": "BEN2",
+                "sensitivity": 1.0,
+                "process_res": 1024
             }
         },
 
-        # 노드 3: FLUX.1-Fill 체크포인트 로드
+        # 노드 3: FLUX.1-Fill UNET 로드 (GGUF)
         "3": {
-            "class_type": "CheckpointLoaderSimple",
+            "class_type": "UnetLoaderGGUF",
             "inputs": {
-                "ckpt_name": "FLUX.1-Fill-dev-Q8_0.gguf"
+                "unet_name": "FLUX.1-Fill-dev-Q8_0.gguf"
             }
         },
 
-        # 노드 4: 프롬프트 인코딩
+        # 노드 4: CLIP 로드 (GGUF) - T5XXL
         "4": {
+            "class_type": "DualCLIPLoaderGGUF",
+            "inputs": {
+                "clip_name1": "t5-v1_1-xxl-encoder-Q8_0.gguf",  # T5 인코더 (GGUF)
+                "clip_name2": "clip_l.safetensors",             # CLIP-L 인코더
+                "type": "flux"
+            }
+        },
+
+        # 노드 5: VAE 로드
+        "5": {
+            "class_type": "VAELoader",
+            "inputs": {
+                "vae_name": "ae.safetensors"  # FLUX VAE
+            }
+        },
+
+        # 노드 6: 프롬프트 인코딩
+        "6": {
             "class_type": "CLIPTextEncode",
             "inputs": {
                 "text": "",  # 런타임에 설정
-                "clip": ["3", 1]  # 노드 3의 CLIP 출력
-            }
-        },
-
-        # 노드 5: Negative 프롬프트 (선택)
-        "5": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {
-                "text": "blurry, low quality, distorted",
-                "clip": ["3", 1]
-            }
-        },
-
-        # 노드 6: KSampler (이미지 생성)
-        "6": {
-            "class_type": "KSampler",
-            "inputs": {
-                "seed": 0,  # 런타임에 랜덤 시드 설정
-                "steps": 28,  # 런타임에 설정
-                "cfg": 3.5,  # guidance_scale
-                "sampler_name": "euler",
-                "scheduler": "normal",
-                "denoise": 0.8,  # strength
-                "model": ["3", 0],
-                "positive": ["4", 0],
-                "negative": ["5", 0],
-                "latent_image": ["7", 0]  # VAE Encode 출력
+                "clip": ["4", 0]  # 노드 4의 CLIP 출력
             }
         },
 
@@ -307,30 +300,48 @@ def get_ben2_flux_fill_workflow() -> Dict[str, Any]:
             "class_type": "VAEEncode",
             "inputs": {
                 "pixels": ["2", 0],  # BEN2 출력
-                "vae": ["3", 2]  # 노드 3의 VAE
+                "vae": ["5", 0]  # 노드 5의 VAE
             }
         },
 
-        # 노드 8: VAE Decode (latent를 이미지로)
+        # 노드 8: KSampler (이미지 생성)
         "8": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": 0,  # 런타임에 랜덤 시드 설정
+                "steps": 28,  # 런타임에 설정
+                "cfg": 3.5,  # guidance_scale
+                "sampler_name": "euler",
+                "scheduler": "simple",
+                "denoise": 1.0,  # FLUX.1-Fill은 full denoise
+                "model": ["3", 0],  # GGUF UNET
+                "positive": ["6", 0],
+                "negative": ["6", 0],  # FLUX는 negative 사용 안 함
+                "latent_image": ["7", 0]  # VAE Encode 출력
+            }
+        },
+
+        # 노드 9: VAE Decode (latent를 이미지로)
+        "9": {
             "class_type": "VAEDecode",
             "inputs": {
-                "samples": ["6", 0],  # KSampler 출력
-                "vae": ["3", 2]
+                "samples": ["8", 0],  # KSampler 출력
+                "vae": ["5", 0]
             }
         },
 
-        # 노드 9: 이미지 저장
-        "9": {
+        # 노드 10: 이미지 저장
+        "10": {
             "class_type": "SaveImage",
             "inputs": {
                 "filename_prefix": "flux_fill_output",
-                "images": ["8", 0]  # VAE Decode 출력
+                "images": ["9", 0]  # VAE Decode 출력
             }
         }
     }
 
     return workflow
+
 
 
 def get_ben2_qwen_image_workflow() -> Dict[str, Any]:
@@ -350,10 +361,12 @@ def get_ben2_qwen_image_workflow() -> Dict[str, Any]:
 
         # 노드 2: BEN2 배경 제거
         "2": {
-            "class_type": "BEN2BackgroundRemoval",
+            "class_type": "RMBG",
             "inputs": {
                 "image": ["1", 0],
-                "threshold": 0.5
+                "model": "BEN2",
+                "sensitivity": 1.0,
+                "process_res": 1024
             }
         },
 

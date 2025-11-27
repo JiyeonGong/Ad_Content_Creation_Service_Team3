@@ -51,6 +51,17 @@ fi
 echo "  - FLUX 노드 확인 중..."
 echo "  ✅ FLUX는 ComfyUI 기본 지원"
 
+# GGUF 노드 (FLUX.1-Fill 등 지원)
+if [ ! -d "ComfyUI-GGUF" ]; then
+    echo "  - ComfyUI-GGUF 노드 설치 중..."
+    git clone https://github.com/city96/ComfyUI-GGUF.git
+    cd ComfyUI-GGUF
+    uv pip install -r requirements.txt
+    cd ..
+else
+    echo "  ✅ ComfyUI-GGUF 노드 이미 설치됨"
+fi
+
 # Qwen-Image-Edit 노드
 if [ ! -d "ComfyUI-Qwen-Image" ]; then
     echo "  - Qwen-Image 노드 설치 중..."

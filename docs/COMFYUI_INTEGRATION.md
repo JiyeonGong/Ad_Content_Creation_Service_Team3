@@ -37,36 +37,34 @@ bash scripts/install_comfyui.sh
 
 ComfyUI Manager를 통해 설치:
 - **ComfyUI-Impact-Pack**: 얼굴/손 디테일러 (YOLO+SAM)
+- **ComfyUI-GGUF**: GGUF 형식 모델 로딩 (FLUX.1-Fill, Qwen 등)
 - **BEN2 노드**: 배경 제거 (필요 시)
-- **GGUF 노드**: GGUF 형식 모델 로딩
 
 또는 수동 설치:
 ```bash
 cd comfyui/custom_nodes
 git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git
-cd ComfyUI-Impact-Pack
-pip install -r requirements.txt
+git clone https://github.com/city96/ComfyUI-GGUF.git
 ```
 
 ### 3. 모델 배치
 
-모델은 `/mnt/data4/models/` 또는 ComfyUI 내부 경로에 배치:
+모델은 `/mnt/data4/models/`에 중앙 집중식으로 관리됩니다:
 
 ```
 /mnt/data4/models/
-├── flux-bnb-4b/            # 기존 T2I 모델
-├── flux-bnb-8b/            # 기존 T2I 모델
-├── FLUX.1-Fill-dev-Q8_0.gguf  # 인페인팅 모델
-├── Qwen-Image-Edit-2509/   # 정밀 편집 모델
-└── BEN2/                   # 배경 제거 모델
+├── flux-fill/                  # FLUX.1-Fill GGUF 모델
+│   └── FLUX.1-Fill-dev-Q8_0.gguf
+├── clip/                       # CLIP 모델 (T5XXL GGUF 등)
+│   ├── t5-v1_1-xxl-encoder-Q8_0.gguf
+│   └── clip_l.safetensors
+├── qwen-image-edit/            # Qwen 모델
+└── ...
 ```
 
-또는 ComfyUI 내부:
-```
-comfyui/models/checkpoints/
-├── flux-bnb-4b.safetensors
-└── flux-bnb-8b.safetensors
-```
+ComfyUI는 `extra_model_paths.yaml`과 심볼릭 링크를 통해 이 경로들을 인식합니다.
+- `comfyui/models/unet/` -> GGUF 모델 연결
+- `comfyui/models/clip/` -> T5XXL/CLIP 연결
 
 ---
 
