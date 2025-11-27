@@ -916,17 +916,148 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         key="edit_prompt_area_i2i"
     )
     st.session_state["edit_prompt_i2i"] = edit_prompt
+    
+    # 페이지1 보조 프롬프트 원본 (T2I와 동일)
+    captions_for_support = f"{selected_caption} {st.session_state.get('hashtags','')}".strip()
+    
+    
+  # ============================================================
+# 페이지 3: I2I 이미지 편집 (개선) - 결과 유지 로직 추가
+# ============================================================
+def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
+    st.title("🖼️ 이미지 편집 (Image-to-Image)")
+    st.info("💡 업로드된 이미지를 AI로 편집하거나, T2I 결과를 편집합니다 (배경 변경, 스타일 변경 등)")
+    
+    # ------------------------------------------------------------
+    # 1. 이미지 소스 선택 및 표시 
+    # ------------------------------------------------------------
+    uploaded_file = None
+    preloaded = st.session_state.get("generated_images", [])
+    
+    image_bytes = None
+    target_image_name = "미선택"
+    
+    col_upload, col_select = st.columns([1, 2])
+
+    # A. 업로드
+    with col_upload:
+        uploaded_file = st.file_uploader("새 이미지 업로드", type=["png", "jpg", "jpeg"])
+        
+    # B. 페이지 2 결과 선택
+    can_use_preloaded = connect_mode and preloaded
+    
+    selected_idx = None
+    if can_use_preloaded:
+        with col_select:
+            st.markdown("##### 또는 페이지 2 결과 사용")
+            image_indices = list(range(len(preloaded)))
+            
+            idx = st.selectbox(
+                "편집 대상 선택",
+                image_indices,
+                format_func=lambda x: f"T2I 결과 버전 {x+1}",
+                key="i2i_image_selector",
+                index=0
+            )
+            
+            if idx is not None and preloaded:
+                selected_idx = idx
+
+    # 최종 이미지 바이트 결정 (업로드가 우선)
+    if uploaded_file:
+        image_bytes = uploaded_file.getvalue()
+        target_image_name = uploaded_file.name
+    elif selected_idx is not None:
+        def get_image_bytes(bytes_io_obj):
+             bytes_io_obj.seek(0)
+             return bytes_io_obj.read()
+             
+        image_bytes = get_image_bytes(preloaded[selected_idx]["bytes"])
+        target_image_name = f"T2I 결과 버전 {selected_idx+1}"
+
+    st.markdown("---")
+    
+    # 이미지 없으면 나머지 설정 비활성화
+    if not image_bytes:
+        st.warning("⚠️ 이미지를 업로드하거나 페이지 2에서 생성 및 선택하세요")
+        # 기존 편집 결과는 표시 (새 이미지 로드 시 클리어)
+    else:
+        st.image(image_bytes, caption=f"🔍 현재 편집 대상: {target_image_name}", width=350)
+        # 새 이미지가 로드/선택되면 기존 결과는 클리어 (새 편집을 위해)
+        if st.session_state.get("edited_image_data") and \
+           st.session_state["edited_image_data"].get("source_name") != target_image_name:
+             del st.session_state["edited_image_data"]
+    
+    if not image_bytes:
+        # 기존에 저장된 결과가 있다면 표시 로직으로 넘어감
+        if not st.session_state.get("edited_image_data"):
+            return 
+    
+    # ------------------------------------------------------------
+    # 2. 편집 프롬프트 입력 및 연결 모드 설정
+    # ------------------------------------------------------------
+    # ... (기존과 동일) ...
+    st.subheader("📝 편집 지시 및 프롬프트 구성")
+
+    selected_caption = st.session_state.get("selected_caption", "")
+    
+    if connect_mode and selected_caption:
+        st.info(f"🔗 연결 모드 활성화 — 페이지 1 문구가 편집 컨셉으로 활용됩니다.\n\n**선택 문구:** {selected_caption}")
+    elif connect_mode:
+        st.warning("⚠️ 페이지 1에서 문구를 선택하지 않았습니다. 편집 지시만 사용됩니다.")
+
+    edit_prompt = st.text_area(
+        "메인 편집 지시 (배경, 사물, 색상 등)",
+        placeholder="예: 배경을 푸른색 해변으로 바꾸고, 모델에게 선글라스를 씌워줘",
+        value=st.session_state.get("edit_prompt_i2i", ""),
+        key="edit_prompt_area_i2i"
+    )
+    st.session_state["edit_prompt_i2i"] = edit_prompt
+    
+    captions_for_support = f"{selected_caption} {st.session_state.get('hashtags','')}".strip()
+    
+    
+    # ------------------------------------------------------------
+    # 3. 보조 프롬프트 옵션 UI (페이지 2 복제)
+    # ------------------------------------------------------------
+    st.markdown("---")
+    st.markdown("### 🎚 보조 프롬프트 설정 (페이지 1 문구 사용 시)")
+
+    support_strength = st.select_slider(
+        "보조 프롬프트 강도",
+        options=["약하게", "중간", "강하게"],
+        value=st.session_state.get("support_strength_i2i", "중간"), # 세션 상태 유지
+        help="보조 분위기 요소가 메인 프롬프트에 얼마나 영향을 줄지 결정합니다."
+    )
+
+    support_method = st.selectbox(
+        "보조 프롬프트 생성 방식",
+        ["단순 키워드 변환", "GPT 기반 자연스러운 스타일 변환", "사용자 조절형 혼합"],
+        index=["단순 키워드 변환", "GPT 기반 자연스러운 스타일 변환", "사용자 조절형 혼합"].index(st.session_state.get("support_method_i2i", "단순 키워드 변환")), # 세션 상태 유지
+        help="페이지 1 문구를 어떻게 이미지 스타일 요소로 변환할지 선택합니다.",
+        key="support_method_i2i_selector"
+    )
+
+    enable_negative = st.checkbox(
+        "NEGATIVE 프롬프트 자동 생성 (권장)",
+        value=st.session_state.get("enable_negative_i2i", True), # 세션 상태 유지
+        help="원치 않는 요소(노이즈, 왜곡, 비현실적 비율 등)를 자동 억제합니다."
+    )
+
+    st.session_state["support_strength_i2i"] = support_strength
+    st.session_state["support_method_i2i"] = support_method
+    st.session_state["enable_negative_i2i"] = enable_negative
 
     # ------------------------------------------------------------
-    # 3. 세부 조정 옵션
+    # 4. 세부 조정 옵션
     # ------------------------------------------------------------
-    st.markdown("### 🎚️ 세부 조정 및 옵션")
+    # ... (기존과 동일) ...
+    st.markdown("### ⚙️ 편집 세부 조정")
     
     i2i_config = config.get("image.i2i", {})
     
     col_strength, col_steps, col_size = st.columns(3)
     
-    # 변화 강도 (Strength)
     with col_strength:
         strength = st.slider(
             "✨ 변화 강도 (Strength)",
@@ -939,7 +1070,6 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         )
         st.session_state["strength_i2i"] = strength
 
-    # 추론 단계 (Steps) - T2I와 동일한 범위 사용
     with col_steps:
         steps = st.slider(
             "추론 단계 (Steps)",
@@ -952,17 +1082,12 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         )
         st.session_state["steps_i2i"] = steps
         
-    # 출력 크기 (T2I와 동일하게 구성)
     with col_size:
-        # 현재 모델 정보 가져오기 (크기 권장을 위해)
         model_info = api.get_model_info()
         current_model_name = model_info.get("current") if model_info else None
         is_flux = current_model_name and "flux" in current_model_name.lower()
 
-        # 이미지 크기 (설정 기반)
         preset_sizes = config.get("image.preset_sizes", [])
-
-        # FLUX 모델 사용 시 권장 크기 표시
         size_options = []
         for s in preset_sizes:
             label = f"{s['name']} ({s['width']}x{s['height']})"
@@ -987,75 +1112,131 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         width = preset_sizes[size_idx]["width"]
         height = preset_sizes[size_idx]["height"]
 
-
-    # Negative Prompt (T2I와 동일하게 구성)
-    negative_prompt = st.text_area(
+    negative_prompt_user = st.text_area(
         "NEGATIVE 프롬프트",
         placeholder="예: blur, low quality, artifacts, extra fingers",
         value=st.session_state.get("negative_prompt_i2i", "distorted, lowres, bad hands, watermark"),
         key="negative_prompt_area_i2i"
     )
-    st.session_state["negative_prompt_i2i"] = negative_prompt
+    st.session_state["negative_prompt_i2i"] = negative_prompt_user
     
     # ------------------------------------------------------------
-    # 4. 최종 프롬프트 구성 및 실행
+    # 5. 최종 프롬프트 구성 및 실행
     # ------------------------------------------------------------
-    
-    # 최종 프롬프트 구성 (페이지 1 문구 활용)
+
+    def build_support_prompt_i2i(text, method, strength):
+        if not text:
+            return ""
+
+        if method == "단순 키워드 변환":
+            prompt = ", ".join(re.split(r"[ ,.\n]+", text)[:30]) 
+        elif method == "GPT 기반 자연스러운 스타일 변환":
+            prompt = f"{text}, cinematic soft light, refined composition, premium studio mood"
+        else:
+            prompt = f"{text}, warm tone, clean aesthetic, balanced framing"
+
+        if strength == "약하게":
+            return f"({prompt}:0.3)"
+        elif strength == "중간":
+            return f"({prompt}:0.6)"
+        else:
+            return f"({prompt}:1.0)"
+            
+    support_prompt = build_support_prompt_i2i(captions_for_support, support_method, support_strength)
+
     final_prompt = edit_prompt
     if connect_mode and selected_caption:
-        # T2I 페이지와 통일성을 위해 caption_to_prompt 사용
-        support_prompt = caption_to_prompt(selected_caption)
         final_prompt = f"{edit_prompt}, {support_prompt}".strip(", ")
+        
+    negative_prompt_final = negative_prompt_user
+    if enable_negative:
+        auto_negative = (
+            "distorted body, extra limbs, blur, noise, low quality, artifacts,"
+            "mutated hands, unrealistic anatomy, text, watermark, bad hands, lowres, worse quality"
+        )
+        negative_prompt_final = f"{auto_negative}, {negative_prompt_user}".strip(", ")
+        
     
-    # 디버깅/정보용
     if final_prompt:
         st.caption(f"**최종 PROMPT:** {final_prompt[:150]}...")
+    if negative_prompt_final:
+        st.caption(f"**최종 NEGATIVE PROMPT:** {negative_prompt_final}")
 
-    submitted = st.button("✨ 이미지 편집 실행", type="primary")
+    submitted = st.button("✨ 이미지 편집 실행", type="primary", disabled=not final_prompt.strip())
 
     if submitted:
         if not final_prompt.strip():
             st.error("❌ 편집 지시(프롬프트)를 입력하세요")
             return
         
+        # 이미지 생성 상태 클리어
+        st.session_state["edited_image_data"] = None 
+        
         aligned_w = align_to_64(width)
         aligned_h = align_to_64(height)
-        
-        # BytesIO 객체를 base64 인코딩 전에 다시 읽기
         
         payload = {
             "input_image_base64": base64.b64encode(image_bytes).decode(),
             "prompt": final_prompt,
-            "negative_prompt": negative_prompt if negative_prompt.strip() else None,
+            "negative_prompt": negative_prompt_final if negative_prompt_final.strip() else None,
             "strength": strength,
             "width": aligned_w,
             "height": aligned_h,
-            "steps": steps # Steps 변수 사용
+            "steps": steps
         }
         
         try:
             with st.spinner("편집 중..."):
-                edited_io = api.call_i2i(payload)
+                edited_io = api.call_i2i(payload) 
             
             if edited_io:
-                edited_io.seek(0)
-                edited_bytes = edited_io.read()
+                # 🆕 결과 데이터를 세션 상태에 저장
+                st.session_state["edited_image_data"] = {
+                    "source_name": target_image_name,
+                    "original_bytes": image_bytes,
+                    "edited_bytes": edited_io.read(), # BytesIO에서 바이트를 읽어 저장
+                    "prompt": final_prompt
+                }
+                edited_io.seek(0) # 다운로드를 위해 포인터 재설정
+
+                st.success("✅ 편집 완료! 결과를 확인하세요.")
+                st.rerun() # 결과 표시를 위해 Streamlit 재실행
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("원본")
-                    st.image(image_bytes, caption=target_image_name, use_container_width=True)
-                with col2:
-                    st.subheader("편집됨")
-                    st.image(edited_bytes, caption="편집 결과", use_container_width=True)
-                
-                st.success("✅ 완료!")
-                st.download_button("⬇️ 편집 이미지 다운로드", edited_bytes, "edited.png", "image/png")
             else:
                 st.error("❌ 편집된 이미지를 받지 못했습니다.")
         except Exception as e:
             st.error(f"❌ 편집 실패: {e}")
+
+
+    # ------------------------------------------------------------
+    # 6. 결과 표시 (세션 상태에 저장된 결과 사용) 🆕
+    # ------------------------------------------------------------
+    
+    edited_data = st.session_state.get("edited_image_data")
+    if edited_data:
+        st.markdown("---")
+        st.subheader("🎉 최종 편집 결과")
+
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.caption(f"원본 이미지: {edited_data.get('source_name', 'N/A')}")
+            st.image(edited_data["original_bytes"], caption="원본", use_container_width=True)
+            
+        with col2:
+            st.caption("결과")
+            st.image(edited_data["edited_bytes"], caption="편집 완료", use_container_width=True)
+            
+            # 다운로드를 위해 BytesIO로 다시 변환
+            edited_io_for_dl = BytesIO(edited_data["edited_bytes"])
+            st.download_button(
+                "⬇️ 편집 이미지 다운로드", 
+                edited_io_for_dl.getvalue(), # 바이트 데이터 전달
+                "edited_image.png", 
+                "image/png"
+            )
+
+        st.caption(f"사용된 프롬프트: {edited_data['prompt']}")
 
 # ============================================================
 # 실행
