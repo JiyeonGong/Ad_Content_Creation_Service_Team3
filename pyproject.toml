@@ -33,18 +33,21 @@ dependencies = [
     "transformers>=4.44.0,<4.57.0",
     "accelerate>=1.11.0",
     "pyyaml>=6.0.3",
-    "sentencepiece>=0.2.0",  # FLUX 토크나이저 필수
-    "protobuf>=3.20.0",  # sentencepiece 의존성
-    "safetensors>=0.4.1",  # FLUX 모델 로딩
-    "huggingface-hub>=0.20.0",  # HF 모델 다운로드
-    "tokenizers>=0.15.0",  # 토크나이저
+    "sentencepiece>=0.2.0", # FLUX 토크나이저 필수
+    "protobuf>=3.20.0", # sentencepiece 의존성
+    "safetensors>=0.4.1", # FLUX 모델 로딩
+    "huggingface-hub>=0.20.0", # HF 모델 다운로드
+    "tokenizers>=0.15.0", # 토크나이저
     # 최적화 라이브러리
-    "bitsandbytes>=0.41.0",  # NF4 양자화 (FLUX 속도 3-4배 개선)
-    "torchao>=0.9.0",  # FP8 양자화 (FLUX 품질 우선, 속도 2-2.6배 개선)
+    "bitsandbytes>=0.41.0", # NF4 양자화 (FLUX 속도 3-4배 개선)
+    "torchao>=0.9.0", # FP8 양자화 (FLUX 품질 우선, 속도 2-2.6배 개선)
     # ADetailer (손/얼굴 후처리)
-    "ultralytics>=8.0.0",  # YOLO 모델 (손/얼굴 감지)
-    "mediapipe>=0.10.0",  # 손가락 개수/관절 검증
+    "ultralytics>=8.0.0", # YOLO 모델 (손/얼굴 감지)
+    "mediapipe>=0.10.0", # 손가락 개수/관절 검증
 ]
+
+[tool.uv.sources]
+transformers = { git = "https://github.com/huggingface/transformers.git" }
 
 # ----------------------------------------------------
 # ⚠️ PyTorch/CUDA 관련 참고 사항
