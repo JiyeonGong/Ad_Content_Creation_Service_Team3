@@ -3,9 +3,9 @@
 
 set -e  # 에러 발생 시 중단
 
-PROJECT_ROOT="/home/mscho/project3/Ad_Content_Creation_Service_Team3"
+PROJECT_ROOT="/home/spai0310/Ad_Content_Creation_Service_Team3"
 COMFYUI_DIR="$PROJECT_ROOT/comfyui"
-MODELS_DIR="/mnt/data4/models"
+MODELS_DIR="/home/shared"
 
 echo "========================================="
 echo "ComfyUI 설치 시작"
@@ -92,7 +92,7 @@ echo "⚙️ ComfyUI 설정 파일 생성 중..."
 cat > "$COMFYUI_DIR/extra_model_paths.yaml" << EOF
 # ComfyUI 추가 모델 경로 설정
 a111:
-  base_path: /mnt/data4/models/
+  base_path: /shared/
   checkpoints: ./
   vae: vae/
   loras: loras/
@@ -114,7 +114,7 @@ echo "   - BEN2 배경 제거 노드 검색 및 설치"
 echo "   - Qwen-Image 노드 검색 및 설치"
 echo ""
 echo "4. 모델 다운로드 (필요 시):"
-echo "   - FLUX.1-Fill: /mnt/data4/models/flux-fill/"
-echo "   - Qwen-Image-Edit: /mnt/data4/models/qwen-image-edit/"
-echo "   - BEN2: /mnt/data4/models/ben2/"
+echo "   - FLUX.1-Fill: /shared/flux-fill/"
+echo "   - Qwen-Image-Edit: /shared/qwen-image-edit/"
+echo "   - BEN2: /shared/ben2/"
 echo ""
