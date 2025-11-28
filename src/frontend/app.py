@@ -319,87 +319,47 @@ def main():
     st.sidebar.markdown("---")
 
     if page_id == "image_editing_experiment":
-        # 4페이지: 이미지 편집 모델 선택
-        st.sidebar.subheader("🎨 이미지 편집 모델")
+        # 4페이지: 편집 모드 선택
+        st.sidebar.subheader("✨ 편집 모드 선택")
 
-        # 현재 로드된 ComfyUI 모델 상태 확인
-        current_comfyui_model = api.get_current_comfyui_model()
+        # 편집 모드 정의
+        EDITING_MODES = {
+            "portrait_mode": {"id": "portrait_mode", "name": "👤 인물 모드", "icon": "👤"},
+            "product_mode": {"id": "product_mode", "name": "📦 제품 모드", "icon": "📦"},
+            "hybrid_mode": {"id": "hybrid_mode", "name": "✨ 고급 모드", "icon": "✨"}
+        }
 
-        # 편집 모델 목록을 세션에 저장 (페이지 함수에서 사용)
-        experiments_data = api.get_image_editing_experiments()
-        if experiments_data and experiments_data.get("success"):
-            st.session_state["editing_experiments"] = experiments_data.get("experiments", [])
-            experiments = st.session_state["editing_experiments"]
+        mode_ids = list(EDITING_MODES.keys())
+        mode_names = [EDITING_MODES[m]["name"] for m in mode_ids]
 
-            if experiments:
-                # 편집 모델만 필터링 (생성 모델 제외: FLUX.1-dev-Q8, FLUX.1-dev-Q4)
-                editing_models = [
-                    exp for exp in experiments
-                    if "bnb" not in exp["id"] and not exp["id"].startswith("FLUX.1-dev")
-                ]
+        # 세션에 저장된 모드가 있으면 기본값으로 설정
+        default_mode_idx = 0
+        if "selected_editing_mode" in st.session_state:
+            saved_mode = st.session_state["selected_editing_mode"]
+            if saved_mode in mode_ids:
+                default_mode_idx = mode_ids.index(saved_mode)
 
-                # 실험 ID와 이름을 매핑
-                exp_map = {exp["id"]: exp for exp in editing_models}
-                exp_ids = ["none"] + [exp["id"] for exp in editing_models]
-                exp_names = ["모델 없음"] + [f"{exp['name']}" for exp in editing_models]
+        selected_mode_name = st.sidebar.selectbox(
+            "편집 모드",
+            mode_names,
+            index=default_mode_idx,
+            help="원하는 편집 모드를 선택하세요",
+            key="editing_mode_selector"
+        )
 
-                # 기본값 설정
-                default_idx = 0
-                if current_comfyui_model:
-                    if current_comfyui_model in exp_ids:
-                        default_idx = exp_ids.index(current_comfyui_model)
+        selected_mode_idx = mode_names.index(selected_mode_name)
+        selected_mode_id = mode_ids[selected_mode_idx]
 
-                selected_exp_name = st.sidebar.selectbox(
-                    "편집 모델 선택",
-                    exp_names,
-                    index=default_idx,
-                    help="배경 제거 후 사용할 이미지 편집 모델을 선택하세요. '모델 없음'을 선택하면 메모리를 비웁니다.",
-                    key="editing_model_selector"
-                )
+        # 세션에 선택된 모드 저장
+        st.session_state["selected_editing_mode"] = selected_mode_id
 
-                # 선택된 실험 객체 찾기
-                selected_idx = exp_names.index(selected_exp_name)
-                selected_exp_id = exp_ids[selected_idx]
-
-                # "모델 없음" 선택 시 처리
-                if selected_exp_id == "none":
-                    st.session_state["selected_editing_experiment"] = None
-                    if current_comfyui_model:
-                        # 언로드 필요
-                        with st.spinner("모델 언로드 중..."):
-                            try:
-                                res = api.unload_model_comfyui()
-                                if res.get("success"):
-                                    st.sidebar.success("모델이 꺼졌습니다.")
-                                    time.sleep(1)
-                                    st.rerun()
-                                else:
-                                    st.sidebar.error(f"언로드 실패: {res.get('message')}")
-                            except Exception as e:
-                                st.sidebar.error(f"❌ {e}")
-                    else:
-                        st.sidebar.markdown(f"⚫ **OFF** (Unloaded)")
-                else:
-                    # 일반 모델 선택
-                    selected_experiment = editing_models[selected_idx - 1]  # "모델 없음" 제외
-                    st.session_state["selected_editing_experiment"] = selected_experiment
-
-                    # 상태 표시 (선택한 모델이 실제로 로드되었는지 확인)
-                    if current_comfyui_model == selected_exp_id:
-                        st.sidebar.success(f"💡 **ON** (Loaded: {selected_experiment['name']})")
-                    else:
-                        st.sidebar.markdown(f"⚫ **OFF** (Unloaded)")
-
-                    # 모델 정보 표시 (편집 모델인 경우에만)
-                    if "background_removal_model" in selected_experiment:
-                        st.sidebar.caption(f"📝 배경 제거: {selected_experiment['background_removal_model']}")
-                    if "editing_model" in selected_experiment:
-                        st.sidebar.caption(f"📝 편집: {selected_experiment['editing_model']}")
-
-            else:
-                st.sidebar.warning("사용 가능한 편집 모델이 없습니다.")
-        else:
-            st.sidebar.error("편집 모델 목록을 불러올 수 없습니다.")
+        # 모드 설명
+        mode_descriptions = {
+            "portrait_mode": "얼굴은 보존하고, 의상과 배경만 변경",
+            "product_mode": "제품은 보존하고, 배경을 창의적으로 변경",
+            "hybrid_mode": "얼굴과 제품을 동시에 보존"
+        }
+        st.sidebar.info(mode_descriptions[selected_mode_id])
 
     else:
         # 1,2,3 페이지: 이미지 생성 모델 선택
@@ -962,173 +922,223 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             st.error(f"❌ 편집 실패: {e}")
 
 # ============================================================
-# 🆕 페이지 4: 이미지 편집
+# 🆕 페이지 4: 이미지 편집 (v3.0 - 3가지 모드)
 # ============================================================
 def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
-    st.title("✂️ 이미지 편집")
-    st.markdown("**배경 제거 및 이미지 편집**")
+    st.title("✨ AI 이미지 편집")
+    st.markdown("**3가지 편집 모드로 원하는 부분만 정밀하게 변경하세요**")
 
-    # 세션에서 선택된 편집 모델 가져오기 (메인 함수의 사이드바에서 선택)
-    if "selected_editing_experiment" not in st.session_state:
-        st.warning("⚠️ 편집 모델을 선택해주세요.")
-        return
+    # 편집 모드 정보 (image_editing_config.yaml에서 로드)
+    EDITING_MODES = {
+        "portrait_mode": {
+            "id": "portrait_mode",
+            "name": "👤 인물 모드",
+            "icon": "👤",
+            "description": "얼굴은 100% 보존하고, 의상과 배경만 자연스럽게 변경",
+            "detail": "Face Detector로 얼굴을 자동 보호하고, ControlNet(Depth/Canny)으로 체형을 유지하면서 옷과 배경만 변경합니다.",
+            "use_cases": ["프로필 사진 배경 변경", "의상 스타일 변경", "촬영 장소 변경"]
+        },
+        "product_mode": {
+            "id": "product_mode",
+            "name": "📦 제품 모드",
+            "icon": "📦",
+            "description": "제품은 그대로 유지하고, 배경을 창의적으로 변경",
+            "detail": "BEN2로 제품을 정밀하게 분리한 뒤, FLUX T2I로 새로운 배경을 생성하고 자연스럽게 합성합니다.",
+            "use_cases": ["제품 사진 배경 교체", "광고 이미지 제작", "스튜디오 배경 연출"]
+        },
+        "hybrid_mode": {
+            "id": "hybrid_mode",
+            "name": "✨ 고급 모드",
+            "icon": "✨",
+            "description": "얼굴과 제품을 동시에 보존하고, 나머지만 변경",
+            "detail": "얼굴(Face Detector)과 제품(BEN2)을 동시에 보호하면서, ControlNet Canny로 손가락 디테일까지 유지합니다.",
+            "use_cases": ["인물+제품 광고", "손에 든 제품 촬영", "모델+제품 합성"]
+        }
+    }
 
-    selected_experiment = st.session_state["selected_editing_experiment"]
-
-    # None 체크 ("모델 없음" 선택 시)
-    if selected_experiment is None:
-        st.warning("⚠️ 편집 모델을 선택해주세요. 사이드바에서 '모델 없음'이 아닌 편집 모델을 선택하세요.")
-        return
-
-    # 모델 정보 표시
-    st.info(f"**선택된 모델**: {selected_experiment['name']}\n\n{selected_experiment['description']}")
-
-    # 1. 이미지 업로드
+    # 1️⃣ 이미지 업로드
     st.subheader("1️⃣ 이미지 업로드")
     uploaded_file = st.file_uploader(
-        "편집할 이미지 업로드",
+        "편집할 이미지를 업로드하세요",
         type=["png", "jpg", "jpeg", "webp"],
-        help="배경을 제거하고 편집할 이미지를 업로드하세요"
+        help="인물 사진, 제품 사진, 또는 인물+제품 사진 모두 가능합니다"
     )
 
     if not uploaded_file:
-        st.info("👆 이미지를 업로드하세요")
+        st.info("👆 이미지를 먼저 업로드하세요")
+
+        # 샘플 사용 예시 표시 (항상 보이게)
+        st.markdown("### 💡 각 모드 사용 예시")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("**👤 인물 모드**")
+            for use_case in EDITING_MODES["portrait_mode"]["use_cases"]:
+                st.markdown(f"• {use_case}")
+        with col2:
+            st.markdown("**📦 제품 모드**")
+            for use_case in EDITING_MODES["product_mode"]["use_cases"]:
+                st.markdown(f"• {use_case}")
+        with col3:
+            st.markdown("**✨ 고급 모드**")
+            for use_case in EDITING_MODES["hybrid_mode"]["use_cases"]:
+                st.markdown(f"• {use_case}")
         return
 
     # 업로드된 이미지 표시
     image_bytes = uploaded_file.read()
     image = Image.open(BytesIO(image_bytes))
 
-    col1, col2 = st.columns([1, 2])
+    col1, col2 = st.columns([1, 1])
     with col1:
         st.image(image, caption="원본 이미지", use_container_width=True)
     with col2:
         st.markdown("**이미지 정보**")
-        st.write(f"- 크기: {image.size[0]} x {image.size[1]}")
-        st.write(f"- 포맷: {image.format}")
-        st.write(f"- 모드: {image.mode}")
+        st.write(f"• 크기: {image.size[0]} x {image.size[1]} 픽셀")
+        st.write(f"• 포맷: {image.format}")
+        st.write(f"• 파일 크기: {len(image_bytes) / 1024:.1f} KB")
 
-    # 2. 편집 프롬프트 및 설정
-    st.subheader("2️⃣ 편집 설정")
+    # 2️⃣ 선택된 편집 모드 확인
+    if "selected_editing_mode" not in st.session_state:
+        st.warning("⚠️ 사이드바에서 편집 모드를 선택해주세요.")
+        return
 
-    # 모델별 기능 선택 (YAML의 features 활용)
-    features = selected_experiment.get("features", [])
-    if features:
-        st.markdown("**편집 유형 선택**")
-        feature_names = [f"{f['name']} - {f['description']}" for f in features]
-        selected_feature_idx = st.selectbox(
-            "기능",
-            range(len(features)),
-            format_func=lambda x: feature_names[x],
-            help="모델이 지원하는 편집 기능을 선택하세요"
-        )
-        selected_feature = features[selected_feature_idx]
+    selected_mode_id = st.session_state["selected_editing_mode"]
+    selected_mode = EDITING_MODES[selected_mode_id]
 
-        # 기능별 동적 UI 렌더링
-        st.markdown(f"**{selected_feature['name']}**")
-        st.caption(selected_feature['description'])
+    st.subheader(f"2️⃣ 선택된 모드: {selected_mode['name']}")
+    st.info(f"**{selected_mode['description']}**\n\n{selected_mode['detail']}")
+    st.divider()
 
-        # UI 요소 렌더링
-        ui_elements = selected_feature.get("ui_elements", [])
-        additional_params = {}
+    # 3️⃣ 프롬프트 입력
+    st.subheader("3️⃣ 편집 내용 입력")
 
-        for idx, ui_elem in enumerate(ui_elements):
-            elem_type = ui_elem.get("type")
-            label = ui_elem.get("label")
-
-            if elem_type == "text_input":
-                placeholder = ui_elem.get("placeholder", "")
-                help_text = ""
-
-                # 특정 레이블에 대한 설명 추가
-                if "채울 내용" in label:
-                    help_text = "배경 제거 후 채워질 내용을 설명하세요 (예: 현대적인 사무실, 자연 배경 등)"
-                elif "확장 영역" in label:
-                    help_text = "확장된 영역에 추가로 그려질 내용을 설명하세요 (예: 산 풍경 계속, 바다 배경 등)"
-
-                additional_params[label] = st.text_input(
-                    label,
-                    placeholder=placeholder,
-                    help=help_text,
-                    key=f"ui_elem_{idx}"
-                )
-
-            elif elem_type == "select":
-                options = ui_elem.get("options", [])
-                additional_params[label] = st.selectbox(label, options, key=f"ui_elem_{idx}")
-
-            elif elem_type == "mask_tool":
-                st.info(f"💡 {label}: 배경이 자동으로 제거됩니다")
-
-            elif elem_type == "expansion_direction":
-                options = ui_elem.get("options", [])
-                help_text = "이미지를 확장할 방향을 선택하세요 (여러 개 선택 가능)"
-                additional_params[label] = st.multiselect(
-                    label,
-                    options,
-                    help=help_text,
-                    key=f"ui_elem_{idx}"
-                )
-
-    prompt = st.text_area(
-        "메인 편집 프롬프트 (전체적인 스타일/분위기)",
-        placeholder="예: modern office background, bright lighting, professional atmosphere, high quality",
-        help="이미지 전체의 스타일, 분위기, 품질을 설명하세요. 위의 '채울 내용'과 함께 사용됩니다.",
-        height=100,
-        key="edit_prompt"
-    )
-
-    # 고급 설정
-    with st.expander("⚙️ 고급 설정"):
-        # 네거티브 프롬프트
-        negative_prompt = st.text_area(
-            "네거티브 프롬프트 (선택)",
-            placeholder="예: blurry, low quality, distorted, ugly, bad anatomy",
-            help="생성하지 않을 요소를 설명하세요. 비워두면 자동으로 positive 프롬프트와 동일하게 처리됩니다. FLUX 모델은 네거티브 프롬프트 효과가 제한적입니다.",
-            height=80,
-            key="negative_prompt"
+    # 모드별 프롬프트 입력
+    if selected_mode_id == "portrait_mode":
+        prompt = st.text_area(
+            "의상과 배경 설명",
+            placeholder="예: Wearing a professional navy blue suit, modern office background with glass windows, natural daylight, high quality",
+            help="변경하고 싶은 의상과 배경을 영어로 상세히 설명하세요. 얼굴은 자동으로 보호됩니다.",
+            height=100,
+            key="prompt"
         )
 
-        st.divider()
+    elif selected_mode_id == "product_mode":
+        background_prompt = st.text_area(
+            "배경 설명",
+            placeholder="예: Cyberpunk city at night, neon lights, futuristic atmosphere, bokeh effect, high quality",
+            help="생성하고 싶은 배경을 영어로 상세히 설명하세요. 제품은 자동으로 분리되어 보존됩니다.",
+            height=100,
+            key="background_prompt"
+        )
+        prompt = background_prompt  # API 호출 시 사용
 
+    elif selected_mode_id == "hybrid_mode":
+        prompt = st.text_area(
+            "의상과 배경 설명",
+            placeholder="예: Woman in elegant red dress holding champagne bottle, luxury hotel lobby background, golden lighting, professional photography",
+            help="변경하고 싶은 의상과 배경을 영어로 설명하세요. 얼굴과 손에 든 제품은 자동으로 보호됩니다.",
+            height=100,
+            key="prompt"
+        )
+
+    # 4️⃣ 파라미터 설정
+    st.subheader("4️⃣ 파라미터 조정")
+
+    # 모드별 파라미터 설정
+    col1, col2 = st.columns(2)
+
+    with col1:
+        steps = st.slider(
+            "생성 품질 (Steps)",
+            min_value=10,
+            max_value=50,
+            value=28,
+            help="높을수록 품질이 향상되지만 시간이 오래 걸립니다"
+        )
+
+    with col2:
+        if selected_mode_id == "portrait_mode":
+            guidance_scale = st.slider(
+                "프롬프트 반영 강도",
+                min_value=1.0,
+                max_value=10.0,
+                value=3.5,
+                step=0.5,
+                help="높을수록 프롬프트를 강하게 반영합니다"
+            )
+        elif selected_mode_id == "product_mode":
+            guidance_scale = st.slider(
+                "배경 디테일 강도",
+                min_value=3.0,
+                max_value=10.0,
+                value=5.0,
+                step=0.5,
+                help="높을수록 배경 프롬프트를 강하게 반영합니다"
+            )
+        elif selected_mode_id == "hybrid_mode":
+            guidance_scale = st.slider(
+                "프롬프트 반영 강도",
+                min_value=1.0,
+                max_value=10.0,
+                value=3.5,
+                step=0.5,
+                help="높을수록 프롬프트를 강하게 반영합니다"
+            )
+
+    # 모드별 추가 파라미터
+    if selected_mode_id == "portrait_mode" or selected_mode_id == "hybrid_mode":
         col1, col2, col3 = st.columns(3)
 
-        exp_config = config.get("image.editing_experiment", {})
-
         with col1:
-            steps_config = exp_config.get("steps", {})
-            steps = st.slider(
-                "추론 단계 (Steps)",
-                min_value=steps_config.get("min", 10),
-                max_value=steps_config.get("max", 50),
-                value=steps_config.get("default", 28),
-                help="높을수록 품질 향상, 시간 증가"
+            controlnet_type = st.selectbox(
+                "체형 유지 방식",
+                ["depth", "canny"],
+                index=0 if selected_mode_id == "portrait_mode" else 1,
+                help="Depth: 체형/포즈 유지 | Canny: 손가락 디테일 유지"
             )
 
         with col2:
-            guidance_config = exp_config.get("guidance_scale", {})
-            guidance_scale = st.slider(
-                "Guidance Scale",
-                min_value=guidance_config.get("min", 1.0),
-                max_value=guidance_config.get("max", 15.0),
-                value=guidance_config.get("default", 3.5),
-                step=guidance_config.get("step", 0.5),
-                help="프롬프트 준수 강도"
+            controlnet_strength = st.slider(
+                "체형 유지 강도",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.7 if selected_mode_id == "portrait_mode" else 0.8,
+                step=0.05,
+                help="높을수록 원본 체형/포즈를 강하게 유지합니다"
             )
 
         with col3:
-            strength_config = exp_config.get("strength", {})
-            strength = st.slider(
-                "변화 강도 (Strength)",
-                min_value=strength_config.get("min", 0.0),
-                max_value=strength_config.get("max", 1.0),
-                value=strength_config.get("default", 0.8),
-                step=strength_config.get("step", 0.05),
-                help="원본 대비 변화 정도"
+            denoise_strength = st.slider(
+                "변경 강도",
+                min_value=0.7 if selected_mode_id == "hybrid_mode" else 0.0,
+                max_value=1.0,
+                value=1.0 if selected_mode_id == "portrait_mode" else 0.9,
+                step=0.05,
+                help="1.0 = 완전히 새로 그림, 낮을수록 원본 보존"
             )
 
-    # 3. 실행
-    st.subheader("3️⃣ 편집 실행")
+    elif selected_mode_id == "product_mode":
+        blending_strength = st.slider(
+            "합성 자연스러움",
+            min_value=0.2,
+            max_value=0.6,
+            value=0.35,
+            step=0.05,
+            help="낮을수록 원본 제품 보존, 높을수록 배경과 자연스럽게 융합"
+        )
+
+    # 네거티브 프롬프트 (선택 사항)
+    with st.expander("⚙️ 추가 설정 (선택)"):
+        negative_prompt = st.text_area(
+            "네거티브 프롬프트",
+            value="blurry, low quality, distorted, bad anatomy",
+            help="생성하지 않을 요소를 설명하세요 (FLUX 모델은 효과가 제한적)",
+            height=60,
+            key="negative_prompt"
+        )
+
+    # 5️⃣ 편집 실행
+    st.subheader("5️⃣ 편집 실행")
 
     # 버튼 비활성화 처리를 위한 세션 상태
     if "editing_in_progress" not in st.session_state:
@@ -1140,22 +1150,34 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     # 편집 버튼 (진행 중일 때 비활성화)
     button_disabled = st.session_state["editing_in_progress"]
 
-    if st.button("🎨 편집 시작", type="primary", use_container_width=True, disabled=button_disabled):
+    if st.button(f"{selected_mode['icon']} 편집 시작", type="primary", use_container_width=True, disabled=button_disabled):
         # 프롬프트 체크
-        if not prompt.strip():
-            st.warning("⚠️ 메인 편집 프롬프트를 입력하세요")
+        if not prompt or not prompt.strip():
+            st.warning("⚠️ 프롬프트를 입력하세요")
             st.stop()
 
-        # 편집 요청 저장
-        st.session_state["editing_request"] = {
-            "experiment_id": selected_experiment["id"],
+        # 편집 요청 저장 (모드별 파라미터 포함)
+        payload = {
+            "experiment_id": selected_mode_id,
             "input_image_base64": base64.b64encode(image_bytes).decode("utf-8"),
             "prompt": prompt,
-            "negative_prompt": negative_prompt if negative_prompt.strip() else "",
+            "negative_prompt": negative_prompt,
             "steps": steps,
             "guidance_scale": guidance_scale,
-            "strength": strength
+            "strength": 0.8,  # 하위 호환성 (deprecated)
         }
+
+        # 모드별 추가 파라미터
+        if selected_mode_id == "portrait_mode" or selected_mode_id == "hybrid_mode":
+            payload["controlnet_type"] = controlnet_type
+            payload["controlnet_strength"] = controlnet_strength
+            payload["denoise_strength"] = denoise_strength
+
+        if selected_mode_id == "product_mode":
+            payload["blending_strength"] = blending_strength
+            payload["background_prompt"] = prompt  # 배경 프롬프트를 background_prompt로도 전달
+
+        st.session_state["editing_request"] = payload
         st.session_state["editing_in_progress"] = True
         st.rerun()
 
@@ -1163,8 +1185,49 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     if st.session_state["editing_in_progress"] and st.session_state["editing_request"]:
         payload = st.session_state["editing_request"]
 
+        # 진행상황 표시
+        selected_mode = EDITING_MODES.get(payload["experiment_id"], {})
+        mode_name = selected_mode.get("name", "이미지 편집")
+
+        # 파이프라인 단계 정의
+        pipeline_steps = {
+            "portrait_mode": [
+                "📥 이미지 업로드 및 전처리",
+                "🔍 얼굴 영역 자동 감지",
+                "🎭 얼굴 마스크 생성 및 반전",
+                "📊 체형 가이드 추출 (Depth/Canny)",
+                "🎨 ControlNet 적용",
+                "🚀 이미지 생성 (의상/배경 변경)",
+                "💾 결과 저장 및 후처리"
+            ],
+            "product_mode": [
+                "📥 이미지 업로드 및 전처리",
+                "✂️ BEN2 배경 제거 (제품 분리)",
+                "🎨 AI 배경 생성 (T2I)",
+                "🔗 제품+배경 레이어 합성",
+                "🖼️ FLUX Fill 자연스러운 블렌딩",
+                "💾 결과 저장 및 후처리"
+            ],
+            "hybrid_mode": [
+                "📥 이미지 업로드 및 전처리",
+                "🔍 얼굴 + 제품 영역 감지",
+                "🎭 멀티 마스크 생성 및 합성",
+                "📊 윤곽선 가이드 추출 (Canny)",
+                "🎨 ControlNet 적용",
+                "🚀 이미지 생성 (의상/배경 변경)",
+                "💾 결과 저장 및 후처리"
+            ]
+        }
+
+        steps = pipeline_steps.get(payload["experiment_id"], [])
+
         try:
-            with st.spinner("이미지 편집 중... (배경 제거 + 편집 적용)"):
+            # 진행상황 안내 표시
+            st.info(f"🎨 **{mode_name} 파이프라인 실행 중...**\n\n" +
+                   "\n".join([f"{i+1}. {step}" for i, step in enumerate(steps)]) +
+                   "\n\n💡 백엔드 로그를 모니터링하여 실시간 진행상황을 확인하세요!")
+
+            with st.spinner(f"{mode_name} 실행 중... 잠시만 기다려주세요 (평균 30-60초 소요)"):
                 result = api.edit_with_comfyui(payload)
 
             # 편집 완료 - 버튼 다시 활성화 및 요청 초기화
@@ -1172,10 +1235,10 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
             st.session_state["editing_request"] = None
 
             if result and result.get("success"):
-                st.success(f"✅ 편집 완료! (소요 시간: {result.get('elapsed_time', 0):.1f}초)")
+                st.success(f"✅ 편집 완료! ({selected_mode['name']} | 소요 시간: {result.get('elapsed_time', 0):.1f}초)")
 
-                # 4. 결과 표시
-                st.subheader("4️⃣ 결과")
+                # 6️⃣ 결과 표시
+                st.subheader("6️⃣ 편집 결과")
 
                 # 배경 제거 이미지 (있는 경우)
                 if result.get("background_removed_image_base64"):
@@ -1184,13 +1247,13 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
 
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.markdown("**원본**")
+                        st.markdown("**📸 원본 이미지**")
                         st.image(image, use_container_width=True)
                     with col2:
-                        st.markdown("**배경 제거**")
+                        st.markdown("**✂️ 배경 제거 (중간 단계)**")
                         st.image(bg_removed_image, use_container_width=True)
                     with col3:
-                        st.markdown("**편집 결과**")
+                        st.markdown(f"**{selected_mode['icon']} 최종 결과**")
                         output_bytes = base64.b64decode(result["output_image_base64"])
                         output_image = Image.open(BytesIO(output_bytes))
                         st.image(output_image, use_container_width=True)
@@ -1201,15 +1264,15 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
                         st.download_button(
                             "⬇️ 배경 제거 이미지 다운로드",
                             BytesIO(bg_removed_bytes).getvalue(),
-                            f"background_removed_{selected_experiment['id']}.png",
+                            f"background_removed_{selected_mode_id}.png",
                             "image/png",
                             use_container_width=True
                         )
                     with col2:
                         st.download_button(
-                            "⬇️ 편집 결과 다운로드",
+                            "⬇️ 최종 결과 다운로드",
                             BytesIO(output_bytes).getvalue(),
-                            f"edited_{selected_experiment['id']}.png",
+                            f"edited_{selected_mode_id}.png",
                             "image/png",
                             use_container_width=True
                         )
@@ -1218,10 +1281,10 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
                     # 배경 제거 이미지 없이 최종 결과만
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.markdown("**원본**")
+                        st.markdown("**📸 원본 이미지**")
                         st.image(image, use_container_width=True)
                     with col2:
-                        st.markdown("**편집 결과**")
+                        st.markdown(f"**{selected_mode['icon']} 편집 결과**")
                         output_bytes = base64.b64decode(result["output_image_base64"])
                         output_image = Image.open(BytesIO(output_bytes))
                         st.image(output_image, use_container_width=True)
@@ -1230,7 +1293,7 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
                     st.download_button(
                         "⬇️ 편집 결과 다운로드",
                         BytesIO(output_bytes).getvalue(),
-                        f"edited_{selected_experiment['id']}.png",
+                        f"edited_{selected_mode_id}.png",
                         "image/png",
                         use_container_width=True
                     )

@@ -147,13 +147,19 @@ class ComfyUIClient:
         except:
             return {}
 
-    def wait_for_completion(self, prompt_id: str, check_interval: int = 2) -> Dict[str, Any]:
+    def wait_for_completion(
+        self,
+        prompt_id: str,
+        check_interval: int = 2,
+        progress_callback: Optional[callable] = None
+    ) -> Dict[str, Any]:
         """
-        작업 완료 대기 (프로그레스바 표시)
+        작업 완료 대기 (진행상황 추적)
 
         Args:
             prompt_id: 작업 ID
             check_interval: 확인 간격 (초)
+            progress_callback: 진행상황 콜백 함수 (current_step, total_steps, step_name, node_id)
 
         Returns:
             완료된 작업 히스토리
@@ -163,6 +169,7 @@ class ComfyUIClient:
         start_time = time.time()
         last_progress = None
         was_in_queue = False  # 큐에 들어갔었는지 추적
+        completed_nodes = set()  # 완료된 노드 추적
 
         while True:
             # 타임아웃 체크
@@ -205,6 +212,18 @@ class ComfyUIClient:
                 if "error" in status:
                     error_msg = status.get("error", "Unknown error")
                     raise Exception(f"ComfyUI 작업 실패: {error_msg}")
+
+                # 진행상황 추적 (완료된 노드 확인)
+                if progress_callback:
+                    outputs = history.get("outputs", {})
+                    for node_id in outputs.keys():
+                        if node_id not in completed_nodes:
+                            completed_nodes.add(node_id)
+                            # 콜백 호출
+                            try:
+                                progress_callback(node_id=node_id, elapsed=elapsed)
+                            except Exception as e:
+                                logger.warning(f"⚠️ Progress callback 오류: {e}")
             else:
                 # 히스토리가 없는데 큐에도 없으면 → 워크플로우 에러로 큐에서 빠진 것
                 if was_in_queue and not in_queue and elapsed > 5:
@@ -213,8 +232,6 @@ class ComfyUIClient:
                         f"워크플로우 validation 에러 가능성이 높습니다. "
                         f"ComfyUI 로그를 확인하세요."
                     )
-
-            # 진행 상황 표시 (로그 출력 제거)
 
             # 대기
             time.sleep(check_interval)
@@ -293,7 +310,8 @@ class ComfyUIClient:
         self,
         workflow: Dict[str, Any],
         input_image: Optional[bytes] = None,
-        input_image_node_id: Optional[str] = None
+        input_image_node_id: Optional[str] = None,
+        progress_callback: Optional[callable] = None
     ) -> Tuple[list[bytes], Dict[str, Any]]:
         """
         워크플로우 실행 (전체 파이프라인)
@@ -302,6 +320,7 @@ class ComfyUIClient:
             workflow: ComfyUI 워크플로우 JSON
             input_image: 입력 이미지 (선택)
             input_image_node_id: 입력 이미지가 들어갈 노드 ID (선택)
+            progress_callback: 진행상황 콜백 함수 (선택)
 
         Returns:
             (출력 이미지 리스트, 히스토리)
@@ -321,8 +340,8 @@ class ComfyUIClient:
         # 3. 워크플로우 큐 등록
         prompt_id = self.queue_prompt(workflow)
 
-        # 4. 완료 대기
-        history = self.wait_for_completion(prompt_id)
+        # 4. 완료 대기 (진행상황 추적)
+        history = self.wait_for_completion(prompt_id, progress_callback=progress_callback)
 
         # 5. 출력 이미지 추출
         output_images = self.extract_output_images(history)

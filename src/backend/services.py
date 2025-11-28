@@ -605,7 +605,8 @@ def edit_image_with_comfyui(
         get_workflow_template,
         update_workflow_inputs,
         get_workflow_input_image_node_id,
-        load_image_editing_config
+        load_image_editing_config,
+        get_pipeline_steps_for_mode
     )
 
     logger = logging.getLogger(__name__)
@@ -615,21 +616,24 @@ def edit_image_with_comfyui(
         # 설정 로드
         config = load_image_editing_config()
 
-        # 실험 정보 찾기
-        experiment = None
-        for exp in config.get("experiments", []):
-            if exp["id"] == experiment_id:
-                experiment = exp
+        # 파이프라인 단계 매핑 로드
+        pipeline_steps = get_pipeline_steps_for_mode(experiment_id)
+
+        # 모드 정보 찾기 (새로운 구조)
+        mode_info = None
+        for mode_id, mode_data in config.get("editing_modes", {}).items():
+            if mode_data["id"] == experiment_id:
+                mode_info = mode_data
                 break
 
-        if not experiment:
+        if not mode_info:
             return {
                 "success": False,
                 "experiment_id": experiment_id,
                 "experiment_name": "Unknown",
                 "output_image_base64": None,
                 "background_removed_image_base64": None,
-                "error": f"알 수 없는 실험 ID: {experiment_id}",
+                "error": f"알 수 없는 모드 ID: {experiment_id}",
                 "elapsed_time": None
             }
 
@@ -651,25 +655,44 @@ def edit_image_with_comfyui(
             negative_prompt=negative_prompt,
             steps=steps,
             guidance_scale=guidance_scale,
-            strength=strength
+            strength=strength,
+            # 새로운 모드 파라미터
+            controlnet_type=controlnet_type,
+            controlnet_strength=controlnet_strength,
+            denoise_strength=denoise_strength,
+            blending_strength=blending_strength,
+            background_prompt=background_prompt
         )
 
         # 입력 이미지 노드 ID
         input_node_id = get_workflow_input_image_node_id(experiment_id)
 
         logger.info(f"🎨 ComfyUI 이미지 편집 시작")
-        logger.info(f"   실험: {experiment['name']}")
-        logger.info(f"   배경 제거: {experiment.get('background_removal', {}).get('model', 'N/A')}")
-        logger.info(f"   이미지 편집: {experiment.get('image_editing', {}).get('model', 'N/A')}")
+        logger.info(f"   모드: {mode_info['name']}")
+        logger.info(f"   설명: {mode_info['description']}")
         logger.info(f"   프롬프트: {prompt}")
-        logger.info(f"   파라미터: steps={steps}, guidance={guidance_scale}, strength={strength}")
+        logger.info(f"   파라미터: steps={steps}, guidance={guidance_scale}")
+        if experiment_id == "portrait_mode" or experiment_id == "hybrid_mode":
+            logger.info(f"   ControlNet: type={controlnet_type}, strength={controlnet_strength}, denoise={denoise_strength}")
+        elif experiment_id == "product_mode":
+            logger.info(f"   배경: {background_prompt or prompt}, blending={blending_strength}")
+
+        # 진행상황 콜백 함수 정의
+        step_count = [0]  # 완료된 단계 수 (mutable 리스트로 클로저에서 수정 가능)
+
+        def progress_callback(node_id: str, elapsed: float):
+            """노드 완료 시 호출되는 콜백"""
+            step_name = pipeline_steps.get(node_id, f"노드 {node_id}")
+            step_count[0] += 1
+            logger.info(f"   [{step_count[0]:2d}/{len(pipeline_steps):2d}] {step_name} (경과: {elapsed:.1f}초)")
 
         # 워크플로우 실행
-        logger.info(f"🔄 워크플로우 실행 중...")
+        logger.info(f"🔄 워크플로우 실행 시작 (총 {len(pipeline_steps)}단계)")
         output_images, history = client.execute_workflow(
             workflow=workflow,
             input_image=input_image_bytes,
-            input_image_node_id=input_node_id
+            input_image_node_id=input_node_id,
+            progress_callback=progress_callback
         )
 
         if not output_images:
@@ -691,7 +714,7 @@ def edit_image_with_comfyui(
         return {
             "success": True,
             "experiment_id": experiment_id,
-            "experiment_name": experiment["name"],
+            "experiment_name": mode_info["name"],
             "output_image_base64": output_image_base64,
             "background_removed_image_base64": background_removed_base64,
             "error": None,
@@ -706,7 +729,7 @@ def edit_image_with_comfyui(
         return {
             "success": False,
             "experiment_id": experiment_id,
-            "experiment_name": experiment.get("name", "Unknown") if experiment else "Unknown",
+            "experiment_name": "Unknown",
             "output_image_base64": None,
             "background_removed_image_base64": None,
             "error": error_msg,
