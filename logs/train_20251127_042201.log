@@ -1,0 +1,29 @@
+2025-11-27 04:22:01,288 - INFO - Loading config from: configs/train_flux_lora.yaml
+2025-11-27 04:22:01,341 - INFO - ======================================================================
+2025-11-27 04:22:01,341 - INFO - 🚀 FLUX LoRA Training Started
+2025-11-27 04:22:01,341 - INFO - ======================================================================
+2025-11-27 04:22:01,341 - INFO - Model: /home/shared/FLUX.1-dev
+2025-11-27 04:22:01,341 - INFO - Dataset: /home/spai0312/Ad_Content_Creation_Service_Team3/training_data
+2025-11-27 04:22:01,341 - INFO - Output: /home/spai0312/Ad_Content_Creation_Service_Team3/outputs/lora_flux
+2025-11-27 04:22:01,341 - INFO - Configuration: 3 epochs × 30 steps
+2025-11-27 04:22:01,341 - INFO - Batch size: 1, Learning rate: 0.0001
+2025-11-27 04:22:01,342 - INFO - LoRA Rank: 8, Alpha: 16
+2025-11-27 04:22:01,342 - INFO - ======================================================================
+2025-11-27 04:22:01,342 - INFO - Loading model...
+2025-11-27 04:22:01,342 - INFO - 📊 Using bf16 quantization (12GB, may have memory issues)
+2025-11-27 04:22:01,342 - ERROR - Failed to load model: cuda not supported. Supported strategies are: balanced
+2025-11-27 04:22:01,342 - ERROR - 
+======================================================================
+2025-11-27 04:22:01,342 - ERROR - ❌ Training failed: cuda not supported. Supported strategies are: balanced
+2025-11-27 04:22:01,344 - ERROR - Traceback (most recent call last):
+  File "/home/spai0312/Ad_Content_Creation_Service_Team3/scripts/train_flux_lora_gcp.py", line 364, in train_lora
+    pipeline = FluxPipeline.from_pretrained(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spai0312/Ad_Content_Creation_Service_Team3/.venv/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 114, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/spai0312/Ad_Content_Creation_Service_Team3/.venv/lib/python3.12/site-packages/diffusers/pipelines/pipeline_utils.py", line 805, in from_pretrained
+    raise NotImplementedError(
+NotImplementedError: cuda not supported. Supported strategies are: balanced
+
+2025-11-27 04:22:01,344 - ERROR - ======================================================================

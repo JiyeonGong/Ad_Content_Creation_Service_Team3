@@ -1,0 +1,140 @@
+# ============================================================================
+# FLUX.1-dev LoRA Training Configuration
+# Safe Production-Ready Configuration
+# ============================================================================
+
+# ============================================================================
+# Model Configuration
+# ============================================================================
+model:
+  # Absolute path to local FLUX.1-dev model
+  # Must be a valid directory with model files
+  pretrained_model: "/home/shared/FLUX.1-dev"
+
+
+# ============================================================================
+# Training Configuration
+# ============================================================================
+training:
+  # Precision mode - choose one:
+  # - "fp8":  8-bit quantization (~6-8GB)  ✅ RECOMMENDED for 24GB GPU
+  # - "bf16": 16-bit quantization (~12GB) ⚠️  May have memory issues
+  # - "fp32": 32-bit no quantization (~24GB) ❌ OOM on 24GB GPU
+  precision: "bf16"
+
+  # Batch size (adjust based on GPU memory)
+  # ⚠️ 24GB GPU (RTX 3090): batch_size=1 ONLY
+  # If OOM error: reduce to 1 or enable gradient_accumulation
+  batch_size: 1
+
+  # Number of epochs (complete passes through dataset)
+  num_epochs: 3
+
+  # Learning rate for LoRA parameters
+  # Recommended range: 1e-5 to 1e-3
+  learning_rate: 1.0e-4
+
+  # Image resolution (must match dataset)
+  # ⚠️ 24GB GPU: keep at 512 (256 if OOM)
+  resolution: 512
+
+  # Maximum gradient norm for clipping
+  # Prevents exploding gradients
+  max_grad_norm: 1.0
+
+  # Logging directory
+  log_dir: "./logs"
+
+
+# ============================================================================
+# LoRA Configuration
+# ============================================================================
+lora:
+  # LoRA rank (network dimension)
+  # Smaller = fewer parameters but less expressive
+  # Typical values: 4, 8, 16, 32
+  r: 8
+
+  # LoRA alpha (scaling factor)
+  # Typically: 2x rank
+  alpha: 16
+
+  # Dropout rate for LoRA layers
+  dropout: 0.05
+
+
+# ============================================================================
+# Output Configuration
+# ============================================================================
+output:
+  # Absolute path to save trained LoRA weights
+  # Directory will be created if it doesn't exist
+  lora_weights_dir: "/home/spai0312/Ad_Content_Creation_Service_Team3/outputs/lora_flux"
+
+
+# ============================================================================
+# Dataset Configuration
+# ============================================================================
+dataset:
+  # Absolute path to training dataset directory
+  # Images supported: .jpg, .png, .jpeg (case-insensitive)
+  # Optional: .txt files with same name as images for captions
+  path: "/home/spai0312/Ad_Content_Creation_Service_Team3/training_data"
+
+  # Image size for dataset
+  # Used by DataLoader
+  image_size: 512
+
+
+# ============================================================================
+# Validation Configuration (검증 이미지 생성 설정)
+# ============================================================================
+validation:
+  # Prompts for yoga studio, pilates studio, and gym
+  prompts:
+    # Yoga Studio Prompts (요가 스튜디오)
+    - "professional photo of a serene yoga studio with mats and peaceful lighting"
+    - "bright yoga studio with wooden floor and mirrors, people in yoga poses"
+    - "modern yoga studio with natural light and zen atmosphere"
+    
+    # Pilates Studio Prompts (필라테스 스튜디오)
+    - "professional pilates studio with reformers and equipment, clean modern design"
+    - "bright pilates studio with mirrors, professional setting and organized equipment"
+    - "contemporary pilates studio with state of the art reformers and machines"
+    
+    # Gym Prompts (헬스장)
+    - "modern gym with dumbbells, weights, and exercise equipment well organized"
+    - "bright gym with weight training area and cardio machines, professional setting"
+    - "contemporary fitness gym with professional equipment and bright lighting"
+  
+  # Generation settings
+  inference_steps: 20
+  guidance_scale: 7.5
+
+
+# ============================================================================
+# Advanced Settings (Optional)
+# ============================================================================
+# These settings are optional and have sensible defaults
+
+# Hardware settings (uncomment to customize)
+# hardware:
+#   device: "cuda"              # cuda, cpu
+#   mixed_precision: "bf16"     # bf16, fp32
+#   max_vram_gb: 24            # Maximum VRAM to use
+
+# Optimizer settings (uncomment to customize)
+# optimizer:
+#   type: "adamw"
+#   weight_decay: 0.01
+#   betas: [0.9, 0.999]
+#   eps: 1.0e-8
+
+# Validation settings (uncomment to customize)
+# validation:
+#   prompts:
+#     - "a professional photograph"
+#     - "studio portrait lighting"
+#     - "high quality headshot"
+#   inference_steps: 20
+#   guidance_scale: 7.5
