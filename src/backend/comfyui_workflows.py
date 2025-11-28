@@ -25,12 +25,21 @@ def get_workflow_template(experiment_id: str) -> Dict[str, Any]:
     실험 ID에 따라 워크플로우 템플릿 반환
 
     Args:
-        experiment_id: 모델 ID (ben2_flux_fill, ben2_qwen_image, FLUX.1-dev-Q8, FLUX.1-dev-Q4)
+        experiment_id: 모델 ID (portrait_mode, product_mode, hybrid_mode, FLUX.1-dev-Q8, FLUX.1-dev-Q4)
 
     Returns:
         ComfyUI 워크플로우 JSON
     """
-    if experiment_id == "ben2_flux_fill":
+    # 새로운 편집 모드
+    if experiment_id == "portrait_mode":
+        return get_portrait_mode_workflow()
+    elif experiment_id == "product_mode":
+        return get_product_mode_workflow()
+    elif experiment_id == "hybrid_mode":
+        return get_hybrid_mode_workflow()
+
+    # 기존 실험 (하위 호환성)
+    elif experiment_id == "ben2_flux_fill":
         return get_ben2_flux_fill_workflow()
     elif experiment_id == "ben2_qwen_image":
         return get_ben2_qwen_workflow()
@@ -915,3 +924,661 @@ def get_workflow_input_image_node_id(experiment_id: str) -> str:
     """
     # 모든 워크플로우에서 노드 1이 LoadImage
     return "1"
+
+
+# ============================================================
+# 새로운 편집 모드 워크플로우 (v3.0)
+# ============================================================
+
+def get_portrait_mode_workflow() -> Dict[str, Any]:
+    """
+    🟢 Portrait Mode 워크플로우
+    
+    파이프라인:
+    1. 얼굴 감지 (Face Detector)
+    2. 마스크 반전 (얼굴 제외)
+    3. ControlNet 가이드 추출 (Depth/Canny)
+    4. Masked I2I 생성 (옷/배경만 변경)
+    """
+    workflow = {
+        # 노드 1: 입력 이미지 로드
+        "1": {
+            "class_type": "LoadImage",
+            "inputs": {
+                "image": "input.png"  # 런타임에 변경
+            }
+        },
+
+        # 노드 2: FLUX UNET 로드
+        "2": {
+            "class_type": "UnetLoaderGGUF",
+            "inputs": {
+                "unet_name": "flux1-dev-Q8_0.gguf"
+            }
+        },
+
+        # 노드 3: Dual CLIP 로드
+        "3": {
+            "class_type": "DualCLIPLoaderGGUF",
+            "inputs": {
+                "clip_name1": "clip_l.safetensors",
+                "clip_name2": "t5-v1_1-xxl-encoder-Q8_0.gguf",
+                "type": "flux"
+            }
+        },
+
+        # 노드 4: VAE 로드
+        "4": {
+            "class_type": "VAELoader",
+            "inputs": {
+                "vae_name": "ae.safetensors"
+            }
+        },
+
+        # 노드 5: 프롬프트 인코딩
+        "5": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "text": "",  # 런타임에 설정
+                "clip": ["3", 0]
+            }
+        },
+
+        # 노드 6: Negative 프롬프트
+        "6": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "text": "",
+                "clip": ["3", 0]
+            }
+        },
+
+        # 노드 7: FluxGuidance
+        "7": {
+            "class_type": "FluxGuidance",
+            "inputs": {
+                "conditioning": ["5", 0],
+                "guidance": 3.5  # 런타임에 설정
+            }
+        },
+
+        # 노드 10: Face Detector
+        "10": {
+            "class_type": "UltralyticsDetectorProvider",
+            "inputs": {
+                "model_name": "bbox/face_yolov8m.pt"
+            }
+        },
+
+        # 노드 11: SEGS from Detection (얼굴 영역 세그먼트)
+        "11": {
+            "class_type": "SAMLoader",
+            "inputs": {
+                "model_name": "sam_vit_b_01ec64.pth"
+            }
+        },
+
+        # 노드 12: BboxDetectorSEGS (얼굴 감지 실행)
+        "12": {
+            "class_type": "BboxDetectorSEGS",
+            "inputs": {
+                "image": ["1", 0],
+                "bbox_detector": ["10", 0],
+                "threshold": 0.5,
+                "dilation": 10,
+                "crop_factor": 3.0,
+                "drop_size": 10
+            }
+        },
+
+        # 노드 13: SEGS to Mask (얼굴 마스크 생성)
+        "13": {
+            "class_type": "SegsToCombinedMask",
+            "inputs": {
+                "segs": ["12", 0]
+            }
+        },
+
+        # 노드 14: Invert Mask (얼굴 제외한 나머지 영역)
+        "14": {
+            "class_type": "InvertMask",
+            "inputs": {
+                "mask": ["13", 0]
+            }
+        },
+
+        # 노드 20: ControlNet Preprocessor (Depth 또는 Canny)
+        "20": {
+            "class_type": "DepthAnythingPreprocessor",
+            "inputs": {
+                "image": ["1", 0],
+                "ckpt_name": "depth_anything_v2_vitl.pth",
+                "resolution": 1024
+            }
+        },
+
+        # 노드 21: ControlNet 로드
+        "21": {
+            "class_type": "ControlNetLoader",
+            "inputs": {
+                "control_net_name": "InstantX-FLUX.1-dev-Controlnet-Union.safetensors"
+            }
+        },
+
+        # 노드 22: Apply ControlNet
+        "22": {
+            "class_type": "ControlNetApplyAdvanced",
+            "inputs": {
+                "positive": ["7", 0],
+                "negative": ["6", 0],
+                "control_net": ["21", 0],
+                "image": ["20", 0],
+                "strength": 0.7,  # 런타임에 설정
+                "start_percent": 0.0,
+                "end_percent": 1.0
+            }
+        },
+
+        # 노드 30: VAE Encode (입력 이미지)
+        "30": {
+            "class_type": "VAEEncode",
+            "inputs": {
+                "pixels": ["1", 0],
+                "vae": ["4", 0]
+            }
+        },
+
+        # 노드 31: Set Latent Noise Mask (마스크 적용)
+        "31": {
+            "class_type": "SetLatentNoiseMask",
+            "inputs": {
+                "samples": ["30", 0],
+                "mask": ["14", 0]  # 반전된 마스크 (얼굴 제외)
+            }
+        },
+
+        # 노드 40: KSampler (Masked I2I)
+        "40": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": 0,  # 런타임에 설정
+                "steps": 28,  # 런타임에 설정
+                "cfg": 1.0,
+                "sampler_name": "euler",
+                "scheduler": "simple",
+                "denoise": 1.0,  # 런타임에 설정
+                "model": ["2", 0],
+                "positive": ["22", 0],  # ControlNet 적용된 조건
+                "negative": ["6", 0],
+                "latent_image": ["31", 0]  # 마스크 적용된 latent
+            }
+        },
+
+        # 노드 41: VAE Decode
+        "41": {
+            "class_type": "VAEDecode",
+            "inputs": {
+                "samples": ["40", 0],
+                "vae": ["4", 0]
+            }
+        },
+
+        # 노드 50: Save Image
+        "50": {
+            "class_type": "SaveImage",
+            "inputs": {
+                "filename_prefix": "portrait_mode",
+                "images": ["41", 0]
+            }
+        }
+    }
+
+    return workflow
+
+
+def get_product_mode_workflow() -> Dict[str, Any]:
+    """
+    🔵 Product Mode 워크플로우
+    
+    파이프라인:
+    1. BEN2로 제품 누끼 따기
+    2. Flux Dev T2I로 배경 생성
+    3. 레이어 합성 (배경 + 제품)
+    4. Flux Fill로 자연스럽게 융합
+    """
+    workflow = {
+        # 노드 1: 입력 이미지 로드
+        "1": {
+            "class_type": "LoadImage",
+            "inputs": {
+                "image": "input.png"
+            }
+        },
+
+        # 노드 2: BEN2 배경 제거
+        "2": {
+            "class_type": "BEN2",
+            "inputs": {
+                "image": ["1", 0]
+            }
+        },
+
+        # 노드 10: FLUX UNET 로드 (T2I용)
+        "10": {
+            "class_type": "UnetLoaderGGUF",
+            "inputs": {
+                "unet_name": "flux1-dev-Q8_0.gguf"
+            }
+        },
+
+        # 노드 11: Dual CLIP 로드
+        "11": {
+            "class_type": "DualCLIPLoaderGGUF",
+            "inputs": {
+                "clip_name1": "clip_l.safetensors",
+                "clip_name2": "t5-v1_1-xxl-encoder-Q8_0.gguf",
+                "type": "flux"
+            }
+        },
+
+        # 노드 12: VAE 로드
+        "12": {
+            "class_type": "VAELoader",
+            "inputs": {
+                "vae_name": "ae.safetensors"
+            }
+        },
+
+        # 노드 13: 배경 프롬프트 인코딩
+        "13": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "text": "",  # 런타임에 설정 (배경 프롬프트)
+                "clip": ["11", 0]
+            }
+        },
+
+        # 노드 14: Negative 프롬프트
+        "14": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "text": "",
+                "clip": ["11", 0]
+            }
+        },
+
+        # 노드 15: FluxGuidance
+        "15": {
+            "class_type": "FluxGuidance",
+            "inputs": {
+                "conditioning": ["13", 0],
+                "guidance": 5.0  # 런타임에 설정
+            }
+        },
+
+        # 노드 16: Empty Latent (배경 생성용)
+        "16": {
+            "class_type": "EmptyLatentImage",
+            "inputs": {
+                "width": 1024,  # 런타임에 설정
+                "height": 1024,
+                "batch_size": 1
+            }
+        },
+
+        # 노드 17: KSampler (배경 생성)
+        "17": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": 0,  # 런타임에 설정
+                "steps": 28,
+                "cfg": 1.0,
+                "sampler_name": "euler",
+                "scheduler": "simple",
+                "denoise": 1.0,
+                "model": ["10", 0],
+                "positive": ["15", 0],
+                "negative": ["14", 0],
+                "latent_image": ["16", 0]
+            }
+        },
+
+        # 노드 18: VAE Decode (배경 이미지)
+        "18": {
+            "class_type": "VAEDecode",
+            "inputs": {
+                "samples": ["17", 0],
+                "vae": ["12", 0]
+            }
+        },
+
+        # 노드 20: ImageCompositeM (레이어 합성)
+        "20": {
+            "class_type": "ImageCompositeAbsolute",
+            "inputs": {
+                "image_base": ["18", 0],  # 배경
+                "image_overlay": ["2", 0],  # BEN2 누끼 이미지
+                "x": 0,
+                "y": 0
+            }
+        },
+
+        # 노드 30: FLUX Fill UNET 로드
+        "30": {
+            "class_type": "UnetLoaderGGUF",
+            "inputs": {
+                "unet_name": "FLUX.1-Fill-dev-Q8_0.gguf"
+            }
+        },
+
+        # 노드 31: BEN2 마스크 추출
+        "31": {
+            "class_type": "ImageToMask",
+            "inputs": {
+                "image": ["2", 0],
+                "channel": "alpha"
+            }
+        },
+
+        # 노드 32: Invert Mask (제품 외곽만)
+        "32": {
+            "class_type": "InvertMask",
+            "inputs": {
+                "mask": ["31", 0]
+            }
+        },
+
+        # 노드 33: Dilate Mask (외곽 확장)
+        "33": {
+            "class_type": "GrowMask",
+            "inputs": {
+                "mask": ["31", 0],
+                "expand": 10,
+                "tapered_corners": True
+            }
+        },
+
+        # 노드 40: VAE Encode (합성 이미지)
+        "40": {
+            "class_type": "VAEEncode",
+            "inputs": {
+                "pixels": ["20", 0],
+                "vae": ["12", 0]
+            }
+        },
+
+        # 노드 41: Set Latent Noise Mask (외곽만 블렌딩)
+        "41": {
+            "class_type": "SetLatentNoiseMask",
+            "inputs": {
+                "samples": ["40", 0],
+                "mask": ["33", 0]
+            }
+        },
+
+        # 노드 42: KSampler (Blending)
+        "42": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": 0,
+                "steps": 28,
+                "cfg": 1.0,
+                "sampler_name": "euler",
+                "scheduler": "simple",
+                "denoise": 0.35,  # 런타임에 설정 (블렌딩 강도)
+                "model": ["30", 0],  # Flux Fill
+                "positive": ["15", 0],  # 배경 프롬프트 재사용
+                "negative": ["14", 0],
+                "latent_image": ["41", 0]
+            }
+        },
+
+        # 노드 43: VAE Decode
+        "43": {
+            "class_type": "VAEDecode",
+            "inputs": {
+                "samples": ["42", 0],
+                "vae": ["12", 0]
+            }
+        },
+
+        # 노드 50: Save Image
+        "50": {
+            "class_type": "SaveImage",
+            "inputs": {
+                "filename_prefix": "product_mode",
+                "images": ["43", 0]
+            }
+        }
+    }
+
+    return workflow
+
+
+def get_hybrid_mode_workflow() -> Dict[str, Any]:
+    """
+    🟣 Hybrid Mode 워크플로우
+    
+    파이프라인:
+    1. 얼굴 감지 (Face Detector)
+    2. 제품 감지 (BEN2)
+    3. 멀티 마스크 합성 (얼굴 + 제품)
+    4. 마스크 반전 (옷/배경만 수정)
+    5. ControlNet (Canny) + Masked I2I
+    """
+    workflow = {
+        # 노드 1: 입력 이미지 로드
+        "1": {
+            "class_type": "LoadImage",
+            "inputs": {
+                "image": "input.png"
+            }
+        },
+
+        # 노드 2: FLUX UNET 로드
+        "2": {
+            "class_type": "UnetLoaderGGUF",
+            "inputs": {
+                "unet_name": "flux1-dev-Q8_0.gguf"
+            }
+        },
+
+        # 노드 3: Dual CLIP 로드
+        "3": {
+            "class_type": "DualCLIPLoaderGGUF",
+            "inputs": {
+                "clip_name1": "clip_l.safetensors",
+                "clip_name2": "t5-v1_1-xxl-encoder-Q8_0.gguf",
+                "type": "flux"
+            }
+        },
+
+        # 노드 4: VAE 로드
+        "4": {
+            "class_type": "VAELoader",
+            "inputs": {
+                "vae_name": "ae.safetensors"
+            }
+        },
+
+        # 노드 5: 프롬프트 인코딩
+        "5": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "text": "",  # 런타임에 설정
+                "clip": ["3", 0]
+            }
+        },
+
+        # 노드 6: Negative 프롬프트
+        "6": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "text": "",
+                "clip": ["3", 0]
+            }
+        },
+
+        # 노드 7: FluxGuidance
+        "7": {
+            "class_type": "FluxGuidance",
+            "inputs": {
+                "conditioning": ["5", 0],
+                "guidance": 3.5
+            }
+        },
+
+        # 노드 10: Face Detector
+        "10": {
+            "class_type": "UltralyticsDetectorProvider",
+            "inputs": {
+                "model_name": "bbox/face_yolov8m.pt"
+            }
+        },
+
+        # 노드 11: BboxDetectorSEGS (얼굴)
+        "11": {
+            "class_type": "BboxDetectorSEGS",
+            "inputs": {
+                "image": ["1", 0],
+                "bbox_detector": ["10", 0],
+                "threshold": 0.5,
+                "dilation": 10,
+                "crop_factor": 3.0,
+                "drop_size": 10
+            }
+        },
+
+        # 노드 12: SEGS to Mask (얼굴 마스크)
+        "12": {
+            "class_type": "SegsToCombinedMask",
+            "inputs": {
+                "segs": ["11", 0]
+            }
+        },
+
+        # 노드 15: BEN2 (제품 누끼)
+        "15": {
+            "class_type": "BEN2",
+            "inputs": {
+                "image": ["1", 0]
+            }
+        },
+
+        # 노드 16: ImageToMask (제품 마스크)
+        "16": {
+            "class_type": "ImageToMask",
+            "inputs": {
+                "image": ["15", 0],
+                "channel": "alpha"
+            }
+        },
+
+        # 노드 17: MaskComposite (얼굴 + 제품 마스크 합성)
+        "17": {
+            "class_type": "MaskComposite",
+            "inputs": {
+                "destination": ["12", 0],  # 얼굴 마스크
+                "source": ["16", 0],  # 제품 마스크
+                "x": 0,
+                "y": 0,
+                "operation": "add"  # 합집합
+            }
+        },
+
+        # 노드 18: Invert Mask (얼굴+제품 제외한 나머지)
+        "18": {
+            "class_type": "InvertMask",
+            "inputs": {
+                "mask": ["17", 0]
+            }
+        },
+
+        # 노드 20: ControlNet Preprocessor (Canny)
+        "20": {
+            "class_type": "CannyEdgePreprocessor",
+            "inputs": {
+                "image": ["1", 0],
+                "low_threshold": 100,
+                "high_threshold": 200,
+                "resolution": 1024
+            }
+        },
+
+        # 노드 21: ControlNet 로드
+        "21": {
+            "class_type": "ControlNetLoader",
+            "inputs": {
+                "control_net_name": "InstantX-FLUX.1-dev-Controlnet-Union.safetensors"
+            }
+        },
+
+        # 노드 22: Apply ControlNet
+        "22": {
+            "class_type": "ControlNetApplyAdvanced",
+            "inputs": {
+                "positive": ["7", 0],
+                "negative": ["6", 0],
+                "control_net": ["21", 0],
+                "image": ["20", 0],
+                "strength": 0.8,  # 런타임에 설정
+                "start_percent": 0.0,
+                "end_percent": 1.0
+            }
+        },
+
+        # 노드 30: VAE Encode
+        "30": {
+            "class_type": "VAEEncode",
+            "inputs": {
+                "pixels": ["1", 0],
+                "vae": ["4", 0]
+            }
+        },
+
+        # 노드 31: Set Latent Noise Mask
+        "31": {
+            "class_type": "SetLatentNoiseMask",
+            "inputs": {
+                "samples": ["30", 0],
+                "mask": ["18", 0]  # 얼굴+제품 제외
+            }
+        },
+
+        # 노드 40: KSampler
+        "40": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": 0,
+                "steps": 28,
+                "cfg": 1.0,
+                "sampler_name": "euler",
+                "scheduler": "simple",
+                "denoise": 0.9,  # 런타임에 설정
+                "model": ["2", 0],
+                "positive": ["22", 0],
+                "negative": ["6", 0],
+                "latent_image": ["31", 0]
+            }
+        },
+
+        # 노드 41: VAE Decode
+        "41": {
+            "class_type": "VAEDecode",
+            "inputs": {
+                "samples": ["40", 0],
+                "vae": ["4", 0]
+            }
+        },
+
+        # 노드 50: Save Image
+        "50": {
+            "class_type": "SaveImage",
+            "inputs": {
+                "filename_prefix": "hybrid_mode",
+                "images": ["41", 0]
+            }
+        }
+    }
+
+    return workflow

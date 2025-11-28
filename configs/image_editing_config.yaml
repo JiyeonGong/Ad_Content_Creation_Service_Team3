@@ -1,164 +1,267 @@
 # image_editing_config.yaml
-# 이미지 편집 실험 설정 파일
+# AI 이미지 편집 시스템 설정 파일 (v3.0)
 
 # ComfyUI 연결 설정
 comfyui:
-  base_url: "http://localhost:8188"  # ComfyUI API 주소
+  base_url: "http://localhost:8188"
   timeout: 300  # 초 (5분)
 
 # 모델 저장 경로
 model_base_path: "/mnt/data4/models"
 
-# 실험용 모델 설정
-experiments:
-  # 실험 1: BEN2 + FLUX.1-Fill
-  - id: "ben2_flux_fill"
-    name: "BEN2 + FLUX.1-Fill"
-    description: "배경 제거 후 FLUX.1-Fill로 Inpainting/Outpainting"
-    background_removal:
-      model: "BEN2"
-      model_path: "/mnt/data4/models/ben2"
-      model_url: "https://github.com/PramaLLC/BEN2"
-    image_editing:
-      model: "FLUX.1-Fill-dev-Q8_0"
-      model_path: "/mnt/data4/models/flux-fill/FLUX.1-Fill-dev-Q8_0.gguf"
-      model_url: "https://huggingface.co/gpustack/FLUX.1-Fill-dev-GGUF/resolve/main/FLUX.1-Fill-dev-Q8_0.gguf"
-    workflow: "ben2_flux_fill.json"
+# ============================================================
+# 편집 모드 정의 (Portrait / Product / Hybrid)
+# ============================================================
+
+editing_modes:
+  # 🟢 모드 A: 인물 모드 (Portrait)
+  # 목표: 얼굴(ID) 100% 보존, 옷/배경만 변경
+  portrait:
+    id: "portrait_mode"
+    name: "👤 인물 모드"
+    description: "얼굴은 보존하고, 의상과 배경을 자연스럽게 변경"
+    icon: "👤"
+
+    # 사용 모델
+    models:
+      background_removal: "BEN2"
+      face_detection: "Impact Pack (Face Detector)"
+      image_editing: "FLUX.1-dev-Q8"
+      controlnet: "Depth / Canny"
+
+    # 워크플로우 단계
+    pipeline:
+      - step: 1
+        name: "얼굴 감지"
+        action: "Face Detector로 얼굴 영역 마스크 생성"
+        node: "FaceDetailer"
+
+      - step: 2
+        name: "마스크 반전"
+        action: "얼굴 제외한 나머지(몸+배경)를 수정 영역으로 설정"
+        node: "InvertMask"
+
+      - step: 3
+        name: "가이드 추출"
+        action: "ControlNet용 Depth/Canny Map 추출 (체형/포즈 유지)"
+        node: "ControlNetPreprocessor"
+
+      - step: 4
+        name: "생성 및 합성"
+        action: "Masked I2I + ControlNet으로 옷/배경만 변경"
+        node: "KSampler"
+
+    # 제어 파라미터
+    controls:
+      - name: "얼굴 보호"
+        type: "auto"
+        description: "Face Detector 자동 실행"
+
+      - name: "스타일 정의"
+        type: "text_prompt"
+        description: "원하는 의상과 배경 설명"
+        placeholder: "예: Wearing a red dress, beach background..."
+
+      - name: "체형 유지 강도"
+        type: "slider"
+        param: "controlnet_strength"
+        min: 0.0
+        max: 1.0
+        default: 0.7
+        description: "높을수록 원본 체형/포즈 유지"
+
+      - name: "변경 강도"
+        type: "slider"
+        param: "denoise_strength"
+        min: 0.0
+        max: 1.0
+        default: 1.0
+        description: "1.0 = 완전히 새로 그림, 0.8 = 약간 보존"
+
+    # 파라미터 기본값
     params:
       default_steps: 28
       guidance_scale: 3.5
-      strength: 0.8
-    # 모델별 기능 정의
-    features:
-      - id: "inpainting"
-        name: "Inpainting (영역 채우기)"
-        description: "마스크 영역을 프롬프트 기반으로 채우기 (배경 교체, 객체 추가/제거)"
-        requires_mask: true
-        ui_elements:
-          - type: "mask_tool"
-            label: "편집 영역 선택"
-            options: ["auto_background", "manual_draw"]
-          - type: "text_input"
-            label: "채울 내용 설명"
-            placeholder: "예: modern office background with plants"
+      controlnet_type: "depth"  # depth 또는 canny
+      controlnet_strength: 0.7
+      denoise_strength: 1.0
 
-      - id: "outpainting"
-        name: "Outpainting (이미지 확장)"
-        description: "이미지 경계를 넘어 확장"
-        requires_mask: false
-        ui_elements:
-          - type: "expansion_direction"
-            label: "확장 방향"
-            options: ["top", "bottom", "left", "right", "all"]
-          - type: "text_input"
-            label: "확장 영역 설명"
-            placeholder: "예: continue the landscape"
+  # 🔵 모드 B: 제품 모드 (Product)
+  # 목표: 제품 디테일 보존, 배경만 화려하게 교체
+  product:
+    id: "product_mode"
+    name: "📦 제품 모드"
+    description: "제품은 보존하고, 배경을 창의적으로 변경"
+    icon: "📦"
 
-  # 실험 2: BEN2 + Qwen-Image-Edit
-  - id: "ben2_qwen_image"
-    name: "BEN2 + Qwen-Image-Edit"
-    description: "배경 제거 후 Qwen-Image-Edit로 정밀 편집"
-    background_removal:
-      model: "BEN2"
-      model_path: "/mnt/data4/models/ben2"
-      model_url: "https://github.com/PramaLLC/BEN2"
-    image_editing:
-      model: "Qwen-Image-Edit-2509"
-      model_path: "/mnt/data4/models/qwen-image-edit"
-      model_url: "https://huggingface.co/Qwen/Qwen-Image-Edit-2509"
-    workflow: "ben2_qwen_image.json"
+    # 사용 모델
+    models:
+      background_removal: "BEN2"
+      background_generation: "FLUX.1-dev-Q8 (T2I)"
+      blending: "FLUX.1-Fill-dev-Q8"
+
+    # 워크플로우 단계
+    pipeline:
+      - step: 1
+        name: "누끼 따기"
+        action: "BEN2로 제품 마스크(Alpha) 정밀 추출"
+        node: "BEN2"
+
+      - step: 2
+        name: "배경 생성"
+        action: "Flux Dev T2I로 화려한 배경 따로 생성"
+        node: "FluxDevT2I"
+
+      - step: 3
+        name: "레이어 합성"
+        action: "생성된 배경 위에 누끼 딴 제품 얹기"
+        node: "ImageOverlay"
+
+      - step: 4
+        name: "자연스러운 융합"
+        action: "Flux Fill로 빛 반사, 그림자 생성, 이질감 제거"
+        node: "FluxFill"
+
+    # 제어 파라미터
+    controls:
+      - name: "제품 분리"
+        type: "auto"
+        description: "BEN2 자동 실행"
+
+      - name: "배경 내용"
+        type: "text_prompt"
+        description: "원하는 배경 설명"
+        placeholder: "예: Cyberpunk city, neon lights, futuristic..."
+
+      - name: "배경 디테일"
+        type: "slider"
+        param: "guidance_scale"
+        min: 3.0
+        max: 10.0
+        default: 5.0
+        description: "높을수록 프롬프트 반영 강함"
+
+      - name: "합성 자연스러움"
+        type: "slider"
+        param: "blending_strength"
+        min: 0.2
+        max: 0.6
+        default: 0.35
+        description: "낮을수록 원본 제품 보존, 높을수록 배경과 융합"
+
+    # 파라미터 기본값
     params:
-      default_steps: 30
-      guidance_scale: 7.5
-      strength: 0.8
-    # 모델별 기능 정의
-    features:
-      - id: "appearance_editing"
-        name: "Appearance Editing (외형 편집)"
-        description: "객체 추가/제거, 배경 교체, 색상/옷 변경"
-        requires_mask: false
-        ui_elements:
-          - type: "select"
-            label: "편집 유형"
-            options:
-              - "object_add_remove"
-              - "background_replace"
-              - "color_change"
-              - "clothing_change"
-          - type: "text_input"
-            label: "편집 설명"
-            placeholder: "예: change background to beach, add sunglasses"
+      default_steps: 28
+      guidance_scale: 5.0
+      blending_strength: 0.35
+      background_steps: 28
 
-      - id: "semantic_editing"
-        name: "Semantic Editing (의미 편집)"
-        description: "스타일 변환, 포즈 변경, 캐릭터 일관성 유지"
-        requires_mask: false
-        ui_elements:
-          - type: "select"
-            label: "편집 유형"
-            options:
-              - "style_transfer"
-              - "pose_change"
-              - "object_rotation"
-              - "ip_character_consistency"
-          - type: "text_input"
-            label: "편집 설명"
-            placeholder: "예: Studio Ghibli style, rotate 90 degrees"
-          - type: "select"
-            label: "스타일 프리셋 (선택)"
-            options:
-              - "Studio Ghibli"
-              - "Anime"
-              - "Oil Painting"
-              - "Watercolor"
-              - "None"
+  # 🟣 모드 C: 하이브리드 모드 (Portrait + Product)
+  # 목표: 얼굴+제품 동시 보존, 옷/배경만 변경
+  hybrid:
+    id: "hybrid_mode"
+    name: "✨ 고급 모드"
+    description: "인물과 제품을 동시에 보존하고, 나머지만 변경"
+    icon: "✨"
 
-      - id: "text_editing"
-        name: "Text Editing (텍스트 편집)"
-        description: "이미지 내 텍스트 추가/삭제/수정 (중국어/영어)"
-        requires_mask: false
-        ui_elements:
-          - type: "select"
-            label: "텍스트 작업"
-            options:
-              - "add_text"
-              - "remove_text"
-              - "modify_text"
-          - type: "text_input"
-            label: "텍스트 내용"
-            placeholder: "예: Add 'SALE' in red color"
-          - type: "select"
-            label: "언어"
-            options: ["English", "Chinese"]
+    # 사용 모델
+    models:
+      face_detection: "Impact Pack (Face Detector)"
+      product_detection: "BEN2 or SAM"
+      image_editing: "FLUX.1-dev-Q8"
+      controlnet: "Canny (권장)"
 
-      - id: "multi_image_editing"
-        name: "Multi-Image Editing (다중 이미지 편집)"
-        description: "여러 이미지 조합 (사람+사람, 사람+제품, 사람+배경)"
-        requires_mask: false
-        multi_image: true
-        max_images: 3
-        ui_elements:
-          - type: "file_uploader"
-            label: "추가 이미지 (최대 2개)"
-            max_count: 2
-          - type: "select"
-            label: "조합 유형"
-            options:
-              - "person_person"
-              - "person_product"
-              - "person_scene"
-          - type: "text_input"
-            label: "편집 설명"
-            placeholder: "예: merge two people in same scene"
+    # 워크플로우 단계
+    pipeline:
+      - step: 1
+        name: "멀티 마스킹"
+        action: "얼굴(Face Detector) + 제품(BEN2) 마스크 합집합"
+        node: "MultiMask"
 
-# BEN2 배경 제거 설정
-ben2:
-  model_name: "BEN2"
-  model_path: "/mnt/data4/models/ben2"
-  model_url: "https://github.com/PramaLLC/BEN2"
-  threshold: 0.5  # 배경 제거 임계값
+      - step: 2
+        name: "마스크 반전"
+        action: "얼굴+제품 제외한 나머지(옷+배경)를 수정 영역으로"
+        node: "InvertMask"
 
-# 이미지 처리 설정
+      - step: 3
+        name: "디테일 가이드"
+        action: "Canny로 손가락/제품 그립 디테일 추출"
+        node: "ControlNetCanny"
+
+      - step: 4
+        name: "생성"
+        action: "Masked I2I + ControlNet으로 옷/배경만 변경"
+        node: "KSampler"
+
+    # 제어 파라미터
+    controls:
+      - name: "보호 영역 선택"
+        type: "multi_auto"
+        description: "얼굴(자동) + 제품(자동 또는 클릭)"
+
+      - name: "상황/의상 정의"
+        type: "text_prompt"
+        description: "원하는 의상과 상황 설명"
+        placeholder: "예: Woman in suit, holding bottle, office background..."
+
+      - name: "디테일 강제"
+        type: "select"
+        param: "controlnet_type"
+        options: ["canny", "depth"]
+        default: "canny"
+        description: "Canny = 손가락 선명, Depth = 체형 유지"
+
+      - name: "생성 강도"
+        type: "slider"
+        param: "denoise_strength"
+        min: 0.7
+        max: 1.0
+        default: 0.9
+        description: "높을수록 강하게 다시 그림"
+
+    # 파라미터 기본값
+    params:
+      default_steps: 28
+      guidance_scale: 3.5
+      controlnet_type: "canny"
+      controlnet_strength: 0.8
+      denoise_strength: 0.9
+
+# ============================================================
+# 공통 모델 설정
+# ============================================================
+
+models:
+  # BEN2 배경 제거
+  ben2:
+    name: "BEN2"
+    path: "/mnt/data4/models/ben2"
+    url: "https://github.com/PramaLLC/BEN2"
+    threshold: 0.5
+
+  # FLUX.1-dev-Q8 (이미지 생성/편집)
+  flux_dev:
+    name: "FLUX.1-dev-Q8"
+    path: "/mnt/data4/models/flux1-dev-Q8_0.gguf"
+    type: "gguf"
+
+  # FLUX.1-Fill (Inpainting)
+  flux_fill:
+    name: "FLUX.1-Fill-dev-Q8"
+    path: "/mnt/data4/models/flux-fill/FLUX.1-Fill-dev-Q8_0.gguf"
+    type: "gguf"
+
+  # Impact Pack (Face/Hand Detector)
+  impact_pack:
+    name: "Impact Pack"
+    detectors:
+      face: "bbox/face_yolov8m.pt"
+      hand: "bbox/hand_yolov8s.pt"
+
+# ============================================================
+# 이미지 처리 공통 설정
+# ============================================================
+
 image_processing:
   # 지원 포맷
   supported_formats: ["png", "jpg", "jpeg", "webp"]
