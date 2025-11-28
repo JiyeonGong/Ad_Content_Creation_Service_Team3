@@ -45,7 +45,9 @@ models/
 volumes/
 
 # ComfyUI (external git repository)
-comfyui/
+comfyui/*
+# 단, 모델 경로 설정은 추적
+!comfyui/extra_model_paths.yaml
 
 # Logs
 logs/

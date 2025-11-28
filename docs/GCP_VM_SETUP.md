@@ -70,6 +70,71 @@ uv run python -c "import torch; print(torch.cuda.is_available())"
 # True가 나와야 함
 ```
 
+### Step 5: 모델 파일 전송 (로컬 서버 → GCP VM)
+
+**로컬 서버에서 실행:**
+
+```bash
+# FLUX UNET 모델들
+rsync -avzP -e "ssh -p 22" /mnt/data4/models/flux1-dev-Q8_0.gguf spai0310@34.70.229.116:/home/shared/
+rsync -avzP -e "ssh -p 22" /mnt/data4/models/flux1-dev-Q4_0.gguf spai0310@34.70.229.116:/home/shared/
+rsync -avzP -e "ssh -p 22" /mnt/data4/models/flux-fill/FLUX.1-Fill-dev-Q8_0.gguf spai0310@34.70.229.116:/home/shared/
+rsync -avzP -e "ssh -p 22" /mnt/data4/models/qwen-image-edit/Qwen-Image-Edit-2509-Q8_0.gguf spai0310@34.70.229.116:/home/shared/
+
+# CLIP 및 텍스트 인코더
+rsync -avzP -e "ssh -p 22" /mnt/data4/models/clip/t5-v1_1-xxl-encoder-Q8_0.gguf spai0310@34.70.229.116:/home/shared/
+rsync -avzP -e "ssh -p 22" /mnt/data4/models/clip/mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf spai0310@34.70.229.116:/home/shared/
+
+# VAE
+rsync -avzP -e "ssh -p 22" /mnt/data4/models/models--diffusers--FLUX.1-dev-bnb-4bit/blobs/f5b59a26851551b67ae1fe58d32e76486e1e812def4696a4bea97f16604d40a3 spai0310@34.70.229.116:/home/shared/ae.safetensors
+```
+
+**전송 완료 후 GCP VM에서 확인:**
+
+```bash
+ls -lh /home/shared/
+```
+
+### Step 6: ComfyUI 모델 경로 설정
+
+**GCP VM에서 실행:**
+
+```bash
+cd ~/Ad_Content_Creation_Service_Team3/comfyui
+
+# extra_model_paths.yaml 파일 수정
+nano extra_model_paths.yaml
+```
+
+**다음 내용 추가:**
+
+```yaml
+# ComfyUI 추가 모델 경로 설정
+
+# 로컬 개발 환경
+local:
+  base_path: /mnt/data4/models/
+  checkpoints: ./
+  vae: vae/
+  loras: loras/
+  upscale_models: upscale_models/
+  embeddings: embeddings/
+  controlnet: controlnet/
+  clip: clip/
+  diffusers: ./
+  unet: ./
+
+# GCP VM 환경
+gcp:
+  base_path: /home/shared/
+  checkpoints: ./
+  vae: ./
+  clip: ./
+  unet: ./
+```
+
+저장하고 종료 (Ctrl+X, Y, Enter)
+
 ---
 
 ## 🎨 이미지 생성 테스트
