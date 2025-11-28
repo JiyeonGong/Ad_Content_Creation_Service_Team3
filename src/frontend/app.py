@@ -251,8 +251,25 @@ class APIClient:
                 raise Exception(f"I2I 편집 실패: {e.response.json().get('detail', str(e))}")
             except Exception as e:
                 raise Exception(f"I2I 요청 실패: {e}")
-        
+            
         return None
+    
+    def call_calligraphy(self, payload: Dict) -> Optional[BytesIO]:
+        """캘리그라피(3D Text) 생성 API 호출"""
+        try:
+            # 타임아웃을 넉넉하게 (모델 로딩 시간 고려)
+            resp = requests.post(
+                f"{self.base_url}/api/generate_calligraphy",
+                json=payload,
+                timeout=300 
+            )
+            resp.raise_for_status()
+            
+            # 바이너리 이미지 데이터 반환
+            return BytesIO(resp.content)
+            
+        except Exception as e:
+            raise Exception(f"캘리그라피 생성 실패: {e}")
 
 # ============================================================
 # 유틸리티 함수
@@ -390,6 +407,8 @@ def main():
         render_t2i_page(config, api, connect_mode)
     elif page_id == "i2i":
         render_i2i_page(config, api, connect_mode)
+    elif page_id == "text_overlay":
+        render_text_overlay_page(config, api, connect_mode)    
 
 # ============================================================
 # 페이지 1: 문구 생성
@@ -842,6 +861,98 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         "edited.png",
         "image/png"
     )
+    
+# ============================================================
+# 페이지 4: 이미지에 문구 추가 (Calligraphy)
+# ============================================================
+def render_text_overlay_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
+    st.title("🔤 3D 캘리그라피 생성")
+    
+    st.info("""
+    💡 원하는 문구를 입력하면 입체적인 3D 텍스트로 만들어줍니다.
+    배경이 투명한 이미지로 생성되므로, 다른 이미지 위에 합성하기 좋습니다.
+    """)
+    
+    col1, col2 = st.columns([1, 1.5])
+    
+    with col1:
+        st.subheader("🎨 디자인 설정")
+        
+        # 1. 텍스트 입력
+        default_text = "헬스케어 프로젝트"
+        if connect_mode and "selected_caption" in st.session_state:
+             # 페이지 1 문구가 너무 길면 앞부분만 자름
+             full_cap = st.session_state["selected_caption"]
+             default_text = full_cap[:15] if len(full_cap) > 15 else full_cap
+             st.caption(f"🔗 페이지 1 문구 가져옴: {default_text}")
+             
+        text_input = st.text_input("생성할 문구", value=default_text)
+        
+        # 2. 스타일 설정
+        st.markdown("---")
+        color = st.color_picker("글자 색상", "#FFD700") # 골드 기본값
+        
+        style_options = {
+            "smooth matte plastic": "매트 플라스틱 (깔끔함)",
+            "glossy metal": "유광 금속 (고급스러움)",
+            "liquid water": "물 질감 (청량함)",
+            "neon light": "네온 사인 (화려함)",
+            "gold foil": "금박 (럭셔리)",
+            "ice texture": "얼음 (시원함)"
+        }
+        
+        selected_style_key = st.selectbox(
+            "재질(Material) 선택",
+            options=list(style_options.keys()),
+            format_func=lambda x: style_options[x]
+        )
+        
+        # 3. 폰트 선택 (옵션) - 지금은 서버 고정 폰트 사용하지만 나중에 확장 가능
+        st.caption(f"사용 폰트: 표진고딕 (서버 기본)")
+        
+        # 4. 생성 버튼
+        st.markdown("---")
+        generate_btn = st.button("✨ 3D 텍스트 생성하기", type="primary", use_container_width=True)
+
+    with col2:
+        st.subheader("🖼️ 결과물")
+        
+        if generate_btn:
+            if not text_input.strip():
+                st.warning("문구를 입력해주세요.")
+            else:
+                payload = {
+                    "text": text_input,
+                    "color_hex": color,
+                    "style": selected_style_key,
+                    "font_path": "" # 서버 기본값 사용
+                }
+                
+                with st.spinner("AI가 3D 텍스트를 디자인 중입니다... (약 15~30초)"):
+                    try:
+                        image_bytes = api.call_calligraphy(payload)
+                        
+                        if image_bytes:
+                            # 투명 배경을 보여주기 위해 st.image 사용
+                            st.image(image_bytes, caption=f"'{text_input}' 3D 렌더링", use_container_width=True)
+                            
+                            # 다운로드
+                            st.download_button(
+                                label="📥 투명 PNG 저장하기",
+                                data=image_bytes,
+                                file_name=f"3d_text_{text_input}.png",
+                                mime="image/png",
+                                use_container_width=True
+                            )
+                            
+                            # (선택) 세션에 저장해두기 (나중에 합성 페이지에서 쓰려면)
+                            st.session_state["last_3d_text"] = image_bytes
+                        else:
+                            st.error("이미지 데이터가 비어있습니다.")
+                            
+                    except Exception as e:
+                        st.error(f"생성 실패: {e}")
+                        st.info("💡 팁: 문구가 너무 길면 잘릴 수 있습니다. 10글자 이내를 추천합니다.")
 
 # ============================================================
 # 실행

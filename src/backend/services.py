@@ -14,11 +14,14 @@ from dotenv import load_dotenv
 from .model_registry import get_registry
 from .model_loader import ModelLoader
 
+from .text_overlay import create_base_text_image, remove_background # 텍스트 오버레이
+
 # Load env
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL_GPT_MINI = "gpt-5-mini"
+DEFAULT_FONT_PATH = "/home/spai0325/Ad_Content_Creation_Service_Team3/configs/inputs/fonts/PyeojinGothic-Medium.ttf"
 
 # HF cache location
 # GCP: /home/shared 사용 (이미 다운로드된 모델 재사용)
@@ -693,6 +696,56 @@ def switch_model(model_name: str) -> dict:
             "message": f"모델 '{model_name}' 로드 실패",
             "model_info": None
         }
+    
+def generate_calligraphy_core(
+    text: str,
+    color_hex: str,
+    style: str,
+    font_path: str
+    ) -> bytes:
+    """
+    캘리그라피 생성 메인 함수
+    """
+    global model_loader
+    
+    # 1. 모델 로드 확인 (없으면 로드)
+    if not model_loader.calligraphy_pipe:
+        success = model_loader.load_calligraphy_model()
+        if not success:
+            raise RuntimeError("캘리그라피 모델 로드 실패")
+            
+    pipe = model_loader.calligraphy_pipe
+    
+    # 2. 베이스 이미지 생성 (Pillow)
+    base_image = create_base_text_image(text, font_path)
+    
+    # 3. 프롬프트 구성
+    prompt = f"solid 3D volumetric object, '{text}', {color_hex} color, hex code {color_hex}, {style}, clean surface, flat lighting, no shadow, isolated on solid white background"
+    neg_prompt = "shadow, cast shadow, dark background, texture, messy, wireframe, low quality"
+    
+    # 4. 생성 (SDXL)
+    print(f"🖋️ 캘리그라피 생성 중: '{text}'")
+    generator = torch.Generator(device="cuda").manual_seed(42) # 시드 고정 or 랜덤
+    
+    image = pipe(
+        prompt=prompt,
+        negative_prompt=neg_prompt,
+        image=base_image,
+        controlnet_conditioning_scale=1.0,
+        num_inference_steps=30,
+        guidance_scale=7.5,
+        generator=generator
+    ).images[0]
+    
+    # 5. 누끼 따기
+    print("✂️ 배경 제거 중...")
+    final_image = remove_background(image)
+    
+    # 6. 바이트 변환
+    buf = io.BytesIO()
+    final_image.save(buf, format="PNG")
+    return buf.getvalue()    
+    
 
 # ===========================
 # 상태 조회

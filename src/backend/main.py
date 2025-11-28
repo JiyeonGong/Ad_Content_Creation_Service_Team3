@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import asyncio
+from fastapi.responses import Response # <-- Response 임포트 필수!
 
 from . import services
 
@@ -41,6 +42,12 @@ class I2IRequest(BaseModel):
     width: int = 1024
     height: int = 1024
     steps: int = 4  # 🆕 FLUX-schnell은 4 steps 권장
+
+class CalligraphyRequest(BaseModel):
+    text: str
+    color_hex: str
+    style: str
+    font_path: str = "" # 기본값 처리    
 
 # 🆕 개선: startup에서 모델 로드 (1회만)
 @app.on_event("startup")
@@ -244,3 +251,22 @@ def get_switch_model_status():
         **_model_switch_status,
         "current_model": current_model
     }
+
+@app.post("/api/generate_calligraphy")
+async def generate_calligraphy_api(req: CalligraphyRequest):
+    try:
+        # services.py의 핵심 함수 호출
+        image_bytes = services.generate_calligraphy_core(
+            text=req.text,
+            color_hex=req.color_hex,
+            style=req.style,
+            font_path=req.font_path
+        )
+        
+        # 이미지 바이너리 그대로 반환 (PNG)
+        return Response(content=image_bytes, media_type="image/png")
+        
+    except Exception as e:
+        print(f"❌ 캘리그라피 API 에러: {e}")
+        # 500 에러 반환
+        raise HTTPException(status_code=500, detail=str(e))

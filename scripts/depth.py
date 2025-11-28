@@ -5,17 +5,21 @@ import torch
 from PIL import Image, ImageFont, ImageDraw
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, AutoencoderKL
 from datetime import datetime
+from rembg import remove
 import psutil
 
 # ==========================================
 # 1. 설정 (Configuration)
 # ==========================================
 INPUT_TEXT = "헬스케어 프로젝트"
-PROMPT = "3d typography, Tomato red color, hex code #FF6347, vivid reddish-orange, matte plastic material, isolated on white background, 8k, solid color fill, bright studio lighting, isolated on solid white background, high key, clean, smooth plastic texture, no shadow"
-NEGATIVE_PROMPT = "text, watermark, low quality, blurry, ugly, messy, distorted letters, jpeg artifacts, wireframe, outline, thin lines, dark background, moody lighting, shadow"
+# [수정 후 PROMPT]
+#PROMPT = "solid 3D volumetric object, '헬스케어 프로젝트', Tomato red color, hex code #FF6347, smooth matte plastic material, clean surface, flat lighting, even illumination, no shadow, isolated on solid white background"
+#NEGATIVE_PROMPT = "text, watermark, low quality, blurry, ugly, messy, distorted letters, jpeg artifacts, wireframe, outline, thin lines, dark background, moody lighting, shadow, text, watermark, low quality, blurry, ugly, messy, distorted letters, jpeg artifacts, wireframe, outline, thin lines, dark background, moody lighting, shadow, cast shadow, hard shadow, ground shadow"
 FONT_PATH = "/home/shared/RiaSans-Bold.ttf" 
-OUTPUT_DIR = "./outputs"
+OUTPUT_DIR = "/home/spai0325/Ad_Content_Creation_Service_Team3/assets/outputs"
 
+PROMPT = "A modern yoga studio with vibrant colors, energetic young women performing dynamic yoga poses, bold typography overlay reading 'Yoga Classes Available', bright studio lighting, contemporary minimalist design, high contrast, clean lines, Instagram-ready 1080x1350, 8k"
+NEGATIVE_PROMPT = "text, watermark, low quality, blurry, ugly, messy, distorted letters, jpeg artifacts"
 
 # ==========================================
 # 2. 유틸리티 함수 (전처리)
@@ -168,6 +172,27 @@ def main():
         guidance_scale=7.5,
         generator=generator,
     ).images[0]
+    
+    print("✂️ 배경 제거 작업 시작... (CPU 사용)")
+    
+    # AI가 만든 이미지를 넣으면 배경이 투명한 이미지가 나옵니다.
+    # (검은색/흰색 배경을 자동으로 인식해서 날려줍니다)
+    image_transparent = remove(image)
+    
+    # ---------------------------------------------------------
+
+    # 결과 저장 (반드시 .png로 저장해야 투명도가 유지됩니다)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # 1. 원본 저장 (비교용)
+    image.save(f"{OUTPUT_DIR}/result_{timestamp}_original.png")
+    
+    # 2. 누끼 버전 저장 (최종 결과물)
+    filename_transparent = f"{OUTPUT_DIR}/result_{timestamp}_nobg.png"
+    image_transparent.save(filename_transparent, format="PNG")
+    
+    print_system_usage("작업 완료")
+    print(f"\n🎉 최종 완료! 투명 배경 파일: {filename_transparent}")
     
     # 결과 저장
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

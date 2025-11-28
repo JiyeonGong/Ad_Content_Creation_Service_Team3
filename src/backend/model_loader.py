@@ -17,6 +17,8 @@ from diffusers import (
 )
 
 from .model_registry import ModelConfig, get_registry
+from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, AutoencoderKL # 텍스트 오버레이
+from rembg import remove # 누끼
 
 
 class ModelLoader:
@@ -36,6 +38,7 @@ class ModelLoader:
         self.i2i_pipe = None
         self.current_model_name = None
         self.current_model_config: Optional[ModelConfig] = None
+        self.calligraphy_pipe = None # 캘리그라피 전용(메모)
 
         self.registry = get_registry()
 
@@ -483,6 +486,54 @@ class ModelLoader:
         print("❌ 모든 모델 로딩 실패")
         return False
     
+    def load_calligraphy_model(self) -> bool:
+        """캘리그라피 전용 모델(SDXL + ControlNet Depth) 로드"""
+        if self.calligraphy_pipe is not None:
+            return True
+        
+        if self.is_loaded():
+            print(f"🧹 기존 모델 '{self.current_model_name}' 해제 중...")
+            self.unload_model()
+            
+        print("🖋️ 캘리그라피 모델 로딩 시작...")
+        try:
+            # 1. ControlNet (Depth)
+            # (공식 모델이 없으면 xinsir 등 사용, 여기선 diffusers 공식 가정)
+            cnet_id = "diffusers/controlnet-depth-sdxl-1.0-small" 
+            controlnet = ControlNetModel.from_pretrained(
+                cnet_id, 
+                torch_dtype=self.dtype,
+                use_safetensors=True,
+                cache_dir=self.cache_dir
+            )
+            
+            # 2. VAE (기존 로직 활용하거나 고정값 사용)
+            vae = AutoencoderKL.from_pretrained(
+                "madebyollin/sdxl-vae-fp16-fix", 
+                torch_dtype=self.dtype,
+                cache_dir=self.cache_dir
+            )
+
+            # 3. Pipeline (Base Model: SDXL 1.0)
+            pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+                "stabilityai/stable-diffusion-xl-base-1.0",
+                controlnet=controlnet,
+                vae=vae,
+                torch_dtype=self.dtype,
+                use_safetensors=True,
+                cache_dir=self.cache_dir
+            )
+            
+            # 최적화
+            pipe.enable_model_cpu_offload() 
+            self.calligraphy_pipe = pipe
+            print("✅ 캘리그라피 모델 로드 완료")
+            return True
+            
+        except Exception as e:
+            print(f"❌ 캘리그라피 모델 로드 실패: {e}")
+            return False
+    
     def unload_model(self):
         """모델 언로드 (메모리 해제)"""
         import gc
@@ -505,6 +556,16 @@ class ModelLoader:
                     pass
             del self.i2i_pipe
             self.i2i_pipe = None
+        
+        if self.calligraphy_pipe:
+            if hasattr(self.calligraphy_pipe, 'to'):
+                try:
+                    self.calligraphy_pipe.to('cpu')
+                except:
+                    pass
+            del self.calligraphy_pipe
+            self.calligraphy_pipe = None
+            print("  🗑️ 캘리그라피 모델 해제 완료")    
 
         self.current_model_name = None
         self.current_model_config = None
