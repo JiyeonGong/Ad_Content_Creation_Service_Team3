@@ -27,6 +27,11 @@ pages:
     title: "이미지 편집"
     description: "기존 이미지를 AI로 편집하고 스타일을 변경합니다"
 
+  - id: "text_overlay"
+    icon: "🔤"
+    title: "이미지에 문구 추가"
+    description: "이미지 위에 깔끔한 텍스트를 합성합니다"  
+
 # 문구 생성 설정
 caption:
   service_types:
