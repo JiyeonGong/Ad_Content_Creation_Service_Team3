@@ -25,9 +25,9 @@ experiments:
       model_url: "https://huggingface.co/gpustack/FLUX.1-Fill-dev-GGUF/resolve/main/FLUX.1-Fill-dev-Q8_0.gguf"
     workflow: "ben2_flux_fill.json"
     params:
-      default_steps: 50
-      guidance_scale: 30.0
-      strength: 1.0
+      default_steps: 28
+      guidance_scale: 3.5
+      strength: 0.8
     # 모델별 기능 정의
     features:
       - id: "inpainting"

@@ -75,7 +75,7 @@ image:
   steps:
     min: 1
     max: 50
-    default: 10
+    default: 28
   
   # I2I 설정
   i2i:

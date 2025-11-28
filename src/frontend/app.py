@@ -5,6 +5,8 @@
 """
 import os
 import re
+import time
+import logging
 import streamlit as st
 import requests
 from io import BytesIO
@@ -52,7 +54,7 @@ class ConfigLoader:
                 "preset_sizes": [
                     {"name": "1024x1024", "width": 1024, "height": 1024}
                 ],
-                "steps": {"min": 1, "max": 50, "default": 10}
+                "steps": {"min": 1, "max": 50, "default": 28}
             }
         }
     
@@ -75,7 +77,7 @@ class APIClient:
 
     def __init__(self, config: ConfigLoader):
         self.base_url = os.getenv("API_BASE_URL") or config.get("api.base_url")
-        self.timeout = config.get("api.timeout", 180)
+        self.timeout = config.get("api.timeout", 600)  # 10분으로 증가
         self.retry_attempts = config.get("api.retry_attempts", 2)
 
         # 백엔드 모델 정보 캐싱
@@ -109,100 +111,6 @@ class APIClient:
         except Exception as e:
             st.error(f"❌ 백엔드 연결 실패: {e}")
             return None
-    
-    def get_model_info(self, force_refresh: bool = False) -> Optional[Dict]:
-        """모델 정보 조회 (캐싱)"""
-        if self._model_info and not force_refresh:
-            return self._model_info
-
-        try:
-            resp = requests.get(f"{self.base_url}/models", timeout=5)
-            resp.raise_for_status()
-            self._model_info = resp.json()
-            return self._model_info
-        except Exception as e:
-            # 로그만 남기고 UI에는 표시하지 않음
-            import logging
-            logging.warning(f"모델 정보 조회 실패: {e}")
-            return None
-
-    def switch_model(self, model_name: str) -> Dict:
-        """모델 전환 (비동기 방식)"""
-        import time
-
-        # 1. 비동기 전환 시작
-        try:
-            resp = requests.post(
-                f"{self.base_url}/api/switch_model_async",
-                json={"model_name": model_name},
-                timeout=10
-            )
-            resp.raise_for_status()
-        except Exception as e:
-            raise Exception(f"모델 전환 시작 실패: {e}")
-
-        # 2. 폴링으로 완료 대기 (최대 5분)
-        max_wait = 300
-        poll_interval = 2
-        elapsed = 0
-
-        while elapsed < max_wait:
-            time.sleep(poll_interval)
-            elapsed += poll_interval
-
-            try:
-                status_resp = requests.get(
-                    f"{self.base_url}/api/switch_model_status",
-                    timeout=5
-                )
-                status_resp.raise_for_status()
-                status = status_resp.json()
-
-                # 전환 완료 확인
-                if not status.get("in_progress", True):
-                    if status.get("success"):
-                        # 캐시 무효화
-                        self._model_info = None
-                        self._backend_status = None
-                        return {
-                            "success": True,
-                            "message": status.get("message", "모델 전환 완료")
-                        }
-                    else:
-                        raise Exception(status.get("error", "모델 전환 실패"))
-            except requests.exceptions.RequestException:
-                # 네트워크 오류는 무시하고 재시도
-                pass
-
-        raise Exception("모델 전환 타임아웃 (5분 초과)")
-    
-    def load_model(self, model_name: str) -> Dict:
-        """모델 로드"""
-        try:
-            # 로딩은 시간이 걸릴 수 있으므로 타임아웃 넉넉히
-            resp = requests.post(
-                f"{self.base_url}/api/load_model",
-                json={"model_name": model_name},
-                timeout=300
-            )
-            resp.raise_for_status()
-            self._model_info = None # 캐시 초기화
-            return resp.json()
-        except Exception as e:
-            raise Exception(f"모델 로드 실패: {e}")
-
-    def unload_model(self) -> Dict:
-        """모델 언로드"""
-        try:
-            resp = requests.post(
-                f"{self.base_url}/api/unload_model",
-                timeout=60
-            )
-            resp.raise_for_status()
-            self._model_info = None # 캐시 초기화
-            return resp.json()
-        except Exception as e:
-            raise Exception(f"모델 언로드 실패: {e}")
     
     def call_caption(self, payload: Dict) -> str:
         """문구 생성 API 호출"""
@@ -294,9 +202,33 @@ class APIClient:
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
-            # 로그만 남기고 UI에는 표시하지 않음
-            import logging
             logging.error(f"실험 목록 조회 실패: {e}")
+            return None
+
+    # 프리로드 기능 제거됨 - 사용하지 않음
+
+    def unload_model_comfyui(self) -> Dict:
+        """ComfyUI 모델 언로드 요청"""
+        try:
+            resp = requests.post(
+                f"{self.base_url}/api/unload",
+                timeout=10
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            raise Exception(f"모델 언로드 실패: {e}")
+
+    def get_current_comfyui_model(self) -> Optional[str]:
+        """현재 로드된 ComfyUI 모델 조회"""
+        try:
+            resp = requests.get(
+                f"{self.base_url}/api/current_model",
+                timeout=5
+            )
+            resp.raise_for_status()
+            return resp.json().get("current_model")
+        except Exception:
             return None
 
     def check_comfyui_status(self) -> Optional[Dict]:
@@ -382,81 +314,167 @@ def main():
     # 선택된 페이지 ID 찾기
     selected_idx = page_options.index(menu)
     page_id = pages_config[selected_idx]["id"]
-    
+
     # 모델 선택
     st.sidebar.markdown("---")
-    st.sidebar.subheader("🤖 이미지 생성 모델")
 
-    model_info = api.get_model_info()
-    if model_info:
-        current_model = model_info.get("current") # None이면 언로드 상태
-        available_models = list(model_info.get("models", {}).keys())
-        
-        # 상태 아이콘 및 텍스트
-        if current_model:
-            st.sidebar.success(f"💡 **ON** (Loaded: {current_model})")
+    if page_id == "image_editing_experiment":
+        # 4페이지: 이미지 편집 모델 선택
+        st.sidebar.subheader("🎨 이미지 편집 모델")
+
+        # 현재 로드된 ComfyUI 모델 상태 확인
+        current_comfyui_model = api.get_current_comfyui_model()
+
+        # 편집 모델 목록을 세션에 저장 (페이지 함수에서 사용)
+        experiments_data = api.get_image_editing_experiments()
+        if experiments_data and experiments_data.get("success"):
+            st.session_state["editing_experiments"] = experiments_data.get("experiments", [])
+            experiments = st.session_state["editing_experiments"]
+
+            if experiments:
+                # 편집 모델만 필터링 (생성 모델 제외: FLUX.1-dev-Q8, FLUX.1-dev-Q4)
+                editing_models = [
+                    exp for exp in experiments
+                    if "bnb" not in exp["id"] and not exp["id"].startswith("FLUX.1-dev")
+                ]
+
+                # 실험 ID와 이름을 매핑
+                exp_map = {exp["id"]: exp for exp in editing_models}
+                exp_ids = ["none"] + [exp["id"] for exp in editing_models]
+                exp_names = ["모델 없음"] + [f"{exp['name']}" for exp in editing_models]
+
+                # 기본값 설정
+                default_idx = 0
+                if current_comfyui_model:
+                    if current_comfyui_model in exp_ids:
+                        default_idx = exp_ids.index(current_comfyui_model)
+
+                selected_exp_name = st.sidebar.selectbox(
+                    "편집 모델 선택",
+                    exp_names,
+                    index=default_idx,
+                    help="배경 제거 후 사용할 이미지 편집 모델을 선택하세요. '모델 없음'을 선택하면 메모리를 비웁니다.",
+                    key="editing_model_selector"
+                )
+
+                # 선택된 실험 객체 찾기
+                selected_idx = exp_names.index(selected_exp_name)
+                selected_exp_id = exp_ids[selected_idx]
+
+                # "모델 없음" 선택 시 처리
+                if selected_exp_id == "none":
+                    st.session_state["selected_editing_experiment"] = None
+                    if current_comfyui_model:
+                        # 언로드 필요
+                        with st.spinner("모델 언로드 중..."):
+                            try:
+                                res = api.unload_model_comfyui()
+                                if res.get("success"):
+                                    st.sidebar.success("모델이 꺼졌습니다.")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.sidebar.error(f"언로드 실패: {res.get('message')}")
+                            except Exception as e:
+                                st.sidebar.error(f"❌ {e}")
+                    else:
+                        st.sidebar.markdown(f"⚫ **OFF** (Unloaded)")
+                else:
+                    # 일반 모델 선택
+                    selected_experiment = editing_models[selected_idx - 1]  # "모델 없음" 제외
+                    st.session_state["selected_editing_experiment"] = selected_experiment
+
+                    # 상태 표시 (선택한 모델이 실제로 로드되었는지 확인)
+                    if current_comfyui_model == selected_exp_id:
+                        st.sidebar.success(f"💡 **ON** (Loaded: {selected_experiment['name']})")
+                    else:
+                        st.sidebar.markdown(f"⚫ **OFF** (Unloaded)")
+
+                    # 모델 정보 표시 (편집 모델인 경우에만)
+                    if "background_removal_model" in selected_experiment:
+                        st.sidebar.caption(f"📝 배경 제거: {selected_experiment['background_removal_model']}")
+                    if "editing_model" in selected_experiment:
+                        st.sidebar.caption(f"📝 편집: {selected_experiment['editing_model']}")
+
+            else:
+                st.sidebar.warning("사용 가능한 편집 모델이 없습니다.")
         else:
-            st.sidebar.markdown(f"⚫ **OFF** (Unloaded)")
+            st.sidebar.error("편집 모델 목록을 불러올 수 없습니다.")
 
-        # 모델 선택 드롭다운 (로드할 모델 또는 전환할 모델 선택)
-        # 현재 로드된 모델이 있으면 그걸 기본값으로, 없으면 첫 번째 모델
-        default_idx = 0
-        if current_model and current_model in available_models:
-            default_idx = available_models.index(current_model)
-            
-        selected_model = st.sidebar.selectbox(
-            "모델 선택",
-            available_models,
-            index=default_idx,
-            key="model_selector"
-        )
-
-        # 선택한 모델 설명
-        if selected_model in model_info["models"]:
-            model_desc = model_info["models"][selected_model].get("description", "")
-            if model_desc:
-                st.sidebar.caption(f"📝 {model_desc}")
-
-        # 제어 버튼 영역
-        col_btn1, col_btn2 = st.sidebar.columns(2)
-        
-        if current_model:
-            # 로드된 상태: 언로드 버튼 + (다른 모델 선택 시) 전환 버튼
-            if st.sidebar.button("🔌 모델 끄기 (Unload)", type="secondary"):
-                with st.spinner("모델 언로드 중..."):
-                    try:
-                        api.unload_model()
-                        st.sidebar.success("모델이 꺼졌습니다.")
-                        api.get_model_info(force_refresh=True)
-                        st.rerun()
-                    except Exception as e:
-                        st.sidebar.error(f"❌ {e}")
-            
-            # 모델이 다르면 전환 버튼 표시
-            if selected_model != current_model:
-                if st.sidebar.button("🔄 모델 전환", type="primary"):
-                    with st.spinner(f"'{selected_model}' 로 전환 중..."):
-                        try:
-                            # 전환은 기존 switch_model 사용 (비동기)
-                            result = api.switch_model(selected_model)
-                            st.sidebar.success(result["message"])
-                            api.get_model_info(force_refresh=True)
-                            st.rerun()
-                        except Exception as e:
-                            st.sidebar.error(f"❌ {e}")
-        else:
-            # 언로드 상태: 로드 버튼
-            if st.sidebar.button("⚡ 모델 켜기 (Load)", type="primary"):
-                with st.spinner(f"'{selected_model}' 로딩 중... (잠시만 기다려주세요)"):
-                    try:
-                        api.load_model(selected_model)
-                        st.sidebar.success(f"'{selected_model}' 로드 완료!")
-                        api.get_model_info(force_refresh=True)
-                        st.rerun()
-                    except Exception as e:
-                        st.sidebar.error(f"❌ {e}")
     else:
-        st.sidebar.warning("⚠️ 모델 정보를 가져올 수 없습니다")
+        # 1,2,3 페이지: 이미지 생성 모델 선택
+        st.sidebar.subheader("🤖 이미지 생성 모델")
+
+        # 현재 로드된 ComfyUI 모델 상태 확인
+        current_comfyui_model = api.get_current_comfyui_model()
+
+        # ComfyUI experiments에서 생성 모델만 필터링
+        experiments_data = api.get_image_editing_experiments()
+        if experiments_data and experiments_data.get("success"):
+            experiments = experiments_data.get("experiments", [])
+
+            # 생성 모델만 필터링 (FLUX.1-dev-Q8, FLUX.1-dev-Q4)
+            generation_models = [exp for exp in experiments if "FLUX.1-dev-Q" in exp["id"]]
+
+            if generation_models:
+                exp_map = {exp["id"]: exp for exp in generation_models}
+                exp_ids = ["none"] + [exp["id"] for exp in generation_models]
+                exp_names = ["모델 없음"] + [f"{exp['name']}" for exp in generation_models]
+
+                # 기본값 설정
+                default_idx = 0
+                if current_comfyui_model and current_comfyui_model in exp_ids:
+                    default_idx = exp_ids.index(current_comfyui_model)
+
+                selected_exp_name = st.sidebar.selectbox(
+                    "모델 선택",
+                    exp_names,
+                    index=default_idx,
+                    help="이미지 생성에 사용할 모델을 선택하세요. '모델 없음'을 선택하면 메모리를 비웁니다.",
+                    key="generation_model_selector"
+                )
+
+                # 선택된 실험 객체 찾기
+                selected_idx = exp_names.index(selected_exp_name)
+                selected_exp_id = exp_ids[selected_idx]
+
+                # 세션에 선택된 모델 ID 저장 (페이지에서 사용)
+                st.session_state["selected_generation_model_id"] = selected_exp_id
+
+                # "모델 없음" 선택 시 처리
+                if selected_exp_id == "none":
+                    if current_comfyui_model:
+                        # 언로드 필요
+                        with st.spinner("모델 언로드 중..."):
+                            try:
+                                res = api.unload_model_comfyui()
+                                if res.get("success"):
+                                    st.sidebar.success("모델이 꺼졌습니다.")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.sidebar.error(f"언로드 실패: {res.get('message')}")
+                            except Exception as e:
+                                st.sidebar.error(f"❌ {e}")
+                    else:
+                        st.sidebar.markdown(f"⚫ **OFF** (Unloaded)")
+                else:
+                    # 일반 모델 선택
+                    selected_experiment = generation_models[selected_idx - 1]  # "모델 없음" 제외
+
+                    # 상태 표시 (선택한 모델이 실제로 로드되었는지 확인)
+                    if current_comfyui_model == selected_exp_id:
+                        st.sidebar.success(f"💡 **ON** (Loaded: {selected_experiment['name']})")
+                    else:
+                        st.sidebar.markdown(f"⚫ **OFF** (Unloaded)")
+
+                    # 모델 정보 표시
+                    st.sidebar.caption(f"📝 {selected_experiment.get('description', '')}")
+
+            else:
+                st.sidebar.warning("사용 가능한 생성 모델이 없습니다.")
+        else:
+            st.sidebar.error("모델 목록을 불러올 수 없습니다.")
 
     # ComfyUI 상태 표시 (사이드바 바로 보이게)
     st.sidebar.markdown("---")
@@ -484,7 +502,6 @@ def main():
             # 서버 재시작 감지 시 자동 새로고침
             if status.get("server_restarted"):
                 st.warning("🔄 서버가 재시작되었습니다. 상태를 새로고침합니다...")
-                api.get_model_info(force_refresh=True)
                 st.rerun()
 
             st.json(status)
@@ -604,10 +621,12 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             placeholder=config.get("ui.placeholders.caption", "")
         )
     
-    # 현재 모델 정보 가져오기 (크기 권장을 위해)
-    model_info = api.get_model_info()
-    current_model_name = model_info.get("current") if model_info else None
-    is_flux = current_model_name and "flux" in current_model_name.lower()
+    # 선택된 모델 ID 가져오기 (사이드바에서 선택한 모델)
+    selected_model_id = st.session_state.get("selected_generation_model_id")
+
+    # 현재 로드된 모델 확인
+    current_model_name = api.get_current_comfyui_model()
+    is_flux = (selected_model_id and "flux" in selected_model_id.lower()) or (current_model_name and "flux" in current_model_name.lower())
 
     # 이미지 크기 (설정 기반)
     preset_sizes = config.get("image.preset_sizes", [])
@@ -627,19 +646,17 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
     size_idx = size_options.index(selected_size)
     width = preset_sizes[size_idx]["width"]
     height = preset_sizes[size_idx]["height"]
-    
-    # Steps & Guidance Scale (모델 정보 기반)
-    model_info = api.get_model_info()
-    if model_info and model_info.get("current"):
-        current_model_name = model_info["current"]
-        current_model = model_info["models"].get(current_model_name, {})
-        default_steps = current_model.get("default_steps", 10)
-        default_guidance = current_model.get("guidance_scale")
 
-        st.info(f"ℹ️ 현재 모델: **{current_model_name}** (권장 steps: {default_steps}, guidance: {default_guidance if default_guidance else 'N/A'})")
+    # Steps & Guidance Scale (기본값 사용)
+    default_steps = config.get("image.steps.default", 28)
+    default_guidance = 3.5
+
+    # 모델 선택 상태 표시
+    if not selected_model_id or selected_model_id == "none":
+        st.warning("⚠️ 사이드바에서 생성 모델을 먼저 선택하세요")
     else:
-        default_steps = config.get("image.steps.default", 10)
-        default_guidance = None
+        display_model = current_model_name if current_model_name else selected_model_id
+        st.info(f"ℹ️ 선택된 모델: **{display_model}** (권장 steps: {default_steps}, guidance: {default_guidance})")
 
     col1, col2 = st.columns(2)
 
@@ -684,28 +701,18 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
 
     post_process_method = st.radio(
         "후처리 방식",
-        options=["none", "impact_pack", "adetailer"],
+        options=["none", "impact_pack"],
         format_func=lambda x: {
             "none": "없음 (빠름)",
-            "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)",
-            "adetailer": "기존 ADetailer (YOLO+MediaPipe, 호환성)"
+            "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)"
         }[x],
         index=0,
-        help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 새로운 방식\nADetailer: 기존 방식 (안정성)"
+        help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 얼굴/손 보정"
     )
 
-    # ADetailer 세부 옵션 (legacy)
-    if post_process_method == "adetailer":
-        enable_adetailer = st.checkbox("ADetailer 활성화", value=True)
-        adetailer_targets = st.multiselect(
-            "후처리 대상",
-            options=["hand", "face"],
-            default=["hand"],
-            help="손/얼굴 감지 후 해당 영역 재생성"
-        )
-    else:
-        enable_adetailer = False
-        adetailer_targets = None
+    # ADetailer 제거됨 (ComfyUI 사용으로 인해 비활성화)
+    enable_adetailer = False
+    adetailer_targets = None
 
     # 생성 중 상태 확인
     is_generating = st.session_state.get("is_generating_t2i", False)
@@ -744,7 +751,8 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                 "guidance_scale": guidance_scale,
                 "post_process_method": post_process_method,
                 "enable_adetailer": enable_adetailer,
-                "adetailer_targets": adetailer_targets
+                "adetailer_targets": adetailer_targets,
+                "model_name": selected_model_id  # 선택된 모델 전달
             }
 
             try:
@@ -834,10 +842,12 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         placeholder=config.get("ui.placeholders.edit_prompt", "")
     )
 
-    # 현재 모델 정보 가져오기 (크기 권장을 위해)
-    model_info = api.get_model_info()
-    current_model_name = model_info.get("current") if model_info else None
-    is_flux = current_model_name and "flux" in current_model_name.lower()
+    # 선택된 모델 ID 가져오기 (사이드바에서 선택한 모델)
+    selected_model_id = st.session_state.get("selected_generation_model_id")
+
+    # 현재 로드된 모델 확인
+    current_model_name = api.get_current_comfyui_model()
+    is_flux = (selected_model_id and "flux" in selected_model_id.lower()) or (current_model_name and "flux" in current_model_name.lower())
 
     # 출력 크기 (입력 이미지가 이 크기로 리사이즈됨)
     preset_sizes = config.get("image.preset_sizes", [])
@@ -849,6 +859,10 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         if is_flux and s['width'] == 1024 and s['height'] == 1024:
             label += " ⭐ 권장"
         size_options.append(label)
+
+    # 모델 선택 상태 표시
+    if not selected_model_id or selected_model_id == "none":
+        st.warning("⚠️ 사이드바에서 생성 모델을 먼저 선택하세요")
 
     selected_size = st.selectbox(
         "출력 크기",
@@ -866,32 +880,29 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
 
     post_process_method = st.radio(
         "후처리 방식",
-        options=["none", "impact_pack", "adetailer"],
+        options=["none", "impact_pack"],
         format_func=lambda x: {
             "none": "없음 (빠름)",
-            "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)",
-            "adetailer": "기존 ADetailer (YOLO+MediaPipe, 호환성)"
+            "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)"
         }[x],
         index=0,
-        help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 새로운 방식\nADetailer: 기존 방식 (안정성)",
+        help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 얼굴/손 보정",
         key="i2i_post_process"
     )
 
-    # ADetailer 세부 옵션 (legacy)
-    if post_process_method == "adetailer":
-        enable_adetailer = st.checkbox("ADetailer 활성화", value=True, key="i2i_enable_adetailer")
-        adetailer_targets = st.multiselect(
-            "후처리 대상",
-            options=["hand", "face"],
-            default=["hand"],
-            help="손/얼굴 감지 후 해당 영역 재생성",
-            key="i2i_adetailer_targets"
-        )
-    else:
-        enable_adetailer = False
-        adetailer_targets = None
+    # ADetailer 제거됨 (ComfyUI 사용으로 인해 비활성화)
+    enable_adetailer = False
+    adetailer_targets = None
 
-    submitted = st.button("✨ 이미지 편집", type="primary")
+    # 처리 중 상태 확인
+    is_processing = st.session_state.get("is_processing_i2i", False)
+
+    # 버튼 표시 (처리 중이면 비활성화)
+    if is_processing:
+        st.warning("⏳ 이미지 편집 중입니다... 잠시만 기다려주세요.")
+        submitted = False
+    else:
+        submitted = st.button("✨ 이미지 편집", type="primary", disabled=is_processing)
     
     if submitted:
         if not image_bytes:
@@ -901,6 +912,12 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             st.error("❌ 문구를 입력하세요")
             return
         
+        # 처리 시작 상태 설정
+        st.session_state["is_processing_i2i"] = True
+        st.rerun()
+
+    # 실제 처리 로직 (rerun 후 실행됨)
+    if is_processing and image_bytes and selected_caption:
         aligned_w = align_to_64(width)
         aligned_h = align_to_64(height)
         
@@ -917,13 +934,17 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             "steps": 30,
             "post_process_method": post_process_method,
             "enable_adetailer": enable_adetailer,
-            "adetailer_targets": adetailer_targets
+            "adetailer_targets": adetailer_targets,
+            "model_name": selected_model_id  # 선택된 모델 전달
         }
         
         try:
             with st.spinner("편집 중..."):
                 edited = api.call_i2i(payload)
-            
+
+            # 처리 완료 - 상태 해제
+            st.session_state["is_processing_i2i"] = False
+
             if edited:
                 col1, col2 = st.columns(2)
                 with col1:
@@ -932,10 +953,12 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                 with col2:
                     st.subheader("편집됨")
                     st.image(edited, use_container_width=True)
-                
+
                 st.success("✅ 완료!")
                 st.download_button("⬇️ 편집 이미지 다운로드", edited, "edited.png", "image/png")
         except Exception as e:
+            # 에러 발생 시에도 상태 해제
+            st.session_state["is_processing_i2i"] = False
             st.error(f"❌ 편집 실패: {e}")
 
 # ============================================================
@@ -945,44 +968,20 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     st.title("✂️ 이미지 편집")
     st.markdown("**배경 제거 및 이미지 편집**")
 
-    # 실험 목록 조회
-    experiments_data = api.get_image_editing_experiments()
-
-    if not experiments_data or not experiments_data.get("success"):
-        st.error("편집 모델 목록을 불러올 수 없습니다.")
+    # 세션에서 선택된 편집 모델 가져오기 (메인 함수의 사이드바에서 선택)
+    if "selected_editing_experiment" not in st.session_state:
+        st.warning("⚠️ 편집 모델을 선택해주세요.")
         return
 
-    experiments = experiments_data.get("experiments", [])
+    selected_experiment = st.session_state["selected_editing_experiment"]
 
-    if not experiments:
-        st.warning("사용 가능한 편집 모델이 없습니다.")
+    # None 체크 ("모델 없음" 선택 시)
+    if selected_experiment is None:
+        st.warning("⚠️ 편집 모델을 선택해주세요. 사이드바에서 '모델 없음'이 아닌 편집 모델을 선택하세요.")
         return
 
-    # ========================================
-    # 사이드바: 이미지 편집 모델 선택
-    # ========================================
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🎨 이미지 편집 모델")
-
-    experiment_options = [f"{exp['name']}" for exp in experiments]
-    selected_experiment_name = st.sidebar.selectbox(
-        "편집 모델 선택",
-        experiment_options,
-        help="배경 제거 후 사용할 이미지 편집 모델을 선택하세요"
-    )
-
-    selected_idx = experiment_options.index(selected_experiment_name)
-    selected_experiment = experiments[selected_idx]
-
-    # 사이드바에 모델 정보 표시
-    with st.sidebar.expander("📋 모델 정보", expanded=True):
-        st.markdown(f"**배경 제거:** {selected_experiment['background_removal_model']}")
-        st.markdown(f"**편집 모델:** {selected_experiment['editing_model']}")
-        st.caption(f"{selected_experiment['description']}")
-
-    # ========================================
-    # 메인 영역: 편집 인터페이스
-    # ========================================
+    # 모델 정보 표시
+    st.info(f"**선택된 모델**: {selected_experiment['name']}\n\n{selected_experiment['description']}")
 
     # 1. 이미지 업로드
     st.subheader("1️⃣ 이미지 업로드")
@@ -1012,15 +1011,86 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     # 2. 편집 프롬프트 및 설정
     st.subheader("2️⃣ 편집 설정")
 
+    # 모델별 기능 선택 (YAML의 features 활용)
+    features = selected_experiment.get("features", [])
+    if features:
+        st.markdown("**편집 유형 선택**")
+        feature_names = [f"{f['name']} - {f['description']}" for f in features]
+        selected_feature_idx = st.selectbox(
+            "기능",
+            range(len(features)),
+            format_func=lambda x: feature_names[x],
+            help="모델이 지원하는 편집 기능을 선택하세요"
+        )
+        selected_feature = features[selected_feature_idx]
+
+        # 기능별 동적 UI 렌더링
+        st.markdown(f"**{selected_feature['name']}**")
+        st.caption(selected_feature['description'])
+
+        # UI 요소 렌더링
+        ui_elements = selected_feature.get("ui_elements", [])
+        additional_params = {}
+
+        for idx, ui_elem in enumerate(ui_elements):
+            elem_type = ui_elem.get("type")
+            label = ui_elem.get("label")
+
+            if elem_type == "text_input":
+                placeholder = ui_elem.get("placeholder", "")
+                help_text = ""
+
+                # 특정 레이블에 대한 설명 추가
+                if "채울 내용" in label:
+                    help_text = "배경 제거 후 채워질 내용을 설명하세요 (예: 현대적인 사무실, 자연 배경 등)"
+                elif "확장 영역" in label:
+                    help_text = "확장된 영역에 추가로 그려질 내용을 설명하세요 (예: 산 풍경 계속, 바다 배경 등)"
+
+                additional_params[label] = st.text_input(
+                    label,
+                    placeholder=placeholder,
+                    help=help_text,
+                    key=f"ui_elem_{idx}"
+                )
+
+            elif elem_type == "select":
+                options = ui_elem.get("options", [])
+                additional_params[label] = st.selectbox(label, options, key=f"ui_elem_{idx}")
+
+            elif elem_type == "mask_tool":
+                st.info(f"💡 {label}: 배경이 자동으로 제거됩니다")
+
+            elif elem_type == "expansion_direction":
+                options = ui_elem.get("options", [])
+                help_text = "이미지를 확장할 방향을 선택하세요 (여러 개 선택 가능)"
+                additional_params[label] = st.multiselect(
+                    label,
+                    options,
+                    help=help_text,
+                    key=f"ui_elem_{idx}"
+                )
+
     prompt = st.text_area(
-        "편집 프롬프트",
-        placeholder="예: modern office background, bright lighting, professional atmosphere",
-        help="배경 제거 후 어떤 스타일/배경으로 편집할지 설명하세요 (영어 권장)",
-        height=100
+        "메인 편집 프롬프트 (전체적인 스타일/분위기)",
+        placeholder="예: modern office background, bright lighting, professional atmosphere, high quality",
+        help="이미지 전체의 스타일, 분위기, 품질을 설명하세요. 위의 '채울 내용'과 함께 사용됩니다.",
+        height=100,
+        key="edit_prompt"
     )
 
     # 고급 설정
     with st.expander("⚙️ 고급 설정"):
+        # 네거티브 프롬프트
+        negative_prompt = st.text_area(
+            "네거티브 프롬프트 (선택)",
+            placeholder="예: blurry, low quality, distorted, ugly, bad anatomy",
+            help="생성하지 않을 요소를 설명하세요. 비워두면 자동으로 positive 프롬프트와 동일하게 처리됩니다. FLUX 모델은 네거티브 프롬프트 효과가 제한적입니다.",
+            height=80,
+            key="negative_prompt"
+        )
+
+        st.divider()
+
         col1, col2, col3 = st.columns(3)
 
         exp_config = config.get("image.editing_experiment", {})
@@ -1060,27 +1130,46 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     # 3. 실행
     st.subheader("3️⃣ 편집 실행")
 
-    if not prompt.strip():
-        st.warning("⚠️ 편집 프롬프트를 입력하세요")
-        return
+    # 버튼 비활성화 처리를 위한 세션 상태
+    if "editing_in_progress" not in st.session_state:
+        st.session_state["editing_in_progress"] = False
 
-    if st.button("🎨 편집 시작", type="primary", use_container_width=True):
-        # Base64 인코딩
-        input_image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+    if "editing_request" not in st.session_state:
+        st.session_state["editing_request"] = None
 
-        # API 요청 페이로드
-        payload = {
+    # 편집 버튼 (진행 중일 때 비활성화)
+    button_disabled = st.session_state["editing_in_progress"]
+
+    if st.button("🎨 편집 시작", type="primary", use_container_width=True, disabled=button_disabled):
+        # 프롬프트 체크
+        if not prompt.strip():
+            st.warning("⚠️ 메인 편집 프롬프트를 입력하세요")
+            st.stop()
+
+        # 편집 요청 저장
+        st.session_state["editing_request"] = {
             "experiment_id": selected_experiment["id"],
-            "input_image_base64": input_image_base64,
+            "input_image_base64": base64.b64encode(image_bytes).decode("utf-8"),
             "prompt": prompt,
+            "negative_prompt": negative_prompt if negative_prompt.strip() else "",
             "steps": steps,
             "guidance_scale": guidance_scale,
             "strength": strength
         }
+        st.session_state["editing_in_progress"] = True
+        st.rerun()
+
+    # 편집 요청이 있으면 실행
+    if st.session_state["editing_in_progress"] and st.session_state["editing_request"]:
+        payload = st.session_state["editing_request"]
 
         try:
             with st.spinner("이미지 편집 중... (배경 제거 + 편집 적용)"):
                 result = api.edit_with_comfyui(payload)
+
+            # 편집 완료 - 버튼 다시 활성화 및 요청 초기화
+            st.session_state["editing_in_progress"] = False
+            st.session_state["editing_request"] = None
 
             if result and result.get("success"):
                 st.success(f"✅ 편집 완료! (소요 시간: {result.get('elapsed_time', 0):.1f}초)")
@@ -1147,10 +1236,16 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
                     )
 
             else:
+                # 편집 실패 - 버튼 다시 활성화 및 요청 초기화
+                st.session_state["editing_in_progress"] = False
+                st.session_state["editing_request"] = None
                 error_msg = result.get("error", "알 수 없는 오류") if result else "응답 없음"
                 st.error(f"❌ 편집 실패: {error_msg}")
 
         except Exception as e:
+            # 예외 발생 시에도 버튼 다시 활성화 및 요청 초기화
+            st.session_state["editing_in_progress"] = False
+            st.session_state["editing_request"] = None
             st.error(f"❌ 오류 발생: {e}")
 
 # ============================================================

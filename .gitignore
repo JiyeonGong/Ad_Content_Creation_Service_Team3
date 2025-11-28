@@ -43,3 +43,14 @@ outputs/
 models/
 #assets/inputs/outputs/
 volumes/
+
+# ComfyUI (external git repository)
+comfyui/
+
+# Logs
+logs/
+*.log
+
+# Backup files
+*.backup
+*.backup_*

@@ -4,6 +4,7 @@ AI 서비스 레이어 - 설정 기반 모델 관리
 """
 import os
 import io
+import logging
 from typing import Optional
 
 from openai import OpenAI
@@ -13,6 +14,8 @@ from dotenv import load_dotenv
 
 from .model_registry import get_registry
 from .model_loader import ModelLoader
+
+logger = logging.getLogger(__name__)
 
 # Load env
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
@@ -24,14 +27,15 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL_GPT_MINI = "gpt-5-mini"
 
 # HF cache location
-# GCP: /home/shared 사용 (이미 다운로드된 모델 재사용)
-# 로컬: project_root/cache/hf_models 사용
+# /mnt/data4/models 우선 사용 (모든 모델 통합 저장소)
+# GCP: /home/shared 사용
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if os.path.exists("/home/shared"):
+if os.path.exists("/mnt/data4/models"):
+    hf_cache_dir = "/mnt/data4/models"
+elif os.path.exists("/home/shared"):
     hf_cache_dir = "/home/shared"
 else:
-    hf_cache_dir = os.path.join(project_root, "cache", "hf_models")
-    os.makedirs(hf_cache_dir, exist_ok=True)
+    raise RuntimeError("모델 디렉토리를 찾을 수 없습니다!")
 
 # 전역 인스턴스
 openai_client: Optional[OpenAI] = None
@@ -43,10 +47,10 @@ if OPENAI_API_KEY:
     try:
         openai_client = OpenAI(api_key=OPENAI_API_KEY)
     except Exception as e:
-        print(f"⚠️ OpenAI 초기화 실패: {e}")
+        logger.warning(f"⚠️ OpenAI 초기화 실패: {e}")
         openai_client = None
 else:
-    print("⚠️ OPENAI_API_KEY 미설정 — GPT 기능 불가")
+    logger.warning("⚠️ OPENAI_API_KEY 미설정 — GPT 기능 불가")
 
 # ===========================
 # Utility helpers
@@ -89,7 +93,7 @@ def init_image_pipelines():
     
     if success:
         info = model_loader.get_current_model_info()
-        print(f"✅ 이미지 생성 준비 완료")
+        logger.info(f"✅ 이미지 생성 준비 완료")
         print(f"   모델: {info['name']} ({info['type']})")
         print(f"   장치: {info['device']}")
     else:
@@ -158,11 +162,11 @@ Output ONLY the English prompt, no explanations."""
         
         result = getattr(resp, "output_text", None) or str(resp)
         optimized = result.strip()
-        print(f"🔄 프롬프트 최적화:\n  원본: {text}\n  최적화: {optimized}")
+        logger.info(f"🔄 프롬프트 최적화:\n  원본: {text}\n  최적화: {optimized}")
         return optimized
         
     except Exception as e:
-        print(f"⚠️ 프롬프트 최적화 실패, 원본 사용: {e}")
+        logger.warning(f"⚠️ 프롬프트 최적화 실패, 원본 사용: {e}")
         return text
 
 # ===========================
@@ -208,7 +212,7 @@ def generate_caption_core(info: dict, tone: str) -> str:
         text = getattr(resp, "output_text", None) or str(resp)
         return text.strip()
     except Exception as e:
-        print(f"🚨 GPT 호출 실패: {e}")
+        logger.error(f"🚨 GPT 호출 실패: {e}")
         raise
 
 # ===========================
@@ -222,7 +226,8 @@ def generate_t2i_core(
     guidance_scale: float = None,
     enable_adetailer: bool = True,
     adetailer_targets: list = None,
-    post_process_method: str = "none"  # "none", "impact_pack", "adetailer"
+    post_process_method: str = "none",  # "none", "impact_pack", "adetailer"
+    model_name: str = None  # 사용할 모델 이름 (없으면 현재 로드된 모델 사용)
 ) -> bytes:
     """
     ComfyUI를 사용한 T2I 이미지 생성
@@ -232,6 +237,7 @@ def generate_t2i_core(
             - "none": 후처리 없음
             - "impact_pack": ComfyUI Impact Pack (YOLO+SAM)
             - "adetailer": 기존 ADetailer (YOLO+MediaPipe)
+        model_name: 사용할 모델 이름 (선택사항, 없으면 현재 로드된 모델 사용)
     """
     from .comfyui_client import ComfyUIClient
     from .comfyui_workflows import (
@@ -241,13 +247,23 @@ def generate_t2i_core(
         load_image_editing_config
     )
 
-    # 현재 로드된 모델 이름 가져오기
-    global model_loader
-    if not model_loader or not model_loader.is_loaded():
-        raise RuntimeError("모델이 로드되지 않았습니다. 먼저 모델을 로드하세요.")
+    # 현재 로드된 ComfyUI 모델 확인
+    current_model_name = get_current_comfyui_model()
 
-    current_model_name = model_loader.current_model_name
-    model_config = model_loader.current_model_config
+    # 모델이 로드되지 않았고, 요청에 model_name이 있으면 자동 로드
+    if not current_model_name and model_name:
+        logger.info(f"🔄 모델 자동 로드 시작: {model_name}")
+        # 전역 변수 업데이트 (실제 워크플로우에서 사용됨)
+        global current_comfyui_model
+        current_comfyui_model = model_name
+        current_model_name = model_name
+    elif not current_model_name:
+        raise RuntimeError("모델이 로드되지 않았습니다. 먼저 모델을 선택하세요.")
+
+    # 모델 설정 가져오기
+    model_config = registry.get_model(current_model_name)
+    if not model_config:
+        raise RuntimeError(f"모델 설정을 찾을 수 없습니다: {current_model_name}")
 
     # 프롬프트 최적화
     optimized_prompt = optimize_prompt(prompt, model_config)
@@ -259,9 +275,9 @@ def generate_t2i_core(
 
     # Guidance scale 설정
     if guidance_scale is None:
-        guidance_scale = model_config.guidance_scale or 3.5
+        guidance_scale = model_config.guidance_scale
 
-    print(f"🎨 ComfyUI로 T2I 이미지 생성 중")
+    logger.info(f"🎨 ComfyUI로 T2I 이미지 생성 중")
     print(f"   모델: {current_model_name}")
     print(f"   후처리: {post_process_method}")
     print(f"   Steps: {steps}")
@@ -315,11 +331,11 @@ def generate_t2i_core(
             image.save(buf, format="PNG")
             image_bytes = buf.getvalue()
 
-        print(f"✅ 생성 완료: {len(image_bytes)} bytes")
+        logger.info(f"✅ 생성 완료: {len(image_bytes)} bytes")
         return image_bytes
 
     except Exception as e:
-        print(f"❌ ComfyUI T2I 생성 실패: {e}")
+        logger.error(f"❌ ComfyUI T2I 생성 실패: {e}")
         import traceback
         traceback.print_exc()
         raise RuntimeError(f"이미지 생성 실패: {e}")
@@ -346,12 +362,25 @@ def apply_adetailer(
     try:
         from .post_processor import get_post_processor
 
-        print(f"🔧 ADetailer 후처리 시작 (targets: {targets})")
+        logger.info(f"🔧 ADetailer 후처리 시작 (targets: {targets})")
+
+        # model_loader 초기화 (ADetailer용)
+        if model_loader is None or not model_loader.is_loaded():
+            model_loader = ModelLoader(cache_dir=hf_cache_dir)
+            success = model_loader.load_with_fallback()
+            if not success:
+                logger.warning("⚠️ 모델 로드 실패 - ADetailer 건너뜀")
+                return image
 
         post_processor = get_post_processor()
 
         # I2I 파이프라인을 Inpaint용으로 사용
         inpaint_pipe = model_loader.i2i_pipe
+
+        # ComfyUI 사용 시 i2i_pipe가 None이므로 ADetailer 사용 불가
+        if inpaint_pipe is None:
+            logger.warning("⚠️ ComfyUI 사용 중 - ADetailer는 Impact Pack을 사용하세요")
+            return image
 
         processed_image, info = post_processor.full_pipeline(
             image=image,
@@ -363,12 +392,12 @@ def apply_adetailer(
         )
 
         if not info["processed"]:
-            print(f"ℹ️ ADetailer: 이상 없음, 원본 유지")
+            logger.info(f"ℹ️ ADetailer: 이상 없음, 원본 유지")
 
         return processed_image
 
     except Exception as e:
-        print(f"⚠️ ADetailer 실패, 원본 반환: {e}")
+        logger.warning(f"⚠️ ADetailer 실패, 원본 반환: {e}")
         return image
 
 # ===========================
@@ -384,7 +413,8 @@ def generate_i2i_core(
     guidance_scale: float = None,
     enable_adetailer: bool = False,
     adetailer_targets: list = None,
-    post_process_method: str = "none"  # "none", "impact_pack", "adetailer"
+    post_process_method: str = "none",  # "none", "impact_pack", "adetailer"
+    model_name: str = None  # 사용할 모델 이름 (없으면 현재 로드된 모델 사용)
 ) -> bytes:
     """
     ComfyUI를 사용한 I2I 이미지 편집
@@ -402,6 +432,7 @@ def generate_i2i_core(
             - "none": 후처리 없음
             - "impact_pack": ComfyUI Impact Pack (YOLO+SAM)
             - "adetailer": 기존 ADetailer (YOLO+MediaPipe)
+        model_name: 사용할 모델 이름 (선택사항, 없으면 현재 로드된 모델 사용)
     """
     from .comfyui_client import ComfyUIClient
     from .comfyui_workflows import (
@@ -410,17 +441,23 @@ def generate_i2i_core(
         load_image_editing_config
     )
 
-    # 현재 로드된 모델 정보 가져오기
-    global model_loader
-    if not model_loader or not model_loader.is_loaded():
-        raise RuntimeError("모델이 로드되지 않았습니다. 먼저 모델을 로드하세요.")
+    # 현재 로드된 ComfyUI 모델 확인
+    current_model_name = get_current_comfyui_model()
 
-    current_model_name = model_loader.current_model_name
-    model_config = model_loader.current_model_config
+    # 모델이 로드되지 않았고, 요청에 model_name이 있으면 자동 로드
+    if not current_model_name and model_name:
+        logger.info(f"🔄 모델 자동 로드 시작: {model_name}")
+        # 전역 변수 업데이트 (실제 워크플로우에서 사용됨)
+        global current_comfyui_model
+        current_comfyui_model = model_name
+        current_model_name = model_name
+    elif not current_model_name:
+        raise RuntimeError("모델이 로드되지 않았습니다. 먼저 모델을 선택하세요.")
 
-    # I2I 지원 확인
-    if not model_config.supports_i2i:
-        raise RuntimeError(f"현재 모델({current_model_name})은 I2I를 지원하지 않습니다.")
+    # 모델 설정 가져오기
+    model_config = registry.get_model(current_model_name)
+    if not model_config:
+        raise RuntimeError(f"모델 설정을 찾을 수 없습니다: {current_model_name}")
 
     # 프롬프트 최적화
     optimized_prompt = optimize_prompt(prompt, model_config)
@@ -432,7 +469,7 @@ def generate_i2i_core(
 
     # Guidance scale 설정
     if guidance_scale is None:
-        guidance_scale = model_config.guidance_scale or 3.5
+        guidance_scale = model_config.guidance_scale
 
     print(f"✏️ ComfyUI로 I2I 이미지 편집 중")
     print(f"   모델: {current_model_name}")
@@ -489,11 +526,11 @@ def generate_i2i_core(
             image.save(buf, format="PNG")
             image_bytes = buf.getvalue()
 
-        print(f"✅ 편집 완료: {len(image_bytes)} bytes")
+        logger.info(f"✅ 편집 완료: {len(image_bytes)} bytes")
         return image_bytes
 
     except Exception as e:
-        print(f"❌ ComfyUI I2I 편집 실패: {e}")
+        logger.error(f"❌ ComfyUI I2I 편집 실패: {e}")
         import traceback
         traceback.print_exc()
         raise RuntimeError(f"이미지 편집 실패: {e}")
@@ -501,75 +538,19 @@ def generate_i2i_core(
 # ===========================
 # 모델 전환
 # ===========================
-def switch_model(model_name: str) -> dict:
-    """
-    다른 모델로 전환
-    Returns: {"success": bool, "message": str, "model_info": dict}
-    """
-    global model_loader
-
-    if not model_loader:
-        model_loader = ModelLoader(cache_dir=hf_cache_dir)
-
-    # 모델 존재 여부 확인
-    model_config = registry.get_model(model_name)
-    if not model_config:
-        return {
-            "success": False,
-            "message": f"알 수 없는 모델: {model_name}",
-            "model_info": None
-        }
-
-    # 이미 로드된 경우
-    if model_loader.is_loaded() and model_loader.current_model_name == model_name:
-        return {
-            "success": True,
-            "message": f"모델 '{model_name}' 이미 로드됨",
-            "model_info": model_loader.get_current_model_info()
-        }
-
-    # 모델 로드
-    print(f"🔄 모델 전환 중: {model_name}")
-    success = model_loader.load_model(model_name)
-
-    if success:
-        info = model_loader.get_current_model_info()
-        return {
-            "success": True,
-            "message": f"모델 '{model_name}' 로드 성공",
-            "model_info": info
-        }
-    else:
-        return {
-            "success": False,
-            "message": f"모델 '{model_name}' 로드 실패",
-            "model_info": None
-        }
-
 # ===========================
 # 상태 조회
 # ===========================
 def get_service_status() -> dict:
     """서비스 상태 반환"""
+    current_model = get_current_comfyui_model()
     status = {
         "gpt_ready": openai_client is not None,
-        "image_ready": model_loader and model_loader.is_loaded(),
+        "image_ready": current_model is not None,
+        "current_model": current_model
     }
 
-    if model_loader:
-        status.update(model_loader.get_current_model_info())
-
     return status
-
-def unload_model_service() -> dict:
-    """모델 언로드"""
-    global model_loader
-
-    if model_loader and model_loader.is_loaded():
-        model_loader.unload_model()
-        return {"success": True, "message": "모델 언로드 완료"}
-
-    return {"success": True, "message": "이미 언로드 상태입니다."}
 
 # ===========================
 # 🆕 이미지 편집 (ComfyUI)
@@ -578,6 +559,7 @@ def edit_image_with_comfyui(
     experiment_id: str,
     input_image_bytes: bytes,
     prompt: str,
+    negative_prompt: str = "",
     steps: int = None,
     guidance_scale: float = None,
     strength: float = None
@@ -606,6 +588,7 @@ def edit_image_with_comfyui(
     """
     import base64
     import time
+    import logging
     from .comfyui_client import ComfyUIClient
     from .comfyui_workflows import (
         get_workflow_template,
@@ -614,6 +597,7 @@ def edit_image_with_comfyui(
         load_image_editing_config
     )
 
+    logger = logging.getLogger(__name__)
     start_time = time.time()
 
     try:
@@ -653,6 +637,7 @@ def edit_image_with_comfyui(
             workflow=workflow,
             experiment_id=experiment_id,
             prompt=prompt,
+            negative_prompt=negative_prompt,
             steps=steps,
             guidance_scale=guidance_scale,
             strength=strength
@@ -661,11 +646,15 @@ def edit_image_with_comfyui(
         # 입력 이미지 노드 ID
         input_node_id = get_workflow_input_image_node_id(experiment_id)
 
-        print(f"🎨 ComfyUI 이미지 편집 시작")
-        print(f"   실험: {experiment['name']}")
-        print(f"   프롬프트: {prompt}")
+        logger.info(f"🎨 ComfyUI 이미지 편집 시작")
+        logger.info(f"   실험: {experiment['name']}")
+        logger.info(f"   배경 제거: {experiment.get('background_removal', {}).get('model', 'N/A')}")
+        logger.info(f"   이미지 편집: {experiment.get('image_editing', {}).get('model', 'N/A')}")
+        logger.info(f"   프롬프트: {prompt}")
+        logger.info(f"   파라미터: steps={steps}, guidance={guidance_scale}, strength={strength}")
 
         # 워크플로우 실행
+        logger.info(f"🔄 워크플로우 실행 중...")
         output_images, history = client.execute_workflow(
             workflow=workflow,
             input_image=input_image_bytes,
@@ -686,7 +675,7 @@ def edit_image_with_comfyui(
 
         elapsed_time = time.time() - start_time
 
-        print(f"✅ ComfyUI 편집 완료! (소요 시간: {elapsed_time:.1f}초)")
+        logger.info(f"✅ ComfyUI 편집 완료! (소요 시간: {elapsed_time:.1f}초)")
 
         return {
             "success": True,
@@ -701,7 +690,7 @@ def edit_image_with_comfyui(
     except Exception as e:
         elapsed_time = time.time() - start_time
         error_msg = str(e)
-        print(f"❌ ComfyUI 편집 실패: {error_msg}")
+        logger.error(f"❌ ComfyUI 편집 실패: {error_msg}")
 
         return {
             "success": False,
@@ -715,25 +704,46 @@ def edit_image_with_comfyui(
 
 
 def get_image_editing_experiments() -> dict:
-    """사용 가능한 이미지 편집 실험 목록 반환"""
+    """사용 가능한 이미지 편집 실험 목록 반환 (생성 모델 + 편집 모델)"""
     from .comfyui_workflows import load_image_editing_config
 
     try:
         config = load_image_editing_config()
         experiments = config.get("experiments", [])
 
+        # 편집 실험 목록
+        editing_experiments = [
+            {
+                "id": exp["id"],
+                "name": exp["name"],
+                "description": exp["description"],
+                "background_removal_model": exp["background_removal"]["model"],
+                "editing_model": exp["image_editing"]["model"],
+                "features": exp.get("features", [])  # 모델별 기능 목록 포함
+            }
+            for exp in experiments
+        ]
+
+        # 생성 모델 목록 추가
+        generation_models = [
+            {
+                "id": "FLUX.1-dev-Q8",
+                "name": "FLUX.1-dev Q8",
+                "description": "FLUX.1-dev GGUF 8-bit 양자화 (이미지 생성, 권장)"
+            },
+            {
+                "id": "FLUX.1-dev-Q4",
+                "name": "FLUX.1-dev Q4",
+                "description": "FLUX.1-dev GGUF 4-bit 양자화 (메모리 절약)"
+            }
+        ]
+
+        # 생성 모델 + 편집 모델 모두 반환
+        all_experiments = generation_models + editing_experiments
+
         return {
             "success": True,
-            "experiments": [
-                {
-                    "id": exp["id"],
-                    "name": exp["name"],
-                    "description": exp["description"],
-                    "background_removal_model": exp["background_removal"]["model"],
-                    "editing_model": exp["image_editing"]["model"]
-                }
-                for exp in experiments
-            ]
+            "experiments": all_experiments
         }
 
     except Exception as e:
@@ -743,6 +753,104 @@ def get_image_editing_experiments() -> dict:
             "experiments": []
         }
 
+
+# ===========================
+# 🆕 ComfyUI 모델 관리 (프리로딩/언로드)
+# ===========================
+current_comfyui_model: Optional[str] = None
+
+# 프리로드 기능 제거됨
+def _removed_preload_model_in_comfyui(experiment_id: str) -> dict:
+    """
+    ComfyUI에 모델 미리 로드 (최소 실행 워크플로우 전송)
+    """
+    global current_comfyui_model
+    
+    # 이미 로드된 모델이면 스킵
+    if current_comfyui_model == experiment_id:
+        return {"success": True, "message": "이미 로드된 모델입니다.", "model": experiment_id}
+
+    from .comfyui_client import ComfyUIClient
+    from .comfyui_workflows import _removed_get_preload_workflow, load_image_editing_config, get_workflow_input_image_node_id
+    import io
+    from PIL import Image
+    
+    try:
+        config = load_image_editing_config()
+        comfyui_config = config.get("comfyui", {})
+        base_url = comfyui_config.get("base_url", "http://localhost:8188")
+        
+        client = ComfyUIClient(base_url=base_url)
+        
+        # 1. 더미 이미지 생성 (64x64 검은색)
+        dummy_image = Image.new('RGB', (64, 64), color='black')
+        img_byte_arr = io.BytesIO()
+        dummy_image.save(img_byte_arr, format='PNG')
+        img_byte_arr.seek(0)
+        
+        # 2. 이미지 업로드
+        filename = "preload_dummy.png"
+        upload_resp = client.upload_image(img_byte_arr.read(), filename)
+        if not upload_resp:
+            return {"success": False, "message": "더미 이미지 업로드 실패"}
+        
+        # 3. 프리로딩 워크플로우 생성
+        workflow = _removed_get_preload_workflow(experiment_id)
+        if not workflow:
+            return {"success": False, "message": "프리로딩 워크플로우 생성 실패"}
+        
+        # 4. 입력 이미지 노드 설정
+        input_node_id = get_workflow_input_image_node_id(experiment_id)
+        if input_node_id in workflow:
+            workflow[input_node_id]["inputs"]["image"] = filename
+            
+        # 5. 큐에 전송
+        logger.info(f"🚀 모델 프리로딩 시작: {experiment_id}")
+        client.queue_prompt(workflow)
+        
+        # 6. 상태 업데이트
+        current_comfyui_model = experiment_id
+        
+        return {"success": True, "message": "모델 로딩 요청 완료", "model": experiment_id}
+        
+    except Exception as e:
+        error_msg = str(e)
+        # prompt_no_outputs 에러는 명확하게 실패로 처리
+        if "prompt_no_outputs" in error_msg.lower():
+            logger.error(f"❌ 워크플로우에 출력 노드가 없어 실행 불가")
+            return {"success": False, "message": "워크플로우 구성 오류 (출력 노드 필요)"}
+        
+        logger.error(f"❌ 모델 프리로딩 실패: {e}")
+        return {"success": False, "message": str(e)}
+
+def unload_comfyui_model() -> dict:
+    """ComfyUI 모델 언로드 및 메모리 해제"""
+    global current_comfyui_model
+    
+    from .comfyui_client import ComfyUIClient
+    from .comfyui_workflows import load_image_editing_config
+    
+    try:
+        config = load_image_editing_config()
+        base_url = config.get("comfyui", {}).get("base_url", "http://localhost:8188")
+        
+        client = ComfyUIClient(base_url=base_url)
+        
+        # 메모리 해제 요청
+        success = client.free_memory(unload_models=True, free_memory=True)
+        
+        if success:
+            current_comfyui_model = None
+            return {"success": True, "message": "모델 언로드 및 메모리 해제 완료"}
+        else:
+            return {"success": False, "message": "메모리 해제 요청 실패"}
+            
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+def get_current_comfyui_model() -> Optional[str]:
+    """현재 로드된 ComfyUI 모델 ID 반환"""
+    return current_comfyui_model
 
 def check_comfyui_status() -> dict:
     """ComfyUI 서버 상태 확인"""
@@ -762,7 +870,8 @@ def check_comfyui_status() -> dict:
             return {
                 "connected": True,
                 "base_url": base_url,
-                "queue_info": queue_info
+                "queue_info": queue_info,
+                "current_model": current_comfyui_model  # 현재 모델 정보 추가
             }
         else:
             return {

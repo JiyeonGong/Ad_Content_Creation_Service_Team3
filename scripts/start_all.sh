@@ -28,6 +28,15 @@ sleep 10
 echo "2️⃣ FastAPI 백엔드 시작 중..."
 cd "$PROJECT_ROOT"
 
+# PID 파일이 있으면 프로세스가 실제로 살아있는지 확인
+if [ -f "$LOG_DIR/uvicorn.pid" ]; then
+    OLD_PID=$(cat "$LOG_DIR/uvicorn.pid")
+    if ! ps -p $OLD_PID > /dev/null 2>&1; then
+        echo "   ⚠️ 이전 PID($OLD_PID)는 죽었음, PID 파일 삭제"
+        rm -f "$LOG_DIR/uvicorn.pid"
+    fi
+fi
+
 if pgrep -f "uvicorn.*src.backend.main:app.*8000" > /dev/null; then
     echo "⚠️ Uvicorn이 이미 실행 중입니다."
 else
@@ -51,6 +60,15 @@ echo ""
 
 # 3. Streamlit 시작
 echo "3️⃣ Streamlit 프론트엔드 시작 중..."
+
+# PID 파일이 있으면 프로세스가 실제로 살아있는지 확인
+if [ -f "$LOG_DIR/streamlit.pid" ]; then
+    OLD_PID=$(cat "$LOG_DIR/streamlit.pid")
+    if ! ps -p $OLD_PID > /dev/null 2>&1; then
+        echo "   ⚠️ 이전 PID($OLD_PID)는 죽었음, PID 파일 삭제"
+        rm -f "$LOG_DIR/streamlit.pid"
+    fi
+fi
 
 if pgrep -f "streamlit.*src.frontend.app" > /dev/null; then
     echo "⚠️ Streamlit이 이미 실행 중입니다."

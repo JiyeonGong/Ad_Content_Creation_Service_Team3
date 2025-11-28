@@ -175,6 +175,7 @@ class ModelRegistry:
 
 # 싱글톤 인스턴스
 _registry_instance: Optional[ModelRegistry] = None
+_config_cache: Optional[Dict[str, Any]] = None
 
 def get_registry() -> ModelRegistry:
     """모델 레지스트리 싱글톤 인스턴스 반환"""
@@ -182,3 +183,15 @@ def get_registry() -> ModelRegistry:
     if _registry_instance is None:
         _registry_instance = ModelRegistry()
     return _registry_instance
+
+def get_model_config() -> Dict[str, Any]:
+    """모델 설정 YAML을 dict로 반환"""
+    global _config_cache
+    if _config_cache is None:
+        config_path = os.path.join(
+            os.path.dirname(__file__),
+            "model_config.yaml"
+        )
+        with open(config_path, 'r', encoding='utf-8') as f:
+            _config_cache = yaml.safe_load(f)
+    return _config_cache

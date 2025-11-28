@@ -44,11 +44,23 @@ dependencies = [
     # ADetailer (손/얼굴 후처리)
     "ultralytics>=8.0.0", # YOLO 모델 (손/얼굴 감지)
     "mediapipe>=0.10.0", # 손가락 개수/관절 검증
-    # ComfyUI GGUF 지원
+    # ComfyUI 관련
+    "websockets>=15.0", # ComfyUI WebSocket 통신
+    "aiohttp>=3.13.0", # 비동기 HTTP 클라이언트
     "gguf>=0.13.0", # GGUF 형식 모델 로딩 (FLUX.1-Fill 등)
+    # ComfyUI Impact Pack 의존성
+    "segment-anything>=1.0",
+    "scikit-image>=0.25.0",
+    "piexif>=1.1.0",
+    "opencv-python-headless>=4.0.0",
+    "scipy>=1.0.0",
+    "dill>=0.3.0",
+    "matplotlib>=3.0.0",
+    "sam-2",
 ]
 
-# [tool.uv.sources]
+[tool.uv.sources]
+sam-2 = { git = "https://github.com/facebookresearch/sam2" }
 # transformers = { git = "https://github.com/huggingface/transformers.git" }
 # ⚠️ 개발 버전 사용 시 diffusers와 충돌 발생, 정식 버전 사용
 

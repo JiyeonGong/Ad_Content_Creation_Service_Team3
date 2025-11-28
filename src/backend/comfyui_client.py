@@ -7,16 +7,19 @@ import os
 import json
 import time
 import base64
+import logging
 import requests
 from typing import Dict, Any, Optional, Tuple
 from io import BytesIO
 from PIL import Image
 
+logger = logging.getLogger(__name__)
+
 
 class ComfyUIClient:
     """ComfyUI API 클라이언트"""
 
-    def __init__(self, base_url: str = "http://localhost:8188", timeout: int = 300):
+    def __init__(self, base_url: str = "http://localhost:8188", timeout: int = 600):
         """
         Args:
             base_url: ComfyUI 서버 주소
@@ -35,7 +38,7 @@ class ComfyUIClient:
             )
             return response.status_code == 200
         except Exception as e:
-            print(f"⚠️ ComfyUI 연결 실패: {e}")
+            logger.warning(f"⚠️ ComfyUI 연결 실패: {e}")
             return False
 
     def upload_image(self, image_bytes: bytes, filename: str = "input.png") -> str:
@@ -50,6 +53,8 @@ class ComfyUIClient:
             업로드된 이미지 이름
         """
         try:
+            logger.info(f"📤 이미지 업로드 중... (크기: {len(image_bytes)/1024:.1f}KB)")
+
             files = {
                 "image": (filename, BytesIO(image_bytes), "image/png")
             }
@@ -63,13 +68,13 @@ class ComfyUIClient:
             if response.status_code == 200:
                 result = response.json()
                 uploaded_name = result.get("name", filename)
-                print(f"✅ 이미지 업로드 완료: {uploaded_name}")
+                logger.info(f"✅ 이미지 업로드 완료: {uploaded_name}")
                 return uploaded_name
             else:
                 raise Exception(f"업로드 실패: {response.status_code} - {response.text}")
 
         except Exception as e:
-            print(f"❌ 이미지 업로드 오류: {e}")
+            logger.error(f"❌ 이미지 업로드 오류: {e}")
             raise
 
     def queue_prompt(self, workflow: Dict[str, Any]) -> str:
@@ -94,13 +99,13 @@ class ComfyUIClient:
             if response.status_code == 200:
                 result = response.json()
                 prompt_id = result.get("prompt_id")
-                print(f"✅ 워크플로우 큐 등록: {prompt_id}")
+                logger.info(f"✅ 워크플로우 큐 등록: {prompt_id}")
                 return prompt_id
             else:
                 raise Exception(f"큐 등록 실패: {response.status_code} - {response.text}")
 
         except Exception as e:
-            print(f"❌ 워크플로우 큐 등록 오류: {e}")
+            logger.error(f"❌ 워크플로우 큐 등록 오류: {e}")
             raise
 
     def get_history(self, prompt_id: str) -> Optional[Dict[str, Any]]:
@@ -126,12 +131,25 @@ class ComfyUIClient:
                 return None
 
         except Exception as e:
-            print(f"⚠️ 히스토리 조회 오류: {e}")
+            logger.warning(f"⚠️ 히스토리 조회 오류: {e}")
             return None
+
+    def get_queue_status(self) -> Dict[str, Any]:
+        """현재 큐 상태 및 진행 중인 작업 조회"""
+        try:
+            response = self.session.get(
+                f"{self.base_url}/queue",
+                timeout=5
+            )
+            if response.status_code == 200:
+                return response.json()
+            return {}
+        except:
+            return {}
 
     def wait_for_completion(self, prompt_id: str, check_interval: int = 2) -> Dict[str, Any]:
         """
-        작업 완료 대기
+        작업 완료 대기 (프로그레스바 표시)
 
         Args:
             prompt_id: 작업 ID
@@ -140,15 +158,37 @@ class ComfyUIClient:
         Returns:
             완료된 작업 히스토리
         """
-        print(f"⏳ 작업 완료 대기 중... (ID: {prompt_id})")
+        logger.info(f"⏳ 작업 시작 (ID: {prompt_id})")
 
         start_time = time.time()
+        last_progress = None
+        was_in_queue = False  # 큐에 들어갔었는지 추적
 
         while True:
             # 타임아웃 체크
             elapsed = time.time() - start_time
             if elapsed > self.timeout:
                 raise TimeoutError(f"작업 타임아웃 ({self.timeout}초 초과)")
+
+            # 큐 상태 조회 (진행 중인 작업의 progress 정보)
+            queue_info = self.get_queue_status()
+            queue_running = queue_info.get("queue_running", [])
+            queue_pending = queue_info.get("queue_pending", [])
+
+            # 현재 작업이 큐에 있는지 확인
+            in_queue = False
+            for item in queue_running:
+                if item[1] == prompt_id:
+                    in_queue = True
+                    was_in_queue = True
+                    break
+
+            if not in_queue:
+                for item in queue_pending:
+                    if item[1] == prompt_id:
+                        in_queue = True
+                        was_in_queue = True
+                        break
 
             # 히스토리 확인
             history = self.get_history(prompt_id)
@@ -158,17 +198,26 @@ class ComfyUIClient:
                 status = history.get("status", {})
 
                 if status.get("completed", False):
-                    print(f"✅ 작업 완료! (소요 시간: {elapsed:.1f}초)")
+                    logger.info(f"✅ 작업 완료! (소요 시간: {elapsed:.1f}초)")
                     return history
 
                 # 에러 확인
                 if "error" in status:
                     error_msg = status.get("error", "Unknown error")
                     raise Exception(f"ComfyUI 작업 실패: {error_msg}")
+            else:
+                # 히스토리가 없는데 큐에도 없으면 → 워크플로우 에러로 큐에서 빠진 것
+                if was_in_queue and not in_queue and elapsed > 5:
+                    raise Exception(
+                        f"워크플로우가 큐에서 사라졌지만 히스토리가 없습니다. "
+                        f"워크플로우 validation 에러 가능성이 높습니다. "
+                        f"ComfyUI 로그를 확인하세요."
+                    )
+
+            # 진행 상황 표시 (로그 출력 제거)
 
             # 대기
             time.sleep(check_interval)
-            print(f"   ... {elapsed:.0f}초 경과")
 
     def get_image(self, filename: str, subfolder: str = "", folder_type: str = "output") -> bytes:
         """
@@ -196,13 +245,13 @@ class ComfyUIClient:
             )
 
             if response.status_code == 200:
-                print(f"✅ 이미지 다운로드 완료: {filename}")
+                logger.info(f"✅ 이미지 다운로드 완료: {filename}")
                 return response.content
             else:
                 raise Exception(f"다운로드 실패: {response.status_code}")
 
         except Exception as e:
-            print(f"❌ 이미지 다운로드 오류: {e}")
+            logger.error(f"❌ 이미지 다운로드 오류: {e}")
             raise
 
     def extract_output_images(self, history: Dict[str, Any]) -> list[bytes]:
@@ -219,6 +268,7 @@ class ComfyUIClient:
 
         try:
             outputs = history.get("outputs", {})
+            logger.info(f"📥 출력 이미지 다운로드 중... ({len(outputs)}개 노드)")
 
             for node_id, node_output in outputs.items():
                 if "images" in node_output:
@@ -230,12 +280,13 @@ class ComfyUIClient:
                         if filename:
                             img_bytes = self.get_image(filename, subfolder, folder_type)
                             images.append(img_bytes)
+                            logger.info(f"   ✓ {filename} ({len(img_bytes)/1024:.1f}KB)")
 
-            print(f"✅ 출력 이미지 {len(images)}개 추출 완료")
+            logger.info(f"✅ 출력 이미지 {len(images)}개 추출 완료")
             return images
 
         except Exception as e:
-            print(f"❌ 이미지 추출 오류: {e}")
+            logger.error(f"❌ 이미지 추출 오류: {e}")
             raise
 
     def execute_workflow(
@@ -297,3 +348,49 @@ class ComfyUIClient:
         except Exception as e:
             print(f"⚠️ 큐 조회 오류: {e}")
             return {}
+
+    def free_memory(self, unload_models: bool = True, free_memory: bool = True) -> bool:
+        """
+        ComfyUI 메모리 해제 (모델 언로드)
+        
+        Args:
+            unload_models: 모델 언로드 여부
+            free_memory: VRAM 해제 여부
+            
+        Returns:
+            성공 여부
+        """
+        try:
+            payload = {
+                "unload_models": unload_models,
+                "free_memory": free_memory
+            }
+            
+            # 1. /free 시도 (ComfyUI 최신 버전)
+            response = self.session.post(
+                f"{self.base_url}/free",
+                json=payload,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                print("✅ ComfyUI 메모리 해제 완료 (/free)")
+                return True
+                
+            # 2. 실패 시 /internal/free 시도 (구버전)
+            response = self.session.post(
+                f"{self.base_url}/internal/free",
+                json=payload,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                print("✅ ComfyUI 메모리 해제 완료 (/internal/free)")
+                return True
+                
+            print(f"⚠️ 메모리 해제 실패: {response.status_code}")
+            return False
+            
+        except Exception as e:
+            print(f"❌ 메모리 해제 오류: {e}")
+            return False
