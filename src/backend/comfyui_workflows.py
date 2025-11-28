@@ -610,6 +610,9 @@ def update_workflow_inputs(
                     "resolution": 1024
                 }
             }
+            # [NEW] Canny 선택 시 Union 타입도 Canny(0)로 설정
+            if "25" in workflow:
+                workflow["25"]["inputs"]["type"] = "canny"
 
         # ControlNet 강도 (노드 22)
         if "22" in workflow:
@@ -670,10 +673,13 @@ def update_workflow_inputs(
                 "class_type": "DepthAnythingPreprocessor",
                 "inputs": {
                     "image": ["1", 0],
-                    "ckpt_name": "depth_anything_v2_vitl.pth",
+                    "ckpt_name": "depth_anything_vitl14.pth",
                     "resolution": 1024
                 }
             }
+            # [NEW] Depth 선택 시 Union 타입도 Depth(2)로 설정
+            if "25" in workflow:
+                workflow["25"]["inputs"]["type"] = "depth"
 
         # ControlNet 강도 (노드 22)
         if "22" in workflow:
@@ -847,21 +853,31 @@ def get_portrait_mode_workflow() -> Dict[str, Any]:
             }
         },
 
+        # [NEW] 노드 25: Set Union ControlNet Type
+        "25": {
+            "class_type": "SetUnionControlNetType",
+            "inputs": {
+                "control_net": ["21", 0],
+                "type": "depth"  # 기본값 depth(2), 런타임에 canny(0)로 변경 가능
+            }
+        },
+
         # 노드 22: Apply ControlNet
         "22": {
             "class_type": "ControlNetApplyAdvanced",
             "inputs": {
                 "positive": ["7", 0],
                 "negative": ["6", 0],
-                "control_net": ["21", 0],
+                "control_net": ["25", 0],  # [FIX] 21번(Loader) 대신 25번(Type설정) 연결
                 "image": ["20", 0],
+                "vae": ["4", 0],
                 "strength": 0.7,  # 런타임에 설정
                 "start_percent": 0.0,
-                "end_percent": 1.0
+                "end_percent": 0.5  # 포즈 유지
             }
         },
 
-        # 노드 30: VAE Encode (입력 이미지)
+        # 노드 30: VAE Encode (원본 이미지 인코딩)
         "30": {
             "class_type": "VAEEncode",
             "inputs": {
@@ -939,9 +955,9 @@ def get_product_mode_workflow() -> Dict[str, Any]:
 
         # 노드 2: BEN2 배경 제거
         "2": {
-            "class_type": "BEN2",
+            "class_type": "BackgroundEraseNetwork",
             "inputs": {
-                "image": ["1", 0]
+                "input_image": ["1", 0]
             }
         },
 
@@ -949,7 +965,7 @@ def get_product_mode_workflow() -> Dict[str, Any]:
         "10": {
             "class_type": "UnetLoaderGGUF",
             "inputs": {
-                "unet_name": "flux1-dev-Q8_0.gguf"
+                "unet_name": "flux1-dev-Q4_0.gguf"  # Q8 -> Q4 (메모리 최적화)
             }
         },
 
@@ -1034,14 +1050,16 @@ def get_product_mode_workflow() -> Dict[str, Any]:
             }
         },
 
-        # 노드 20: ImageCompositeM (레이어 합성)
+        # 노드 20: ImageCompositeMasked (레이어 합성)
         "20": {
-            "class_type": "ImageCompositeAbsolute",
+            "class_type": "ImageCompositeMasked",
             "inputs": {
-                "image_base": ["18", 0],  # 배경
-                "image_overlay": ["2", 0],  # BEN2 누끼 이미지
+                "destination": ["18", 0],  # 배경 이미지
+                "source": ["1", 0],        # 원본 이미지 (제품)
+                "mask": ["31", 0],         # 제품 마스크 (알파 채널)
                 "x": 0,
-                "y": 0
+                "y": 0,
+                "resize_source": False
             }
         },
 
@@ -1161,7 +1179,7 @@ def get_hybrid_mode_workflow() -> Dict[str, Any]:
         "2": {
             "class_type": "UnetLoaderGGUF",
             "inputs": {
-                "unet_name": "flux1-dev-Q8_0.gguf"
+                "unet_name": "flux1-dev-Q4_0.gguf"  # Q8 -> Q4 (메모리 최적화)
             }
         },
 
@@ -1227,7 +1245,8 @@ def get_hybrid_mode_workflow() -> Dict[str, Any]:
                 "threshold": 0.5,
                 "dilation": 10,
                 "crop_factor": 3.0,
-                "drop_size": 10
+                "drop_size": 10,
+                "labels": "all"
             }
         },
 
@@ -1241,9 +1260,9 @@ def get_hybrid_mode_workflow() -> Dict[str, Any]:
 
         # 노드 15: BEN2 (제품 누끼)
         "15": {
-            "class_type": "BEN2",
+            "class_type": "BackgroundEraseNetwork",
             "inputs": {
-                "image": ["1", 0]
+                "input_image": ["1", 0]
             }
         },
 
@@ -1295,21 +1314,31 @@ def get_hybrid_mode_workflow() -> Dict[str, Any]:
             }
         },
 
+        # [NEW] 노드 25: Set Union ControlNet Type
+        "25": {
+            "class_type": "SetUnionControlNetType",
+            "inputs": {
+                "control_net": ["21", 0],
+                "type": "canny"  # 기본값 canny(0)
+            }
+        },
+
         # 노드 22: Apply ControlNet
         "22": {
             "class_type": "ControlNetApplyAdvanced",
             "inputs": {
                 "positive": ["7", 0],
                 "negative": ["6", 0],
-                "control_net": ["21", 0],
+                "control_net": ["25", 0],  # [FIX] 21번(Loader) 대신 25번(Type설정) 연결
                 "image": ["20", 0],
+                "vae": ["4", 0],
                 "strength": 0.8,  # 런타임에 설정
                 "start_percent": 0.0,
-                "end_percent": 1.0
+                "end_percent": 0.5  # 포즈 유지
             }
         },
 
-        # 노드 30: VAE Encode
+        # 노드 30: VAE Encode (원본 이미지 인코딩)
         "30": {
             "class_type": "VAEEncode",
             "inputs": {
@@ -1336,7 +1365,7 @@ def get_hybrid_mode_workflow() -> Dict[str, Any]:
                 "cfg": 1.0,
                 "sampler_name": "euler",
                 "scheduler": "simple",
-                "denoise": 0.9,  # 런타임에 설정
+                "denoise": 1.0,  # 런타임에 설정 (0.9 -> 1.0 완전히 새로 생성)
                 "model": ["2", 0],
                 "positive": ["22", 0],
                 "negative": ["6", 0],

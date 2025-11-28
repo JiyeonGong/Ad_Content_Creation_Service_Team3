@@ -207,11 +207,12 @@ def status():
 @app.post("/api/edit_with_comfyui", response_model=ImageEditingResponse)
 async def edit_image_with_comfyui(req: ImageEditingRequest):
     """
-    ComfyUI를 사용한 이미지 편집 (BEN2 배경 제거 + 모델 선택)
+    ComfyUI를 사용한 이미지 편집 (3가지 모드)
 
-    실험 모델:
-    - ben2_flux_fill: BEN2 + FLUX.1-Fill
-    - ben2_qwen_image: BEN2 + Qwen-Image
+    편집 모드:
+    - portrait_mode: 얼굴 보존, 의상/배경 변경
+    - product_mode: 제품 보존, 배경 생성/합성
+    - hybrid_mode: 얼굴+제품 보존, 나머지 변경
     """
     try:
         # Base64 디코딩
@@ -222,8 +223,9 @@ async def edit_image_with_comfyui(req: ImageEditingRequest):
 
         # 서비스 레이어 호출
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
+
+        from functools import partial
+        edit_func = partial(
             services.edit_image_with_comfyui,
             req.experiment_id,
             input_bytes,
@@ -231,8 +233,16 @@ async def edit_image_with_comfyui(req: ImageEditingRequest):
             req.negative_prompt,
             req.steps,
             req.guidance_scale,
-            req.strength
+            req.strength,
+            # 새로운 모드 파라미터
+            req.controlnet_type,
+            req.controlnet_strength,
+            req.denoise_strength,
+            req.blending_strength,
+            req.background_prompt
         )
+
+        result = await loop.run_in_executor(None, edit_func)
 
         return ImageEditingResponse(**result)
 
