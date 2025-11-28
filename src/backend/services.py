@@ -562,18 +562,29 @@ def edit_image_with_comfyui(
     negative_prompt: str = "",
     steps: int = None,
     guidance_scale: float = None,
-    strength: float = None
+    strength: float = None,
+    # 새로운 모드용 파라미터
+    controlnet_type: str = "depth",
+    controlnet_strength: float = 0.7,
+    denoise_strength: float = 1.0,
+    blending_strength: float = 0.35,
+    background_prompt: str = None
 ) -> dict:
     """
-    ComfyUI를 사용한 이미지 편집 (BEN2 + 선택 모델)
+    ComfyUI를 사용한 이미지 편집
 
     Args:
-        experiment_id: 실험 ID ("ben2_flux_fill" 또는 "ben2_qwen_image")
+        experiment_id: 실험 ID ("portrait_mode", "product_mode", "hybrid_mode", "ben2_flux_fill", "ben2_qwen_image")
         input_image_bytes: 입력 이미지 바이트
         prompt: 편집 프롬프트
         steps: 추론 단계
         guidance_scale: Guidance scale
         strength: 변화 강도
+        controlnet_type: ControlNet 타입 ("depth" 또는 "canny")
+        controlnet_strength: ControlNet 강도
+        denoise_strength: 변경 강도
+        blending_strength: 합성 자연스러움 (Product 모드)
+        background_prompt: 배경 프롬프트 (Product 모드)
 
     Returns:
         {

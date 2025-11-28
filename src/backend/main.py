@@ -63,13 +63,20 @@ class I2IRequest(BaseModel):
 
 # 🆕 이미지 편집 실험 스키마
 class ImageEditingRequest(BaseModel):
-    experiment_id: str  # "ben2_flux_fill" 또는 "ben2_qwen_image"
+    experiment_id: str  # "portrait_mode", "product_mode", "hybrid_mode", "ben2_flux_fill", "ben2_qwen_image"
     input_image_base64: str
     prompt: str
     negative_prompt: Optional[str] = ""
     steps: Optional[int] = None
     guidance_scale: Optional[float] = None
     strength: Optional[float] = None
+
+    # 새로운 모드용 파라미터
+    controlnet_type: Optional[str] = "depth"  # "depth" 또는 "canny" (Portrait/Hybrid)
+    controlnet_strength: Optional[float] = 0.7  # ControlNet 강도
+    denoise_strength: Optional[float] = 1.0  # 변경 강도
+    blending_strength: Optional[float] = 0.35  # 합성 자연스러움 (Product)
+    background_prompt: Optional[str] = None  # 배경 프롬프트 (Product)
 
 class ImageEditingResponse(BaseModel):
     success: bool
