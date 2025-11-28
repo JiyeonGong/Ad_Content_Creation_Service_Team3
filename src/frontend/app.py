@@ -867,7 +867,7 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             index=size_labels.index(st.session_state.get("size_selector_i2i", size_labels[0]))
             if st.session_state.get("size_selector_i2i") in size_labels else 0
         )
-        st.session_state["size_selector_i2i"] = selected_size
+        # st.session_state["size_selector_i2i"] = selected_size
         idx = size_labels.index(selected_size)
         width = preset_sizes[idx]["width"]
         height = preset_sizes[idx]["height"]
