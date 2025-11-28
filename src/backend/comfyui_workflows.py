@@ -937,15 +937,11 @@ def get_product_mode_workflow() -> Dict[str, Any]:
             }
         },
 
-        # 노드 2: RMBG 배경 제거 (BEN2 모델 사용)
+        # 노드 2: BEN2 배경 제거
         "2": {
-            "class_type": "RMBG",
+            "class_type": "BEN2",
             "inputs": {
-                "image": ["1", 0],
-                "model": "BEN2",
-                "sensitivity": 1.0,
-                "process_res": 1024,
-                "background": "Alpha"
+                "image": ["1", 0]
             }
         },
 
