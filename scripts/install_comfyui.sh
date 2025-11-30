@@ -3,7 +3,7 @@
 
 set -e  # 에러 발생 시 중단
 
-PROJECT_ROOT="/home/spai0310/Ad_Content_Creation_Service_Team3"
+PROJECT_ROOT="/home/spai0323/Ad_Content_Creation_Service_Team3"
 COMFYUI_DIR="$PROJECT_ROOT/comfyui"
 MODELS_DIR="/home/shared"
 

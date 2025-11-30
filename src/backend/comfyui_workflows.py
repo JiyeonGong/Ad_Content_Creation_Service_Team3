@@ -460,9 +460,13 @@ def update_flux_t2i_workflow(
     # config에서 model_id 가져오기
     model_config = get_model_config()
     model_id = model_config["models"][model_name]["id"]
+    
+    # 전체 경로에서 파일명만 추출
+    import os
+    unet_filename = os.path.basename(model_id)
 
     # UNET GGUF 파일 설정 (노드 1)
-    workflow["1"]["inputs"]["unet_name"] = model_id
+    workflow["1"]["inputs"]["unet_name"] = unet_filename
 
     # 프롬프트 설정 (노드 3)
     workflow["3"]["inputs"]["text"] = prompt
@@ -500,6 +504,7 @@ def update_flux_i2i_workflow(
 ) -> Dict[str, Any]:
     """FLUX I2I 워크플로우 파라미터 업데이트 (GGUF)"""
     import random
+    import os
     from .model_registry import get_model_config
 
     if seed is None:
@@ -508,9 +513,12 @@ def update_flux_i2i_workflow(
     # config에서 model_id 가져오기
     model_config = get_model_config()
     model_id = model_config["models"][model_name]["id"]
+    
+    # 전체 경로에서 파일명만 추출
+    unet_filename = os.path.basename(model_id)
 
     # UNET GGUF 파일 설정 (노드 1)
-    workflow["1"]["inputs"]["unet_name"] = model_id
+    workflow["1"]["inputs"]["unet_name"] = unet_filename
 
     # 프롬프트 설정 (노드 3)
     workflow["3"]["inputs"]["text"] = prompt

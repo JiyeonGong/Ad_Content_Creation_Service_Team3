@@ -1,4 +1,4 @@
-# services.py (리팩토링 버전)
+# services.py (리팩토링 + FLUX 3단계 프롬프팅 통합 버전)
 """
 AI 서비스 레이어 - 설정 기반 모델 관리
 """
@@ -100,74 +100,168 @@ def init_image_pipelines():
         print("❌ 모든 모델 로딩 실패 - 이미지 생성 불가")
 
 # ===========================
-# 프롬프트 최적화
+# 프롬프트 최적화 (FLUX 3단계 통합)
 # ===========================
-def optimize_prompt(text: str, model_config) -> str:
+def expand_prompt_with_gpt(text: str) -> str:
     """
-    한국어 프롬프트를 영어로 번역 및 최적화
-    모델별 토큰 제한 고려
+    1단계: 한국어 시각 묘사 확장
+    - 배경/조명/분위기/동작 등을 2~3문장 한국어로 자연스럽게 확장
     """
     if not openai_client:
         return text
     
-    # 프롬프트 최적화 설정 확인
     opt_config = registry.get_prompt_optimization_config()
     if not opt_config.get("enabled", True):
         return text
-    
-    # 한글 번역 비활성화 설정 확인
     if not opt_config.get("translate_korean", True):
         return text
-    
+
+    system = """
+당신은 이미지 생성용 시각 묘사를 구체적으로 확장하는 전문가입니다.
+규칙:
+- 장면의 배경, 조명, 동작, 분위기, 구도 등을 자연스럽고 구체적으로 확장합니다.
+- 2~3 문장으로 작성하며, 출력은 반드시 한국어로 유지합니다.
+"""
+
+    prompt = f"{system}\n\n[원본 문장]\n{text}\n\n위 문장을 시각적으로 더 자세한 묘사로 자연스럽게 확장해줘."
+
     try:
-        # 모델별 길이 제약
-        max_tokens = model_config.max_tokens if model_config else 77
-        
-        if max_tokens <= 77:
-            constraint = f"Keep it under 60 words (model has {max_tokens} token limit)."
+        resp = openai_client.responses.create(
+            model=MODEL_GPT_MINI,
+            reasoning={"effort": "minimal"},
+            input=prompt,
+            max_output_tokens=300,
+        )
+        expanded = getattr(resp, "output_text", None) or str(resp)
+        expanded = expanded.strip()
+        logger.info(f"🔄 1/3 확장 (한국어): {expanded[:80]}...")
+        return expanded
+    except Exception as e:
+        logger.warning(f"⚠️ 1단계 한국어 확장 실패 → 원본 사용: {e}")
+        return text
+
+
+def apply_flux_template(expanded_kor_text: str) -> str:
+    """
+    2단계: 확장된 한국어 설명을 FLUX 스타일 영어 프롬프트로 변환
+    - 2~3개의 자연스러운 영어 문장
+    """
+    if not openai_client:
+        return expanded_kor_text
+
+    opt_config = registry.get_prompt_optimization_config()
+    if not opt_config.get("enabled", True):
+        return expanded_kor_text
+
+    system = """
+You are an expert FLUX prompt engineer. Convert the expanded Korean visual description into a compact FLUX-style English prompt.
+
+Rules:
+- MUST stay under 60 English tokens.
+- Use 2–3 short natural sentences (NOT keyword lists).
+- Include: Subject, Action/Pose, Environment, Lighting, (Optional) Camera/Style.
+- Insert concise realism hints: "realistic hands and face", "correct anatomy".
+- Do NOT add negative prompts.
+
+Output ONLY the final English FLUX prompt.
+"""
+    prompt = f"{system}\n\n[Korean expanded description]\n{expanded_kor_text}\n\nConvert following the FLUX rules."
+
+    try:
+        resp = openai_client.responses.create(
+            model=MODEL_GPT_MINI,
+            reasoning={"effort": "minimal"},
+            input=prompt,
+            max_output_tokens=200,
+        )
+        templated = getattr(resp, "output_text", None) or str(resp)
+        templated = templated.strip()
+        logger.info(f"🔄 2/3 템플릿 (영어): {templated[:80]}...")
+        return templated
+    except Exception as e:
+        logger.warning(f"⚠️ 2단계 FLUX 템플릿 변환 실패 → 원본 사용: {e}")
+        return expanded_kor_text
+
+
+def optimize_prompt(text: str, model_config) -> str:
+    """
+    3단계: FLUX/SDXL 최종 프롬프트 다듬기
+    - FLUX: 60 토큰 이내, 2~3문장, negative prompt 추가 금지
+    - 그 외: 길이 제약에 맞게 명료하게 다듬기
+    """
+    if not openai_client:
+        return text
+    
+    opt_config = registry.get_prompt_optimization_config()
+    if not opt_config.get("enabled", True):
+        return text
+
+    model_type = (model_config.type if model_config else "").lower()
+    is_flux = "flux" in model_type
+
+    try:
+        if is_flux:
+            system_prompt = """
+You are an expert FLUX prompt polisher.
+Polish the prompt below.
+
+IMPORTANT:
+- Keep under 60 tokens.
+- 2–3 short descriptive sentences (no keyword lists).
+- Do NOT add negative prompts.
+"""
         else:
-            constraint = "Keep it concise but descriptive (under 150 words)."
-        
-        system_prompt = f"""You are a professional prompt engineer for image generation AI.
-Translate Korean marketing text to optimized English prompts.
-Focus on visual elements, style, mood, and composition.
+            max_tokens = getattr(model_config, "max_tokens", 77) if model_config else 77
+            if max_tokens <= 77:
+                constraint = f"Keep it under 60 words (model has {max_tokens} token limit)."
+            else:
+                constraint = "Keep it concise but descriptive (under 150 words)."
+
+            system_prompt = f"""
+You are a professional prompt engineer for image generation AI.
+Refine the prompt below for better clarity, realism, and aesthetic quality.
 {constraint}
+Always include relevant quality hints based on the scene to prevent artifacts 
+(e.g., "detailed hands, correct anatomy, clear facial features").
+"""
 
-IMPORTANT - Quality keywords to prevent AI artifacts:
-
-1. If the scene involves people:
-   - Hands: "detailed hands, five fingers, natural hand pose, anatomically correct hands, Hand Position Left Right Proper Position, correct thumb direction"
-   - Faces: "detailed face, clear facial features, symmetric face, symmetric eyes, natural eye shape"
-   - Body: "correct human anatomy, natural body proportions, well-fitted clothing"
-
-2. If the scene involves objects being held or touched:
-   - "proper object interaction, object not clipping through body"
-   - "realistic grip, natural holding pose"
-   - "physically accurate, no overlapping body parts with objects"
-
-3. If the scene involves fitness/gym/sports equipment:
-   - "equipment not penetrating body, proper form"
-   - "hands gripping equipment correctly, realistic weight interaction"
-
-Always include relevant keywords based on the scene content.
-
-Output ONLY the English prompt, no explanations."""
+        full_prompt = f"{system_prompt}\n\n[Input Prompt]\n{text}\n\nOutput ONLY the polished final English prompt."
 
         resp = openai_client.responses.create(
             model=MODEL_GPT_MINI,
-            input=f"Convert to image prompt:\n{text}",
             reasoning={"effort": "minimal"},
+            input=full_prompt,
             max_output_tokens=200,
         )
-        
-        result = getattr(resp, "output_text", None) or str(resp)
-        optimized = result.strip()
-        logger.info(f"🔄 프롬프트 최적화:\n  원본: {text}\n  최적화: {optimized}")
+        optimized = getattr(resp, "output_text", None) or str(resp)
+        optimized = optimized.strip()
+        logger.info(f"🔄 3/3 최종 최적화: {optimized[:80]}...")
         return optimized
-        
+
     except Exception as e:
-        logger.warning(f"⚠️ 프롬프트 최적화 실패, 원본 사용: {e}")
+        logger.warning(f"⚠️ 3단계 최종 최적화 실패 → 원본 사용: {e}")
         return text
+
+
+def build_final_prompt(raw_prompt: str, model_config) -> str:
+    """
+    공용 최종 프롬프트 빌더 (T2I / I2I / 편집 공용)
+    - FLUX: 3단계 (한국어 확장 → FLUX 템플릿 → 최종 폴리시)
+    - 그 외: 단일 최종 폴리시
+    """
+    if not model_config:
+        return raw_prompt
+
+    model_type = (model_config.type if model_config else "").lower()
+
+    if "flux" in model_type:
+        expanded = expand_prompt_with_gpt(raw_prompt)
+        templated = apply_flux_template(expanded)
+        final_prompt = optimize_prompt(templated, model_config)
+    else:
+        final_prompt = optimize_prompt(raw_prompt, model_config)
+
+    return final_prompt.strip() or raw_prompt
 
 # ===========================
 # GPT-5 Mini: 문구 생성
@@ -265,8 +359,8 @@ def generate_t2i_core(
     if not model_config:
         raise RuntimeError(f"모델 설정을 찾을 수 없습니다: {current_model_name}")
 
-    # 프롬프트 최적화
-    optimized_prompt = optimize_prompt(prompt, model_config)
+    # ✅ FLUX 3단계 프롬프트 파이프라인 적용
+    final_prompt = build_final_prompt(prompt, model_config)
 
     # Steps 검증
     if steps < 1:
@@ -303,7 +397,7 @@ def generate_t2i_core(
         workflow = update_flux_t2i_workflow(
             workflow=workflow,
             model_name=current_model_name,
-            prompt=optimized_prompt,
+            prompt=final_prompt,
             width=width,
             height=height,
             steps=steps,
@@ -323,7 +417,7 @@ def generate_t2i_core(
             image = Image.open(io.BytesIO(image_bytes))
             image = apply_adetailer(
                 image=image,
-                prompt=optimized_prompt,
+                prompt=final_prompt,
                 targets=adetailer_targets or ["hand"]
             )
 
@@ -459,8 +553,8 @@ def generate_i2i_core(
     if not model_config:
         raise RuntimeError(f"모델 설정을 찾을 수 없습니다: {current_model_name}")
 
-    # 프롬프트 최적화
-    optimized_prompt = optimize_prompt(prompt, model_config)
+    # ✅ FLUX 3단계 프롬프트 파이프라인 적용
+    final_prompt = build_final_prompt(prompt, model_config)
 
     # Steps 검증
     if steps < 1:
@@ -495,7 +589,7 @@ def generate_i2i_core(
         workflow = update_flux_i2i_workflow(
             workflow=workflow,
             model_name=current_model_name,
-            prompt=optimized_prompt,
+            prompt=final_prompt,
             strength=strength,
             steps=steps,
             guidance_scale=guidance_scale
@@ -518,7 +612,7 @@ def generate_i2i_core(
             image = Image.open(io.BytesIO(image_bytes))
             image = apply_adetailer(
                 image=image,
-                prompt=optimized_prompt,
+                prompt=final_prompt,
                 targets=adetailer_targets or ["hand"]
             )
 
@@ -585,17 +679,6 @@ def edit_image_with_comfyui(
         denoise_strength: 변경 강도
         blending_strength: 합성 자연스러움 (Product 모드)
         background_prompt: 배경 프롬프트 (Product 모드)
-
-    Returns:
-        {
-            "success": bool,
-            "experiment_id": str,
-            "experiment_name": str,
-            "output_image_base64": str,
-            "background_removed_image_base64": str,
-            "error": str,
-            "elapsed_time": float
-        }
     """
     import base64
     import time
@@ -637,6 +720,10 @@ def edit_image_with_comfyui(
                 "elapsed_time": None
             }
 
+        # ✅ 편집 프롬프트에도 FLUX 파이프라인 적용
+        # 편집 모드는 특정 모델 설정을 바로 가져오기 어려우므로 model_config=None으로 동작 (fallback)
+        final_prompt = build_final_prompt(prompt, model_config=None)
+
         # ComfyUI 클라이언트 초기화
         comfyui_config = config.get("comfyui", {})
         base_url = comfyui_config.get("base_url", "http://localhost:8188")
@@ -651,7 +738,7 @@ def edit_image_with_comfyui(
         workflow = update_workflow_inputs(
             workflow=workflow,
             experiment_id=experiment_id,
-            prompt=prompt,
+            prompt=final_prompt,
             negative_prompt=negative_prompt,
             steps=steps,
             guidance_scale=guidance_scale,
@@ -670,12 +757,12 @@ def edit_image_with_comfyui(
         logger.info(f"🎨 ComfyUI 이미지 편집 시작")
         logger.info(f"   모드: {mode_info['name']}")
         logger.info(f"   설명: {mode_info['description']}")
-        logger.info(f"   프롬프트: {prompt}")
+        logger.info(f"   프롬프트: {final_prompt}")
         logger.info(f"   파라미터: steps={steps}, guidance={guidance_scale}")
         if experiment_id == "portrait_mode" or experiment_id == "hybrid_mode":
             logger.info(f"   ControlNet: type={controlnet_type}, strength={controlnet_strength}, denoise={denoise_strength}")
         elif experiment_id == "product_mode":
-            logger.info(f"   배경: {background_prompt or prompt}, blending={blending_strength}")
+            logger.info(f"   배경: {background_prompt or final_prompt}, blending={blending_strength}")
 
         # 진행상황 콜백 함수 정의
         step_count = [0]  # 완료된 단계 수 (mutable 리스트로 클로저에서 수정 가능)

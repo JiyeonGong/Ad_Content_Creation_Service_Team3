@@ -1,7 +1,7 @@
 #!/bin/bash
 # ComfyUI 백그라운드 실행 스크립트
 
-PROJECT_ROOT="/home/mscho/project3/Ad_Content_Creation_Service_Team3"
+PROJECT_ROOT="/home/spai0323/Ad_Content_Creation_Service_Team3"
 COMFYUI_DIR="$PROJECT_ROOT/comfyui"
 LOG_FILE="$PROJECT_ROOT/logs/comfyui.log"
 

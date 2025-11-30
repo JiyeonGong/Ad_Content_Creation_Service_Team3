@@ -9,7 +9,7 @@ models:
   # - GPU 메모리: ~21GB
   # - 품질: 99%+
   FLUX.1-dev-Q8:
-    id: "flux1-dev-Q8_0.gguf"
+    id: "/home/shared/flux1-dev-Q8_0.gguf"
     type: "flux-gguf"
     requires_auth: false
     params:
@@ -29,7 +29,7 @@ models:
   # - GPU 메모리: ~8GB
   # - 품질: 98%+
   FLUX.1-dev-Q4:
-    id: "flux1-dev-Q4_0.gguf"
+    id: "/home/shared/flux1-dev-Q4_0.gguf"
     type: "flux-gguf"
     requires_auth: false
     params:
@@ -47,7 +47,7 @@ models:
   # 이미지 편집 모델 (GGUF)
   # ========================================
   FLUX.1-Fill-dev-Q8_0:
-    id: "/mnt/data4/models/flux-fill/FLUX.1-Fill-dev-Q8_0.gguf"
+    id: "/home/shared/FLUX.1-Fill-dev-Q8_0.gguf"
     type: "flux-gguf"
     requires_auth: false
     params:
@@ -62,7 +62,7 @@ models:
     description: "FLUX.1-Fill GGUF 8-bit (Inpainting/Outpainting)"
 
   Qwen-Image-Edit-2509:
-    id: "/mnt/data4/models/qwen-image-edit"
+    id: "/home/shared/qwen-image-edit"
     type: "qwen-image-edit"
     requires_auth: false
     params:

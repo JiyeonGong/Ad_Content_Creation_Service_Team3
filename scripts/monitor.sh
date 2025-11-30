@@ -2,7 +2,7 @@
 # 통합 로그 모니터링 스크립트
 # ComfyUI, FastAPI(Uvicorn), Streamlit 로그를 동시에 확인합니다.
 
-PROJECT_ROOT="/home/mscho/project3/Ad_Content_Creation_Service_Team3"
+PROJECT_ROOT="/home/spai0323/Ad_Content_Creation_Service_Team3"
 LOG_DIR="$PROJECT_ROOT/logs"
 
 echo "========================================="

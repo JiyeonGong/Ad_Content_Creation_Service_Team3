@@ -2,7 +2,7 @@
 # 백엔드 API 집중 모니터링 스크립트
 # 이미지 생성/편집 진행 상황, 프로그레스바, 모델 로딩 등을 실시간으로 표시합니다.
 
-PROJECT_ROOT="/home/mscho/project3/Ad_Content_Creation_Service_Team3"
+PROJECT_ROOT="/home/spai0323/Ad_Content_Creation_Service_Team3"
 LOG_DIR="$PROJECT_ROOT/logs"
 API_LOG="$LOG_DIR/uvicorn.log"
 
