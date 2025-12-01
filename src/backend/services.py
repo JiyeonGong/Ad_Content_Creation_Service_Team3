@@ -243,25 +243,88 @@ Always include relevant quality hints based on the scene to prevent artifacts
         return text
 
 
-def build_final_prompt(raw_prompt: str, model_config) -> str:
+
+
+
+
+
+def build_final_prompt(raw_prompt: str, model_config=None) -> str:
+    """공용 최종 프롬프트 빌더 (T2I / I2I / 편집 공용)
+
+    - FLUX 계열 모델:
+        1) expand_prompt_with_gpt   : 한국어/짧은 문장을 자연스러운 영어 이미지 프롬프트로 확장
+        2) apply_flux_template      : FLUX 전용 스타일/구도 템플릿 적용
+        3) optimize_prompt          : 모델별 토큰 제한/정책에 맞게 최종 다듬기
+    - 그 외 모델: optimize_prompt 한 번만 적용
+
+    model_config 가 None 인 경우:
+        - 현재 ComfyUI에서 로드된 모델 이름을 가져와(registry 기반)
+        - 해당 ModelConfig 를 자동으로 사용
+        - 모델 정보를 얻지 못하면 raw_prompt 를 그대로 반환
     """
-    공용 최종 프롬프트 빌더 (T2I / I2I / 편집 공용)
-    - FLUX: 3단계 (한국어 확장 → FLUX 템플릿 → 최종 폴리시)
-    - 그 외: 단일 최종 폴리시
-    """
+    # 0) model_config 가 명시되지 않은 경우(예: 편집 모드)는
+    #    현재 ComfyUI 모델 기준으로 자동 추론
+    if model_config is None:
+        try:
+            current_model_name = get_current_comfyui_model()
+        except NameError:
+            current_model_name = None
+
+        if current_model_name:
+            try:
+                model_config = registry.get_model(current_model_name)
+            except Exception:
+                model_config = None
+
+    # 1) 여전히 모델 정보를 얻지 못했다면, 원본 프롬프트를 그대로 사용
     if not model_config:
-        return raw_prompt
+        return raw_prompt.strip()
 
-    model_type = (model_config.type if model_config else "").lower()
+    model_type = (getattr(model_config, "type", "") or "").lower()
 
+    # 2) FLUX 계열 모델인 경우 3단계 파이프라인 적용
     if "flux" in model_type:
         expanded = expand_prompt_with_gpt(raw_prompt)
         templated = apply_flux_template(expanded)
         final_prompt = optimize_prompt(templated, model_config)
     else:
+        # 3) 그 외 모델은 단일 최적화만 적용
         final_prompt = optimize_prompt(raw_prompt, model_config)
 
-    return final_prompt.strip() or raw_prompt
+    # 4) 혹시 결과가 비어 있으면 폴백으로 raw_prompt 사용
+    return final_prompt.strip() or raw_prompt.strip()
+
+
+
+
+
+
+
+
+
+
+
+
+
+# def build_final_prompt(raw_prompt: str, model_config) -> str:
+#     """
+#     공용 최종 프롬프트 빌더 (T2I / I2I / 편집 공용)
+#     - FLUX: 3단계 (한국어 확장 → FLUX 템플릿 → 최종 폴리시)
+#     - 그 외: 단일 최종 폴리시
+#     """
+#     if not model_config:
+#         return raw_prompt
+
+#     model_type = (model_config.type if model_config else "").lower()
+
+#     if "flux" in model_type:
+#         expanded = expand_prompt_with_gpt(raw_prompt)
+#         templated = apply_flux_template(expanded)
+#         final_prompt = optimize_prompt(templated, model_config)
+#     else:
+#         final_prompt = optimize_prompt(raw_prompt, model_config)
+
+#     return final_prompt.strip() or raw_prompt
 
 # ===========================
 # GPT-5 Mini: 문구 생성
@@ -383,7 +446,7 @@ def generate_t2i_core(
         config = load_image_editing_config()
         comfyui_config = config.get("comfyui", {})
         base_url = comfyui_config.get("base_url", "http://localhost:8188")
-        timeout = comfyui_config.get("timeout", 300)
+        timeout = comfyui_config.get("timeout", 600)
 
         client = ComfyUIClient(base_url=base_url, timeout=timeout)
 
@@ -578,7 +641,7 @@ def generate_i2i_core(
         config = load_image_editing_config()
         comfyui_config = config.get("comfyui", {})
         base_url = comfyui_config.get("base_url", "http://localhost:8188")
-        timeout = comfyui_config.get("timeout", 300)
+        timeout = comfyui_config.get("timeout", 600)
 
         client = ComfyUIClient(base_url=base_url, timeout=timeout)
 
@@ -727,7 +790,7 @@ def edit_image_with_comfyui(
         # ComfyUI 클라이언트 초기화
         comfyui_config = config.get("comfyui", {})
         base_url = comfyui_config.get("base_url", "http://localhost:8188")
-        timeout = comfyui_config.get("timeout", 300)
+        timeout = comfyui_config.get("timeout", 600)
 
         client = ComfyUIClient(base_url=base_url, timeout=timeout)
 

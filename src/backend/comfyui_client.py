@@ -121,7 +121,7 @@ class ComfyUIClient:
         try:
             response = self.session.get(
                 f"{self.base_url}/history/{prompt_id}",
-                timeout=10
+                timeout=30  # 10초 → 30초로 증가 (히스토리 생성 대기)
             )
 
             if response.status_code == 200:
@@ -225,13 +225,18 @@ class ComfyUIClient:
                             except Exception as e:
                                 logger.warning(f"⚠️ Progress callback 오류: {e}")
             else:
-                # 히스토리가 없는데 큐에도 없으면 → 워크플로우 에러로 큐에서 빠진 것
-                if was_in_queue and not in_queue and elapsed > 5:
-                    raise Exception(
-                        f"워크플로우가 큐에서 사라졌지만 히스토리가 없습니다. "
-                        f"워크플로우 validation 에러 가능성이 높습니다. "
-                        f"ComfyUI 로그를 확인하세요."
-                    )
+                # 🔧 수정: 큐에서 사라진 후 히스토리 생성까지 최대 10초 대기
+                # 히스토리가 없는데 큐에도 없으면 → 히스토리 생성 대기 중일 수 있음
+                if was_in_queue and not in_queue:
+                    if elapsed > 15:  # 5초 → 15초로 증가
+                        raise Exception(
+                            f"워크플로우가 큐에서 사라졌지만 히스토리가 없습니다. "
+                            f"워크플로우 validation 에러 가능성이 높습니다. "
+                            f"ComfyUI 로그를 확인하세요."
+                        )
+                    # 아직 대기 시간이 남았으면 경고 로그만 출력
+                    if elapsed > 5 and elapsed % 5 < check_interval:  # 5초마다 한 번씩 출력
+                        logger.warning(f"⚠️ 큐에서 사라졌으나 히스토리 대기 중... ({elapsed:.1f}초 경과)")
 
             # 대기
             time.sleep(check_interval)

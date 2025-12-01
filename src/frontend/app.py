@@ -77,7 +77,7 @@ class APIClient:
 
     def __init__(self, config: ConfigLoader):
         self.base_url = os.getenv("API_BASE_URL") or config.get("api.base_url")
-        self.timeout = config.get("api.timeout", 600)  # 10분으로 증가
+        self.timeout = config.get("api.timeout", 3600)  # 기본값을 3600초(60분)로 증가
         self.retry_attempts = config.get("api.retry_attempts", 2)
 
         # 백엔드 모델 정보 캐싱
@@ -258,6 +258,52 @@ class APIClient:
             raise Exception(f"이미지 편집 실패: {error_detail}")
         except Exception as e:
             raise Exception(f"요청 실패: {e}")
+
+
+
+
+
+
+
+
+
+
+    # ============================================================
+    # 🆕 이미지 편집 실험 (페이지4)
+    # ============================================================
+    def call_image_editing_experiment(self, payload: dict):
+        """페이지4: 고급 이미지 편집 API 호출"""
+
+        try:
+            url = f"{self.base_url}/api/edit_with_comfyui"
+            response = requests.post(url, json=payload, timeout=self.timeout)  # 타임아웃 설정 추가
+
+            if response.status_code != 200:
+                raise RuntimeError(f"이미지 편집 실패: {response.text}")
+
+            data = response.json()
+
+            if not data.get("success"):
+                raise RuntimeError(data.get("error", "편집 실패 (알 수 없는 오류)"))
+
+            # 메인 결과 이미지
+            output_b64 = data.get("output_image_base64")
+            if not output_b64:
+                raise RuntimeError("출력 이미지 Base64가 없습니다.")
+
+            return base64.b64decode(output_b64)
+
+        except Exception as e:
+            raise RuntimeError(f"call_image_editing_experiment 오류: {e}")
+
+
+
+
+
+
+
+
+
 
 # ============================================================
 # 유틸리티 함수
@@ -566,96 +612,123 @@ def render_caption_page(config: ConfigLoader, api: APIClient):
 # 페이지 2: T2I 이미지 생성
 # ============================================================
 def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
-    st.title("🖼 문구 기반 이미지 생성 (3가지 버전)")
-    
-    # 문구 입력
-    selected_caption = ""
-    if connect_mode and "selected_caption" in st.session_state:
-        st.info(f"🔗 연결 모드: 페이지1 문구 사용\n\n**선택된 문구:** {st.session_state['selected_caption']}")
-        selected_caption = st.session_state["selected_caption"]
-    else:
-        if connect_mode:
-            st.warning("⚠️ 페이지1에서 문구를 먼저 생성하세요")
-        selected_caption = st.text_area(
-            "문구 입력",
-            placeholder=config.get("ui.placeholders.caption", "")
-        )
-    
-    # 선택된 모델 ID 가져오기 (사이드바에서 선택한 모델)
-    selected_model_id = st.session_state.get("selected_generation_model_id")
+    st.title("🖼 문구 기반 이미지 생성 (FLUX + ComfyUI)")
 
-    # 현재 로드된 모델 확인
+    # ─────────────────────────────────────────
+    # 1) 페이지1 문구 + 페이지2 사용자 프롬프트
+    # ─────────────────────────────────────────
+    selected_caption = st.session_state.get("selected_caption", "")
+    hashtags = st.session_state.get("hashtags", "")
+
+    if connect_mode and selected_caption:
+        st.info(
+            "🔗 **연결 모드 ON**\n\n"
+            "페이지 1에서 선택한 문구가 **보조 컨텍스트**로 같이 들어갑니다.\n\n"
+            f"**선택 문구:** {selected_caption}\n\n"
+            f"**해시태그:** {hashtags}"
+        )
+        base_prompt = st.text_area(
+            "메인 프롬프트 (사용자 입력)",
+            placeholder="예: 밝고 에너지 넘치는 필라테스 스튜디오, 건강하고 활기찬 느낌",
+            key="base_prompt_t2i",
+            value=st.session_state.get("base_prompt_t2i", "")
+        )
+    else:
+        if connect_mode and not selected_caption:
+            st.warning("⚠️ 연결 모드 ON이지만, 페이지1에서 문구가 선택되지 않았습니다.")
+        base_prompt = st.text_area(
+            "메인 프롬프트",
+            placeholder=config.get("ui.placeholders.caption", "예: 따뜻한 조명, 편안한 분위기의 요가 공간"),
+            key="base_prompt_t2i",
+            value=st.session_state.get("base_prompt_t2i", "")
+        )
+
+    # 페이지1 문구를 보조 컨텍스트로 붙이기
+    raw_prompt = ""
+    if connect_mode and selected_caption:
+        if base_prompt.strip():
+            # 사용자 프롬프트 + (페이지1 문구/해시태그)
+            raw_prompt = f"{base_prompt.strip()} — {selected_caption} {hashtags}".strip()
+        else:
+            # 사용자 프롬프트가 비어 있으면, 페이지1 문구만 사용
+            raw_prompt = f"{selected_caption} {hashtags}".strip()
+    else:
+        raw_prompt = base_prompt.strip()
+
+    # 이미지용 프롬프트로 1차 변환 (나머지 FLUX 3단계 변환은 백엔드에서)
+    final_prompt = caption_to_prompt(raw_prompt) if raw_prompt else ""
+
+    if final_prompt:
+        st.caption(f"**전달될 PROMPT (1차 변환 후, FLUX 전용 3단계는 백엔드 처리):** {final_prompt[:150]}...")
+
+    # ─────────────────────────────────────────
+    # 2) 모델 / 해상도 / steps / guidance 설정
+    # ─────────────────────────────────────────
+    # 사이드바에서 선택된 생성 모델 ID
+    selected_model_id = st.session_state.get("selected_generation_model_id")
     current_model_name = api.get_current_comfyui_model()
-    is_flux = (selected_model_id and "flux" in selected_model_id.lower()) or (current_model_name and "flux" in current_model_name.lower())
+
+    # FLUX 여부 판단 (권장 해상도 표시용)
+    is_flux = (
+        (selected_model_id and "flux" in selected_model_id.lower()) or
+        (current_model_name and "flux" in current_model_name.lower())
+    )
 
     # 이미지 크기 (설정 기반)
     preset_sizes = config.get("image.preset_sizes", [])
-
-    # FLUX 모델 사용 시 권장 크기 표시
     size_options = []
     for s in preset_sizes:
         label = f"{s['name']} ({s['width']}x{s['height']})"
-        # FLUX 모델이고 1024x1024인 경우 권장 표시
-        if is_flux and s['width'] == 1024 and s['height'] == 1024:
+        if is_flux and s["width"] == 1024 and s["height"] == 1024:
             label += " ⭐ 권장"
         size_options.append(label)
 
-    selected_size = st.selectbox("이미지 크기", size_options)
+    if not size_options:
+        st.error("❌ frontend_config.yaml 에 image.preset_sizes 설정이 없습니다.")
+        return
 
-    # 선택된 크기 파싱
+    selected_size = st.selectbox("이미지 크기", size_options, key="t2i_size_selector")
     size_idx = size_options.index(selected_size)
     width = preset_sizes[size_idx]["width"]
     height = preset_sizes[size_idx]["height"]
 
-    # Steps & Guidance Scale (기본값 사용)
+    # Steps & Guidance
     default_steps = config.get("image.steps.default", 28)
+    steps_min = config.get("image.steps.min", 1)
+    steps_max = config.get("image.steps.max", 50)
     default_guidance = 3.5
 
-    # 모델 선택 상태 표시
-    if not selected_model_id or selected_model_id == "none":
-        st.warning("⚠️ 사이드바에서 생성 모델을 먼저 선택하세요")
-    else:
-        display_model = current_model_name if current_model_name else selected_model_id
-        st.info(f"ℹ️ 선택된 모델: **{display_model}** (권장 steps: {default_steps}, guidance: {default_guidance})")
-
     col1, col2 = st.columns(2)
-
     with col1:
         steps = st.slider(
             "추론 단계 (Steps)",
-            min_value=config.get("image.steps.min", 1),
-            max_value=config.get("image.steps.max", 50),
+            min_value=steps_min,
+            max_value=steps_max,
             value=default_steps,
             step=1,
-            help="생성 반복 횟수 (높을수록 정교하지만 느림)"
+            help="생성 반복 횟수 (높을수록 정교하지만 느립니다)"
+        )
+    with col2:
+        guidance_scale = st.slider(
+            "Guidance Scale",
+            min_value=1.0,
+            max_value=10.0,
+            value=float(default_guidance),
+            step=0.5,
+            help="프롬프트를 얼마나 강하게 따를지 (높을수록 강하게 반영)"
         )
 
-    with col2:
-        # Guidance Scale (모델이 지원하는 경우만)
-        if default_guidance is not None:
-            guidance_scale = st.slider(
-                "Guidance Scale",
-                min_value=1.0,
-                max_value=10.0,
-                value=float(default_guidance),
-                step=0.5,
-                help="프롬프트 준수 강도 (높을수록 프롬프트를 더 따름)"
-            )
-        else:
-            guidance_scale = None
-            st.caption("(현재 모델은 Guidance Scale 미사용)")
-
-    # 생성 개수 선택
+    # 생성 개수
     num_images = st.slider(
         "생성할 이미지 개수",
         min_value=1,
         max_value=5,
         value=1,
         step=1,
-        help="여러 개 생성 시 각각 다른 랜덤 seed 사용 (시간: 약 30-60초/이미지)"
+        help="여러 개 생성 시 각각 다른 seed로 생성"
     )
 
-    # 후처리 방식 선택
+    # 후처리 설정
     st.divider()
     st.subheader("🔧 후처리 옵션")
 
@@ -667,44 +740,50 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)"
         }[x],
         index=0,
-        help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 얼굴/손 보정"
+        help="후처리 없음: 가장 빠름 / Impact Pack: ComfyUI 기반 얼굴/손 보정",
+        key="t2i_post_process"
     )
 
-    # ADetailer 제거됨 (ComfyUI 사용으로 인해 비활성화)
     enable_adetailer = False
     adetailer_targets = None
 
-    # 생성 중 상태 확인
-    is_generating = st.session_state.get("is_generating_t2i", False)
-
-    if is_generating:
-        st.warning("⏳ 이미지 생성 중입니다... 페이지를 이동하지 마세요!")
-        submitted = False
+    # 모델 선택 상태 안내
+    if not selected_model_id or selected_model_id == "none":
+        st.warning("⚠️ 사이드바에서 **생성 모델을 먼저 선택**하세요.")
     else:
-        submitted = st.button(f"🖼 이미지 생성 ({num_images}개)", type="primary")
+        display_model = current_model_name if current_model_name else selected_model_id
+        st.info(f"ℹ️ 선택된 모델: **{display_model}** (권장 steps: {default_steps}, guidance: {default_guidance})")
 
-    if submitted and selected_caption:
-        # 생성 시작 - 상태 설정
-        st.session_state["is_generating_t2i"] = True
+    # ─────────────────────────────────────────
+    # 3) 이미지 생성 버튼 (rerun 사용 X, 한 번에 처리)
+    # ─────────────────────────────────────────
+    generate_disabled = not final_prompt or not selected_model_id or selected_model_id == "none"
 
-        # 해상도 정렬
+    if st.button(f"🖼 이미지 생성 ({num_images}개)", type="primary", disabled=generate_disabled):
+        if not final_prompt:
+            st.error("❌ 프롬프트를 입력하세요.")
+            return
+        if not selected_model_id or selected_model_id == "none":
+            st.error("❌ 사이드바에서 생성 모델을 선택하세요.")
+            return
+
         aligned_w = align_to_64(width)
         aligned_h = align_to_64(height)
         if aligned_w != width or aligned_h != height:
             st.info(f"해상도 정렬: {width}x{height} → {aligned_w}x{aligned_h}")
 
         st.session_state["generated_images"] = []
-        progress = st.progress(0)
+        progress = st.progress(0.0)
 
         for i in range(num_images):
-            # 1개만 생성할 때는 variation 표시 안함
+            # 여러 장 생성 시 약간의 텍스트 variation만 추가 (seed는 백엔드/ComfyUI가 관리)
             if num_images == 1:
-                prompt = caption_to_prompt(selected_caption)
+                prompt_for_this = final_prompt
             else:
-                prompt = caption_to_prompt(f"{selected_caption} (variation {i+1})")
+                prompt_for_this = f"{final_prompt}, variation {i+1}"
 
             payload = {
-                "prompt": prompt,
+                "prompt": prompt_for_this,
                 "width": aligned_w,
                 "height": aligned_h,
                 "steps": steps,
@@ -712,129 +791,444 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                 "post_process_method": post_process_method,
                 "enable_adetailer": enable_adetailer,
                 "adetailer_targets": adetailer_targets,
-                "model_name": selected_model_id  # 선택된 모델 전달
+                "model_name": selected_model_id,
             }
 
             try:
                 with st.spinner(f"이미지 {i+1}/{num_images} 생성 중..."):
                     img_bytes = api.call_t2i(payload)
-                    if img_bytes:
-                        st.session_state["generated_images"].append({
-                            "prompt": prompt,
-                            "bytes": img_bytes
-                        })
-                progress.progress((i+1)/num_images)
+                if img_bytes:
+                    st.session_state["generated_images"].append(
+                        {"prompt": prompt_for_this, "bytes": img_bytes}
+                    )
+                progress.progress((i + 1) / num_images)
             except Exception as e:
+                # ❗ 여기서 에러를 바로 보여주기 때문에 rerun으로 날아가지 않음
                 st.error(f"이미지 {i+1} 생성 실패: {e}")
                 break
-        
+
         progress.empty()
 
-        # 생성 완료 - 상태 해제
-        st.session_state["is_generating_t2i"] = False
+    # ─────────────────────────────────────────
+    # 4) 결과 표시
+    # ─────────────────────────────────────────
+    if st.session_state.get("generated_images"):
+        imgs = st.session_state["generated_images"]
+        st.success(f"✅ {len(imgs)}개 이미지 생성 완료!")
 
-        if st.session_state.get("generated_images"):
-            st.success(f"✅ {len(st.session_state['generated_images'])}개 이미지 완료!")
+        cols = st.columns(len(imgs))
+        for idx, img_data in enumerate(imgs):
+            with cols[idx]:
+                img_bytes = img_data["bytes"]
+                img_bytes.seek(0)
+                st.image(img_bytes, caption=f"버전 {idx+1}", use_container_width=True)
+                img_bytes.seek(0)
+                st.download_button(
+                    "⬇️ 다운로드",
+                    img_bytes.read(),
+                    file_name=f"t2i_flux_v{idx+1}.png",
+                    mime="image/png",
+                    key=f"t2i_dl_{idx}"
+                )
+                img_bytes.seek(0)
 
-            cols = st.columns(len(st.session_state["generated_images"]))
-            for idx, img_data in enumerate(st.session_state["generated_images"]):
-                with cols[idx]:
-                    st.image(img_data["bytes"], caption=f"버전 {idx+1}", use_container_width=True)
-                    st.download_button(
-                        f"⬇️ 다운로드",
-                        img_data["bytes"],
-                        f"image_v{idx+1}.png",
-                        "image/png",
-                        key=f"dl_{idx}"
-                    )
-        else:
-            st.error("❌ 이미지 생성에 실패했습니다. 백엔드 로그를 확인하세요.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
+#     st.title("🖼 문구 기반 이미지 생성 (3가지 버전)")
+    
+#     # 문구 입력
+#     selected_caption = ""
+#     if connect_mode and "selected_caption" in st.session_state:
+#         st.info(f"🔗 연결 모드: 페이지1 문구 사용\n\n**선택된 문구:** {st.session_state['selected_caption']}")
+#         selected_caption = st.session_state["selected_caption"]
+#     else:
+#         if connect_mode:
+#             st.warning("⚠️ 페이지1에서 문구를 먼저 생성하세요")
+#         selected_caption = st.text_area(
+#             "문구 입력",
+#             placeholder=config.get("ui.placeholders.caption", "")
+#         )
+    
+#     # 선택된 모델 ID 가져오기 (사이드바에서 선택한 모델)
+#     selected_model_id = st.session_state.get("selected_generation_model_id")
+
+#     # 현재 로드된 모델 확인
+#     current_model_name = api.get_current_comfyui_model()
+#     is_flux = (selected_model_id and "flux" in selected_model_id.lower()) or (current_model_name and "flux" in current_model_name.lower())
+
+#     # 이미지 크기 (설정 기반)
+#     preset_sizes = config.get("image.preset_sizes", [])
+
+#     # FLUX 모델 사용 시 권장 크기 표시
+#     size_options = []
+#     for s in preset_sizes:
+#         label = f"{s['name']} ({s['width']}x{s['height']})"
+#         # FLUX 모델이고 1024x1024인 경우 권장 표시
+#         if is_flux and s['width'] == 1024 and s['height'] == 1024:
+#             label += " ⭐ 권장"
+#         size_options.append(label)
+
+#     selected_size = st.selectbox("이미지 크기", size_options)
+
+#     # 선택된 크기 파싱
+#     size_idx = size_options.index(selected_size)
+#     width = preset_sizes[size_idx]["width"]
+#     height = preset_sizes[size_idx]["height"]
+
+#     # Steps & Guidance Scale (기본값 사용)
+#     default_steps = config.get("image.steps.default", 28)
+#     default_guidance = 3.5
+
+#     # 모델 선택 상태 표시
+#     if not selected_model_id or selected_model_id == "none":
+#         st.warning("⚠️ 사이드바에서 생성 모델을 먼저 선택하세요")
+#     else:
+#         display_model = current_model_name if current_model_name else selected_model_id
+#         st.info(f"ℹ️ 선택된 모델: **{display_model}** (권장 steps: {default_steps}, guidance: {default_guidance})")
+
+#     col1, col2 = st.columns(2)
+
+#     with col1:
+#         steps = st.slider(
+#             "추론 단계 (Steps)",
+#             min_value=config.get("image.steps.min", 1),
+#             max_value=config.get("image.steps.max", 50),
+#             value=default_steps,
+#             step=1,
+#             help="생성 반복 횟수 (높을수록 정교하지만 느림)"
+#         )
+
+#     with col2:
+#         # Guidance Scale (모델이 지원하는 경우만)
+#         if default_guidance is not None:
+#             guidance_scale = st.slider(
+#                 "Guidance Scale",
+#                 min_value=1.0,
+#                 max_value=10.0,
+#                 value=float(default_guidance),
+#                 step=0.5,
+#                 help="프롬프트 준수 강도 (높을수록 프롬프트를 더 따름)"
+#             )
+#         else:
+#             guidance_scale = None
+#             st.caption("(현재 모델은 Guidance Scale 미사용)")
+
+#     # 생성 개수 선택
+#     num_images = st.slider(
+#         "생성할 이미지 개수",
+#         min_value=1,
+#         max_value=5,
+#         value=1,
+#         step=1,
+#         help="여러 개 생성 시 각각 다른 랜덤 seed 사용 (시간: 약 30-60초/이미지)"
+#     )
+
+#     # 후처리 방식 선택
+#     st.divider()
+#     st.subheader("🔧 후처리 옵션")
+
+#     post_process_method = st.radio(
+#         "후처리 방식",
+#         options=["none", "impact_pack"],
+#         format_func=lambda x: {
+#             "none": "없음 (빠름)",
+#             "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)"
+#         }[x],
+#         index=0,
+#         help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 얼굴/손 보정"
+#     )
+
+#     # ADetailer 제거됨 (ComfyUI 사용으로 인해 비활성화)
+#     enable_adetailer = False
+#     adetailer_targets = None
+
+#     # 생성 중 상태 확인
+#     is_generating = st.session_state.get("is_generating_t2i", False)
+
+#     if is_generating:
+#         st.warning("⏳ 이미지 생성 중입니다... 페이지를 이동하지 마세요!")
+#         submitted = False
+#     else:
+#         submitted = st.button(f"🖼 이미지 생성 ({num_images}개)", type="primary")
+
+#     if submitted and selected_caption:
+#         # 생성 시작 - 상태 설정
+#         st.session_state["is_generating_t2i"] = True
+
+#         # 해상도 정렬
+#         aligned_w = align_to_64(width)
+#         aligned_h = align_to_64(height)
+#         if aligned_w != width or aligned_h != height:
+#             st.info(f"해상도 정렬: {width}x{height} → {aligned_w}x{aligned_h}")
+
+#         st.session_state["generated_images"] = []
+#         progress = st.progress(0)
+
+#         for i in range(num_images):
+#             # 1개만 생성할 때는 variation 표시 안함
+#             if num_images == 1:
+#                 prompt = caption_to_prompt(selected_caption)
+#             else:
+#                 prompt = caption_to_prompt(f"{selected_caption} (variation {i+1})")
+
+#             payload = {
+#                 "prompt": prompt,
+#                 "width": aligned_w,
+#                 "height": aligned_h,
+#                 "steps": steps,
+#                 "guidance_scale": guidance_scale,
+#                 "post_process_method": post_process_method,
+#                 "enable_adetailer": enable_adetailer,
+#                 "adetailer_targets": adetailer_targets,
+#                 "model_name": selected_model_id  # 선택된 모델 전달
+#             }
+
+#             try:
+#                 with st.spinner(f"이미지 {i+1}/{num_images} 생성 중..."):
+#                     img_bytes = api.call_t2i(payload)
+#                     if img_bytes:
+#                         st.session_state["generated_images"].append({
+#                             "prompt": prompt,
+#                             "bytes": img_bytes
+#                         })
+#                 progress.progress((i+1)/num_images)
+#             except Exception as e:
+#                 st.error(f"이미지 {i+1} 생성 실패: {e}")
+#                 break
+        
+#         progress.empty()
+
+#         # 생성 완료 - 상태 해제
+#         st.session_state["is_generating_t2i"] = False
+
+#         if st.session_state.get("generated_images"):
+#             st.success(f"✅ {len(st.session_state['generated_images'])}개 이미지 완료!")
+
+#             cols = st.columns(len(st.session_state["generated_images"]))
+#             for idx, img_data in enumerate(st.session_state["generated_images"]):
+#                 with cols[idx]:
+#                     st.image(img_data["bytes"], caption=f"버전 {idx+1}", use_container_width=True)
+#                     st.download_button(
+#                         f"⬇️ 다운로드",
+#                         img_data["bytes"],
+#                         f"image_v{idx+1}.png",
+#                         "image/png",
+#                         key=f"dl_{idx}"
+#                     )
+#         else:
+#             st.error("❌ 이미지 생성에 실패했습니다. 백엔드 로그를 확인하세요.")
 
 # ============================================================
 # 페이지 3: I2I 이미지 편집
 # ============================================================
 def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
     st.title("🖼️ 이미지 편집 (Image-to-Image)")
-    st.info("💡 업로드된 이미지를 AI로 편집합니다 (배경 변경, 스타일 변경 등)")
-    
-    # 이미지 소스
-    uploaded = st.file_uploader("이미지 업로드", type=["png", "jpg", "jpeg"])
+    st.info("💡 업로드된 이미지나 페이지2에서 생성된 이미지를 기반으로 스타일/분위기를 바꿉니다.\n"
+            "프롬프트는 백엔드에서 FLUX 전용 3단계 변환을 그대로 공유합니다.")
+
+    # ─────────────────────────────────────────
+    # 1) 편집 대상 이미지 선택 (업로드 or 페이지2 결과)
+    # ─────────────────────────────────────────
+    col_upload, col_select = st.columns([1, 2])
+
+    with col_upload:
+        uploaded_file = st.file_uploader(
+            "새 이미지 업로드",
+            type=["png", "jpg", "jpeg"],
+            key="i2i_uploaded_file"
+        )
+
     preloaded = st.session_state.get("generated_images", [])
-    
+    can_use_preloaded = connect_mode and preloaded
+
+    selected_preloaded_index = None
+    if can_use_preloaded:
+        with col_select:
+            selected_preloaded_index = st.selectbox(
+                "또는 페이지2에서 생성한 이미지 선택",
+                list(range(len(preloaded))),
+                format_func=lambda x: f"T2I 결과 {x+1}번",
+                key="i2i_preloaded_selector"
+            )
+
     image_bytes = None
-    display_image = None
-    
-    if uploaded:
-        image_bytes = uploaded.getvalue()
-        display_image = image_bytes
-    elif preloaded and connect_mode:
-        st.info("🔗 연결 모드: 페이지2 이미지 사용")
-        idx = st.selectbox("이미지 선택", range(len(preloaded)), format_func=lambda x: f"버전 {x+1}")
-        image_bytes = preloaded[idx]["bytes"].getvalue()
-        display_image = image_bytes
-    
-    if display_image:
-        st.image(display_image, caption="선택된 이미지", width=300)
+    source_name = "미선택"
+
+    if uploaded_file:
+        image_bytes = uploaded_file.getvalue()
+        source_name = uploaded_file.name
+    elif selected_preloaded_index is not None:
+        img_io = preloaded[selected_preloaded_index]["bytes"]
+        img_io.seek(0)
+        image_bytes = img_io.read()
+        source_name = f"T2I 결과 {selected_preloaded_index+1}번"
+
+    st.markdown("---")
+
+    if not image_bytes:
+        edited = st.session_state.get("edited_image_data")
+        if edited:
+            st.info("이전에 편집한 결과가 있습니다. 아래에서 다시 확인할 수 있습니다.")
+        else:
+            st.warning("⚠ 이미지를 업로드하거나 페이지 2에서 생성한 이미지를 선택하세요.")
+            return
     else:
-        st.warning("⚠️ 이미지를 업로드하거나 페이지2에서 생성하세요")
-    
-    # 문구
-    selected_caption = ""
-    if connect_mode and "selected_caption" in st.session_state:
-        st.info(f"🔗 사용할 문구: {st.session_state['selected_caption']}")
-        selected_caption = st.session_state["selected_caption"]
-    else:
-        selected_caption = st.text_input("편집 문구", placeholder=config.get("ui.placeholders.caption", ""))
-    
-    # I2I 설정
-    i2i_config = config.get("image.i2i", {})
-    strength = st.slider(
-        "✨ 변화 강도 (Strength)",
-        min_value=i2i_config.get("strength", {}).get("min", 0.0),
-        max_value=i2i_config.get("strength", {}).get("max", 1.0),
-        value=i2i_config.get("strength", {}).get("default", 0.75),
-        step=i2i_config.get("strength", {}).get("step", 0.05),
-        help="0.0: 원본 유지, 1.0: 완전히 새로운 이미지"
-    )
-    
+        st.image(image_bytes, caption=f"편집 대상: {source_name}", width=350)
+        # 편집 대상이 바뀌면 이전 결과 초기화
+        edited = st.session_state.get("edited_image_data")
+        if edited and edited.get("source_name") != source_name:
+            st.session_state["edited_image_data"] = None
+
+    # ─────────────────────────────────────────
+    # 2) 편집 프롬프트 (항상 사용자 입력 가능) + 연결 모드 보조 프롬프트
+    # ─────────────────────────────────────────
+    st.subheader("📝 편집 프롬프트")
+
+    selected_caption = st.session_state.get("selected_caption", "")
+    hashtags = st.session_state.get("hashtags", "")
+
+    if connect_mode and selected_caption:
+        st.info(f"🔗 연결 모드 — 페이지1 문구가 보조 프롬프트로 사용됩니다.\n\n"
+                f"**선택 문구:** {selected_caption}\n\n"
+                f"**해시태그:** {hashtags}")
+    elif connect_mode:
+        st.warning("⚠ 연결 모드 ON이지만 페이지1에서 문구가 선택되지 않았습니다.")
+
     edit_prompt = st.text_area(
-        "추가 지시 (선택)",
-        placeholder=config.get("ui.placeholders.edit_prompt", "")
+        "메인 편집 지시 (사용자 입력)",
+        placeholder=config.get("ui.placeholders.edit_prompt", "예: 더 밝고 활기찬 분위기로, 파란색 배경 추가"),
+        key="edit_prompt_i2i",
+        value=st.session_state.get("edit_prompt_i2i", "")
     )
 
-    # 선택된 모델 ID 가져오기 (사이드바에서 선택한 모델)
-    selected_model_id = st.session_state.get("selected_generation_model_id")
+    captions_for_support = f"{selected_caption} {hashtags}".strip()
 
-    # 현재 로드된 모델 확인
-    current_model_name = api.get_current_comfyui_model()
-    is_flux = (selected_model_id and "flux" in selected_model_id.lower()) or (current_model_name and "flux" in current_model_name.lower())
+    # ─────────────────────────────────────────
+    # 3) 보조 프롬프트 옵션 (페이지2와 유사한 UX)
+    # ─────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("🎚 보조 프롬프트 옵션")
 
-    # 출력 크기 (입력 이미지가 이 크기로 리사이즈됨)
-    preset_sizes = config.get("image.preset_sizes", [])
-
-    # FLUX 모델 사용 시 권장 크기 표시
-    size_options = []
-    for s in preset_sizes:
-        label = f"{s['name']} ({s['width']}x{s['height']})"
-        if is_flux and s['width'] == 1024 and s['height'] == 1024:
-            label += " ⭐ 권장"
-        size_options.append(label)
-
-    # 모델 선택 상태 표시
-    if not selected_model_id or selected_model_id == "none":
-        st.warning("⚠️ 사이드바에서 생성 모델을 먼저 선택하세요")
-
-    selected_size = st.selectbox(
-        "출력 크기",
-        size_options,
-        help="입력 이미지가 이 크기로 리사이즈된 후 편집됩니다"
+    support_strength = st.select_slider(
+        "보조 프롬프트 강도",
+        options=["약하게", "중간", "강하게"],
+        key="support_strength_i2i",
+        value=st.session_state.get("support_strength_i2i", "중간"),
     )
 
-    size_idx = size_options.index(selected_size)
-    width = preset_sizes[size_idx]["width"]
-    height = preset_sizes[size_idx]["height"]
+    support_method = st.selectbox(
+        "보조 프롬프트 방식",
+        ["단순 키워드 변환", "GPT 기반 자연스럽게", "사용자 조절형 혼합"],
+        key="support_method_i2i",
+        index=["단순 키워드 변환", "GPT 기반 자연스럽게", "사용자 조절형 혼합"]
+        .index(st.session_state.get("support_method_i2i", "단순 키워드 변환"))
+    )
 
-    # 후처리 방식 선택
+    if support_method == "단순 키워드 변환":
+        st.info("💡 페이지1 문구에서 핵심 키워드만 추출해 단순하게 스타일을 반영합니다.")
+    elif support_method == "GPT 기반 자연스럽게":
+        st.info("💡 페이지1 문구를 바탕으로 자연스러운 스타일·조명·무드를 자동 확장합니다.")
+    else:
+        st.info("💡 기본 문구에 균형 잡힌 분위기 키워드를 섞어 안정적으로 조절된 이미지를 생성합니다.")
+
+    def build_support(text, method, strength_label):
+        if not text:
+            return ""
+        if method == "단순 키워드 변환":
+            base = ", ".join(re.split(r"[ ,.\n]+", text)[:20])
+        elif method == "GPT 기반 자연스럽게":
+            base = f"{text}, cinematic soft light, premium mood, refined rendering"
+        else:
+            base = f"{text}, balanced framing, clean aesthetic"
+
+        ratio = {"약하게": "0.3", "중간": "0.6", "강하게": "1.0"}[strength_label]
+        return f"({base}:{ratio})"
+
+    support_prompt = ""
+    if connect_mode and selected_caption:
+        support_prompt = build_support(captions_for_support, support_method, support_strength)
+
+    # 최종 프롬프트 조합 (나머지 FLUX 3단계 변환은 백엔드에서)
+    final_prompt = edit_prompt.strip()
+    if connect_mode and selected_caption and support_prompt:
+        final_prompt = f"{edit_prompt.strip()}, {support_prompt}".strip(", ")
+
+    if final_prompt:
+        st.caption(f"최종 PROMPT (백엔드에서 FLUX 전용 3단계 변환 적용): {final_prompt[:120]}...")
+
+    # ─────────────────────────────────────────
+    # 4) I2I 세부 옵션 (strength / steps / size / guidance / 후처리)
+    # ─────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("⚙ 편집 세부 조정")
+
+    i2i_cfg = config.get("image.i2i", {})
+    strength_cfg = i2i_cfg.get("strength", {})
+
+    col_a, col_b, col_c, col_d = st.columns(4)
+    with col_a:
+        strength = st.slider(
+            "변화 강도 (strength)",
+            float(strength_cfg.get("min", 0.0)),
+            float(strength_cfg.get("max", 1.0)),
+            value=float(st.session_state.get("strength_i2i", strength_cfg.get("default", 0.7))),
+            step=float(strength_cfg.get("step", 0.05)),
+            key="strength_i2i",
+        )
+    with col_b:
+        steps = st.slider(
+            "Steps",
+            1, 50,
+            value=st.session_state.get("steps_i2i", 30),
+            key="steps_i2i",
+        )
+    with col_c:
+        guidance_scale = st.slider(
+            "Guidance",
+            1.0, 10.0,
+            value=st.session_state.get("guidance_i2i", 5.0),
+            step=0.5,
+            key="guidance_i2i",
+        )
+    with col_d:
+        preset_sizes = config.get("image.preset_sizes", [])
+        size_labels = [f"{s['name']} ({s['width']}x{s['height']})" for s in preset_sizes]
+        selected_size = st.selectbox(
+            "출력 크기",
+            size_labels,
+            key="size_selector_i2i",
+            index=size_labels.index(st.session_state.get("size_selector_i2i", size_labels[0]))
+            if st.session_state.get("size_selector_i2i") in size_labels else 0
+        )
+        idx = size_labels.index(selected_size)
+        width = preset_sizes[idx]["width"]
+        height = preset_sizes[idx]["height"]
+
     st.divider()
     st.subheader("🔧 후처리 옵션")
 
@@ -846,470 +1240,991 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)"
         }[x],
         index=0,
-        help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 얼굴/손 보정",
         key="i2i_post_process"
     )
 
-    # ADetailer 제거됨 (ComfyUI 사용으로 인해 비활성화)
     enable_adetailer = False
     adetailer_targets = None
 
-    # 처리 중 상태 확인
-    is_processing = st.session_state.get("is_processing_i2i", False)
+    # ─────────────────────────────────────────
+    # 5) 실행 버튼
+    # ─────────────────────────────────────────
+    submitted = st.button("✨ 이미지 편집 실행", type="primary",
+                          disabled=not (final_prompt.strip() and image_bytes))
 
-    # 버튼 표시 (처리 중이면 비활성화)
-    if is_processing:
-        st.warning("⏳ 이미지 편집 중입니다... 잠시만 기다려주세요.")
-        submitted = False
-    else:
-        submitted = st.button("✨ 이미지 편집", type="primary", disabled=is_processing)
-    
     if submitted:
         if not image_bytes:
-            st.error("❌ 이미지를 먼저 업로드하세요")
+            st.error("❌ 이미지를 먼저 업로드하거나 선택하세요.")
             return
-        if not selected_caption:
-            st.error("❌ 문구를 입력하세요")
+        if not final_prompt.strip():
+            st.error("❌ 편집 프롬프트를 입력하세요.")
             return
-        
-        # 처리 시작 상태 설정
-        st.session_state["is_processing_i2i"] = True
-        st.rerun()
 
-    # 실제 처리 로직 (rerun 후 실행됨)
-    if is_processing and image_bytes and selected_caption:
         aligned_w = align_to_64(width)
         aligned_h = align_to_64(height)
-        
-        final_prompt = caption_to_prompt(selected_caption)
-        if edit_prompt:
-            final_prompt += f", {edit_prompt}"
-        
+
         payload = {
             "input_image_base64": base64.b64encode(image_bytes).decode(),
             "prompt": final_prompt,
-            "strength": strength,
+            "strength": float(strength),
             "width": aligned_w,
             "height": aligned_h,
-            "steps": 30,
+            "steps": int(steps),
+            "guidance_scale": float(guidance_scale),
             "post_process_method": post_process_method,
             "enable_adetailer": enable_adetailer,
             "adetailer_targets": adetailer_targets,
-            "model_name": selected_model_id  # 선택된 모델 전달
+            # model_name은 생략 시 백엔드에서 현재 로드된 모델 사용
         }
-        
+
         try:
-            with st.spinner("편집 중..."):
-                edited = api.call_i2i(payload)
+            with st.spinner("이미지 편집 중..."):
+                edited_io = api.call_i2i(payload)
 
-            # 처리 완료 - 상태 해제
-            st.session_state["is_processing_i2i"] = False
-
-            if edited:
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("원본")
-                    st.image(image_bytes, use_container_width=True)
-                with col2:
-                    st.subheader("편집됨")
-                    st.image(edited, use_container_width=True)
-
-                st.success("✅ 완료!")
-                st.download_button("⬇️ 편집 이미지 다운로드", edited, "edited.png", "image/png")
+            if edited_io:
+                edited_bytes = edited_io.read()
+                st.session_state["edited_image_data"] = {
+                    "source_name": source_name,
+                    "original_bytes": image_bytes,
+                    "edited_bytes": edited_bytes,
+                    "prompt": final_prompt
+                }
         except Exception as e:
-            # 에러 발생 시에도 상태 해제
-            st.session_state["is_processing_i2i"] = False
-            st.error(f"❌ 편집 실패: {e}")
+            st.error(f"편집 실패: {e}")
+
+    # ─────────────────────────────────────────
+    # 6) 결과 표시
+    # ─────────────────────────────────────────
+    edited = st.session_state.get("edited_image_data")
+    if edited:
+        st.markdown("---")
+        st.subheader("🎉 편집 결과")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.caption(f"원본 이미지: {edited['source_name']}")
+            st.image(edited["original_bytes"])
+        with c2:
+            st.caption("편집된 이미지")
+            st.image(edited["edited_bytes"])
+            st.download_button(
+                "⬇ 편집본 다운로드",
+                edited["edited_bytes"],
+                "edited_image.png",
+                "image/png",
+                key="download_i2i"
+            )
+
+        st.caption(f"사용된 프롬프트: {edited['prompt']}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
+#     st.title("🖼️ 이미지 편집 (Image-to-Image)")
+#     st.info("💡 업로드된 이미지를 AI로 편집합니다 (배경 변경, 스타일 변경 등)")
+    
+#     # 이미지 소스
+#     uploaded = st.file_uploader("이미지 업로드", type=["png", "jpg", "jpeg"])
+#     preloaded = st.session_state.get("generated_images", [])
+    
+#     image_bytes = None
+#     display_image = None
+    
+#     if uploaded:
+#         image_bytes = uploaded.getvalue()
+#         display_image = image_bytes
+#     elif preloaded and connect_mode:
+#         st.info("🔗 연결 모드: 페이지2 이미지 사용")
+#         idx = st.selectbox("이미지 선택", range(len(preloaded)), format_func=lambda x: f"버전 {x+1}")
+#         image_bytes = preloaded[idx]["bytes"].getvalue()
+#         display_image = image_bytes
+    
+#     if display_image:
+#         st.image(display_image, caption="선택된 이미지", width=300)
+#     else:
+#         st.warning("⚠️ 이미지를 업로드하거나 페이지2에서 생성하세요")
+    
+#     # 문구
+#     selected_caption = ""
+#     if connect_mode and "selected_caption" in st.session_state:
+#         st.info(f"🔗 사용할 문구: {st.session_state['selected_caption']}")
+#         selected_caption = st.session_state["selected_caption"]
+#     else:
+#         selected_caption = st.text_input("편집 문구", placeholder=config.get("ui.placeholders.caption", ""))
+    
+#     # I2I 설정
+#     i2i_config = config.get("image.i2i", {})
+#     strength = st.slider(
+#         "✨ 변화 강도 (Strength)",
+#         min_value=i2i_config.get("strength", {}).get("min", 0.0),
+#         max_value=i2i_config.get("strength", {}).get("max", 1.0),
+#         value=i2i_config.get("strength", {}).get("default", 0.75),
+#         step=i2i_config.get("strength", {}).get("step", 0.05),
+#         help="0.0: 원본 유지, 1.0: 완전히 새로운 이미지"
+#     )
+    
+#     edit_prompt = st.text_area(
+#         "추가 지시 (선택)",
+#         placeholder=config.get("ui.placeholders.edit_prompt", "")
+#     )
+
+#     # 선택된 모델 ID 가져오기 (사이드바에서 선택한 모델)
+#     selected_model_id = st.session_state.get("selected_generation_model_id")
+
+#     # 현재 로드된 모델 확인
+#     current_model_name = api.get_current_comfyui_model()
+#     is_flux = (selected_model_id and "flux" in selected_model_id.lower()) or (current_model_name and "flux" in current_model_name.lower())
+
+#     # 출력 크기 (입력 이미지가 이 크기로 리사이즈됨)
+#     preset_sizes = config.get("image.preset_sizes", [])
+
+#     # FLUX 모델 사용 시 권장 크기 표시
+#     size_options = []
+#     for s in preset_sizes:
+#         label = f"{s['name']} ({s['width']}x{s['height']})"
+#         if is_flux and s['width'] == 1024 and s['height'] == 1024:
+#             label += " ⭐ 권장"
+#         size_options.append(label)
+
+#     # 모델 선택 상태 표시
+#     if not selected_model_id or selected_model_id == "none":
+#         st.warning("⚠️ 사이드바에서 생성 모델을 먼저 선택하세요")
+
+#     selected_size = st.selectbox(
+#         "출력 크기",
+#         size_options,
+#         help="입력 이미지가 이 크기로 리사이즈된 후 편집됩니다"
+#     )
+
+#     size_idx = size_options.index(selected_size)
+#     width = preset_sizes[size_idx]["width"]
+#     height = preset_sizes[size_idx]["height"]
+
+#     # 후처리 방식 선택
+#     st.divider()
+#     st.subheader("🔧 후처리 옵션")
+
+#     post_process_method = st.radio(
+#         "후처리 방식",
+#         options=["none", "impact_pack"],
+#         format_func=lambda x: {
+#             "none": "없음 (빠름)",
+#             "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)"
+#         }[x],
+#         index=0,
+#         help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 얼굴/손 보정",
+#         key="i2i_post_process"
+#     )
+
+#     # ADetailer 제거됨 (ComfyUI 사용으로 인해 비활성화)
+#     enable_adetailer = False
+#     adetailer_targets = None
+
+#     # 처리 중 상태 확인
+#     is_processing = st.session_state.get("is_processing_i2i", False)
+
+#     # 버튼 표시 (처리 중이면 비활성화)
+#     if is_processing:
+#         st.warning("⏳ 이미지 편집 중입니다... 잠시만 기다려주세요.")
+#         submitted = False
+#     else:
+#         submitted = st.button("✨ 이미지 편집", type="primary", disabled=is_processing)
+    
+#     if submitted:
+#         if not image_bytes:
+#             st.error("❌ 이미지를 먼저 업로드하세요")
+#             return
+#         if not selected_caption:
+#             st.error("❌ 문구를 입력하세요")
+#             return
+        
+#         # 처리 시작 상태 설정
+#         st.session_state["is_processing_i2i"] = True
+#         st.rerun()
+
+#     # 실제 처리 로직 (rerun 후 실행됨)
+#     if is_processing and image_bytes and selected_caption:
+#         aligned_w = align_to_64(width)
+#         aligned_h = align_to_64(height)
+        
+#         final_prompt = caption_to_prompt(selected_caption)
+#         if edit_prompt:
+#             final_prompt += f", {edit_prompt}"
+        
+#         payload = {
+#             "input_image_base64": base64.b64encode(image_bytes).decode(),
+#             "prompt": final_prompt,
+#             "strength": strength,
+#             "width": aligned_w,
+#             "height": aligned_h,
+#             "steps": 30,
+#             "post_process_method": post_process_method,
+#             "enable_adetailer": enable_adetailer,
+#             "adetailer_targets": adetailer_targets,
+#             "model_name": selected_model_id  # 선택된 모델 전달
+#         }
+        
+#         try:
+#             with st.spinner("편집 중..."):
+#                 edited = api.call_i2i(payload)
+
+#             # 처리 완료 - 상태 해제
+#             st.session_state["is_processing_i2i"] = False
+
+#             if edited:
+#                 col1, col2 = st.columns(2)
+#                 with col1:
+#                     st.subheader("원본")
+#                     st.image(image_bytes, use_container_width=True)
+#                 with col2:
+#                     st.subheader("편집됨")
+#                     st.image(edited, use_container_width=True)
+
+#                 st.success("✅ 완료!")
+#                 st.download_button("⬇️ 편집 이미지 다운로드", edited, "edited.png", "image/png")
+#         except Exception as e:
+#             # 에러 발생 시에도 상태 해제
+#             st.session_state["is_processing_i2i"] = False
+#             st.error(f"❌ 편집 실패: {e}")
+
+# ============================================================
+# 🆕 페이지 4: 이미지 편집 (v3.0 - FLUX 보조 프롬프팅 적용)
+# ============================================================
+def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
+    st.title("✨ AI 이미지 편집 (3가지 모드 + FLUX 프롬프팅 지원)")
+    st.markdown("원본 이미지를 분석하고, 선택한 모드에 따라 AI로 자연스럽게 편집합니다.")
+
+    # ---------------------------------------------------------------------
+    # 0) 유틸 - 보조 프롬프트 생성 (페이지2/3와 동일)
+    # ---------------------------------------------------------------------
+    def build_support_prompt(text, method, strength):
+        if not text:
+            return ""
+        if method == "단순 키워드 변환":
+            base = ", ".join(re.split(r"[ ,.\n]+", text)[:20])
+        elif method == "GPT 기반 자연스럽게":
+            base = f"{text}, cinematic soft light, premium mood, refined composition"
+        else:
+            base = f"{text}, warm tone, clean aesthetic, balanced framing"
+
+        w = {"약하게": "0.3", "중간": "0.6", "강하게": "1.0"}[strength]
+        return f"({base}:{w})"
+
+    # ---------------------------------------------------------------------
+    # 1) 이미지 입력
+    # ---------------------------------------------------------------------
+    uploaded_file = st.file_uploader("편집할 이미지 업로드", type=["png", "jpg", "jpeg"])
+    generated_images = st.session_state.get("generated_images", [])
+
+    image_bytes = None
+    display_image = None
+
+    col_upload, col_preloaded = st.columns([1, 1])
+    with col_upload:
+        if uploaded_file:
+            image_bytes = uploaded_file.getvalue()
+            display_image = image_bytes
+
+    with col_preloaded:
+        if generated_images:
+            idx = st.selectbox(
+                "또는 페이지2 생성 이미지를 편집하기",
+                range(len(generated_images)),
+                format_func=lambda x: f"T2I 이미지 {x+1}",
+                key="page4_preloaded_selector"
+            )
+            img_io = generated_images[idx]["bytes"]
+            img_io.seek(0)
+            image_bytes = img_io.read()
+            display_image = image_bytes
+
+    if display_image:
+        st.image(display_image, caption="원본 이미지", width=350)
+    else:
+        st.warning("⚠️ 이미지를 업로드하거나 페이지2에서 생성하세요.")
+        return
+
+    # ---------------------------------------------------------------------
+    # 2) 편집 모드 선택
+    # ---------------------------------------------------------------------
+    EDITING_MODES = {
+        "portrait_mode": {"id": "portrait_mode", "name": "👤 인물 모드"},
+        "product_mode": {"id": "product_mode", "name": "📦 제품 모드"},
+        "hybrid_mode": {"id": "hybrid_mode", "name": "✨ 고급(하이브리드) 모드"},
+    }
+
+    mode_ids = list(EDITING_MODES.keys())
+    mode_names = [EDITING_MODES[m]["name"] for m in mode_ids]
+
+    selected_mode_name = st.selectbox(
+        "편집 모드",
+        mode_names,
+        key="page4_editing_mode_selector"
+    )
+    selected_mode_id = mode_ids[mode_names.index(selected_mode_name)]
+
+    st.markdown("---")
+
+    # ---------------------------------------------------------------------
+    # 3) 페이지1 문구 기반 보조 프롬프트 설정
+    # ---------------------------------------------------------------------
+    selected_caption = st.session_state.get("selected_caption", "")
+    selected_hashtags = st.session_state.get("hashtags", "")
+
+    captions_for_support = f"{selected_caption} {selected_hashtags}".strip()
+
+    st.subheader("🎚 보조 프롬프트 옵션")
+
+    support_strength = st.select_slider(
+        "보조 프롬프트 강도",
+        ["약하게", "중간", "강하게"],
+        key="page4_support_strength",
+        value=st.session_state.get("page4_support_strength", "중간")
+    )
+
+    support_method = st.selectbox(
+        "보조 프롬프트 방식",
+        ["단순 키워드 변환", "GPT 기반 자연스럽게", "사용자 조절형 혼합"],
+        key="page4_support_method",
+        index=["단순 키워드 변환", "GPT 기반 자연스럽게", "사용자 조절형 혼합"]
+            .index(st.session_state.get("page4_support_method", "단순 키워드 변환"))
+    )
+
+    support_prompt = ""
+    if selected_caption:
+        support_prompt = build_support_prompt(
+            captions_for_support,
+            support_method,
+            support_strength
+        )
+
+    # ---------------------------------------------------------------------
+    # 4) 실제 편집 프롬프트 입력
+    # ---------------------------------------------------------------------
+    st.subheader("✏️ 메인 편집 프롬프트")
+
+    base_prompt = st.text_area(
+        "편집 지시 문구 (필수)",
+        placeholder=config.get("ui.placeholders.edit_prompt", "예: 배경을 밝고 화사하게 변경"),
+        key="page4_base_prompt"
+    )
+
+    # 최종 프롬프트 구성
+    final_prompt = base_prompt
+    if support_prompt:
+        final_prompt = f"{base_prompt}, {support_prompt}"
+
+    if final_prompt.strip():
+        st.caption(f"**최종 PROMPT (백엔드에서 FLUX 3단계 프롬프팅 적용):** {final_prompt[:150]}...")
+
+    # ---------------------------------------------------------------------
+    # 5) 모델/파라미터 설정
+    # ---------------------------------------------------------------------
+    st.subheader("⚙ 편집 파라미터 설정")
+
+    edit_cfg = config.get("image.editing_experiment", {})
+    steps = st.slider(
+        "Steps",
+        edit_cfg.get("steps", {}).get("min", 10),
+        edit_cfg.get("steps", {}).get("max", 50),
+        value=edit_cfg.get("steps", {}).get("default", 28),
+        step=1,
+        key="page4_steps"
+    )
+
+    guidance_scale = st.slider(
+        "Guidance Scale",
+        edit_cfg.get("guidance_scale", {}).get("min", 1.0),
+        edit_cfg.get("guidance_scale", {}).get("max", 15.0),
+        value=edit_cfg.get("guidance_scale", {}).get("default", 3.5),
+        step=0.5,
+        key="page4_guidance"
+    )
+
+    # ControlNet 옵션 (portrait/hybrid)
+    if selected_mode_id in ["portrait_mode", "hybrid_mode"]:
+        controlnet_type = st.selectbox(
+            "ControlNet 타입",
+            ["canny", "depth"],
+            key="page4_controlnet_type"
+        )
+        controlnet_strength = st.slider(
+            "ControlNet 강도",
+            0.0, 1.0,
+            value=0.7,
+            step=0.05,
+            key="page4_controlnet_strength"
+        )
+        denoise_strength = st.slider(
+            "Denoise 강도",
+            0.0, 1.0,
+            value=1.0,
+            step=0.05,
+            key="page4_denoise_strength"
+        )
+    else:
+        controlnet_type = "depth"
+        controlnet_strength = 0.0
+        denoise_strength = 1.0
+
+    # Product 모드 전용 옵션
+    blending_strength = None
+    if selected_mode_id == "product_mode":
+        blending_strength = st.slider(
+            "배경-제품 블렌딩 강도",
+            0.0, 1.0,
+            value=0.35,
+            step=0.05,
+            key="page4_blending_strength"
+        )
+
+    st.markdown("---")
+
+    # ---------------------------------------------------------------------
+    # 6) 편집 실행
+    # ---------------------------------------------------------------------
+    if "page4_processing" not in st.session_state:
+        st.session_state["page4_processing"] = False
+
+    button_disabled = st.session_state["page4_processing"]
+
+    if st.button("🚀 이미지 편집 실행", type="primary", disabled=button_disabled):
+        if not final_prompt.strip():
+            st.error("❌ 편집 프롬프트를 입력하세요")
+            return
+
+        st.session_state["page4_processing"] = True
+
+        # API 요청 payload
+        payload = {
+            "experiment_id": selected_mode_id,
+            "input_image_base64": base64.b64encode(image_bytes).decode("utf-8"),
+            "prompt": final_prompt,
+            "negative_prompt": "",
+            "steps": steps,
+            "guidance_scale": guidance_scale,
+            "strength": 0.8,  # deprecated (유지)
+            "controlnet_type": controlnet_type,
+            "controlnet_strength": controlnet_strength,
+            "denoise_strength": denoise_strength,
+            "blending_strength": blending_strength,
+            "background_prompt": final_prompt if selected_mode_id == "product_mode" else None,
+        }
+
+        st.session_state["page4_payload"] = payload
+        st.rerun()
+
+    # ---------------------------------------------------------------------
+    # 7) 실제 처리
+    # ---------------------------------------------------------------------
+    if st.session_state.get("page4_processing") and st.session_state.get("page4_payload"):
+        payload = st.session_state["page4_payload"]
+
+        with st.spinner("⏳ AI 이미지 편집 중..."):
+            try:
+                # call_image_editing_experiment는 이미지 bytes를 직접 반환
+                edited_bytes = api.call_image_editing_experiment(payload)
+                st.session_state["page4_processing"] = False
+
+                if edited_bytes:
+                    # 편집 결과를 세션 상태에 저장 (다운로드 후에도 유지)
+                    st.session_state["page4_edited_result"] = {
+                        "image_bytes": edited_bytes,
+                        "mode_name": selected_mode_name,
+                        "prompt": final_prompt
+                    }
+                    st.rerun()
+                else:
+                    st.error("⚠️ 출력 이미지가 없습니다.")
+            except Exception as e:
+                st.session_state["page4_processing"] = False
+                st.error(f"❌ 편집 실패: {e}")
+
+    # ---------------------------------------------------------------------
+    # 8) 편집 결과 표시 (세션 상태에서 가져오기)
+    # ---------------------------------------------------------------------
+    if st.session_state.get("page4_edited_result"):
+        result = st.session_state["page4_edited_result"]
+        
+        st.markdown("---")
+        st.subheader("🎉 편집 완료!")
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.image(display_image, caption="📸 원본 이미지", use_container_width=True)
+        with col2:
+            st.image(result["image_bytes"], caption=f"✨ {result['mode_name']} 결과", use_container_width=True)
+        
+        st.download_button(
+            "⬇️ 편집 이미지 다운로드",
+            result["image_bytes"],
+            file_name=f"edited_{selected_mode_id}.png",
+            mime="image/png",
+            use_container_width=True,
+            key="download_edited_result"
+        )
+        
+        st.caption(f"💡 사용된 프롬프트: {result['prompt']}")
+        
+        # 새로운 편집 시작 버튼
+        if st.button("🔄 새로운 이미지로 다시 편집", use_container_width=True):
+            st.session_state["page4_edited_result"] = None
+            st.rerun()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # ============================================================
 # 🆕 페이지 4: 이미지 편집 (v3.0 - 3가지 모드)
 # ============================================================
-def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
-    st.title("✨ AI 이미지 편집")
-    st.markdown("**3가지 편집 모드로 원하는 부분만 정밀하게 변경하세요**")
+# def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
+#     st.title("✨ AI 이미지 편집")
+#     st.markdown("**3가지 편집 모드로 원하는 부분만 정밀하게 변경하세요**")
 
-    # 편집 모드 정보 (image_editing_config.yaml에서 로드)
-    EDITING_MODES = {
-        "portrait_mode": {
-            "id": "portrait_mode",
-            "name": "👤 인물 모드",
-            "icon": "👤",
-            "description": "얼굴은 100% 보존하고, 의상과 배경만 자연스럽게 변경",
-            "detail": "Face Detector로 얼굴을 자동 보호하고, ControlNet(Depth/Canny)으로 체형을 유지하면서 옷과 배경만 변경합니다.",
-            "use_cases": ["프로필 사진 배경 변경", "의상 스타일 변경", "촬영 장소 변경"]
-        },
-        "product_mode": {
-            "id": "product_mode",
-            "name": "📦 제품 모드",
-            "icon": "📦",
-            "description": "제품은 그대로 유지하고, 배경을 창의적으로 변경",
-            "detail": "BEN2로 제품을 정밀하게 분리한 뒤, FLUX T2I로 새로운 배경을 생성하고 자연스럽게 합성합니다.",
-            "use_cases": ["제품 사진 배경 교체", "광고 이미지 제작", "스튜디오 배경 연출"]
-        },
-        "hybrid_mode": {
-            "id": "hybrid_mode",
-            "name": "✨ 고급 모드",
-            "icon": "✨",
-            "description": "얼굴과 제품을 동시에 보존하고, 나머지만 변경",
-            "detail": "얼굴(Face Detector)과 제품(BEN2)을 동시에 보호하면서, ControlNet Canny로 손가락 디테일까지 유지합니다.",
-            "use_cases": ["인물+제품 광고", "손에 든 제품 촬영", "모델+제품 합성"]
-        }
-    }
+#     # 편집 모드 정보 (image_editing_config.yaml에서 로드)
+#     EDITING_MODES = {
+#         "portrait_mode": {
+#             "id": "portrait_mode",
+#             "name": "👤 인물 모드",
+#             "icon": "👤",
+#             "description": "얼굴은 100% 보존하고, 의상과 배경만 자연스럽게 변경",
+#             "detail": "Face Detector로 얼굴을 자동 보호하고, ControlNet(Depth/Canny)으로 체형을 유지하면서 옷과 배경만 변경합니다.",
+#             "use_cases": ["프로필 사진 배경 변경", "의상 스타일 변경", "촬영 장소 변경"]
+#         },
+#         "product_mode": {
+#             "id": "product_mode",
+#             "name": "📦 제품 모드",
+#             "icon": "📦",
+#             "description": "제품은 그대로 유지하고, 배경을 창의적으로 변경",
+#             "detail": "BEN2로 제품을 정밀하게 분리한 뒤, FLUX T2I로 새로운 배경을 생성하고 자연스럽게 합성합니다.",
+#             "use_cases": ["제품 사진 배경 교체", "광고 이미지 제작", "스튜디오 배경 연출"]
+#         },
+#         "hybrid_mode": {
+#             "id": "hybrid_mode",
+#             "name": "✨ 고급 모드",
+#             "icon": "✨",
+#             "description": "얼굴과 제품을 동시에 보존하고, 나머지만 변경",
+#             "detail": "얼굴(Face Detector)과 제품(BEN2)을 동시에 보호하면서, ControlNet Canny로 손가락 디테일까지 유지합니다.",
+#             "use_cases": ["인물+제품 광고", "손에 든 제품 촬영", "모델+제품 합성"]
+#         }
+#     }
 
-    # 1️⃣ 이미지 업로드
-    st.subheader("1️⃣ 이미지 업로드")
-    uploaded_file = st.file_uploader(
-        "편집할 이미지를 업로드하세요",
-        type=["png", "jpg", "jpeg", "webp"],
-        help="인물 사진, 제품 사진, 또는 인물+제품 사진 모두 가능합니다"
-    )
+#     # 1️⃣ 이미지 업로드
+#     st.subheader("1️⃣ 이미지 업로드")
+#     uploaded_file = st.file_uploader(
+#         "편집할 이미지를 업로드하세요",
+#         type=["png", "jpg", "jpeg", "webp"],
+#         help="인물 사진, 제품 사진, 또는 인물+제품 사진 모두 가능합니다"
+#     )
 
-    if not uploaded_file:
-        st.info("👆 이미지를 먼저 업로드하세요")
+#     if not uploaded_file:
+#         st.info("👆 이미지를 먼저 업로드하세요")
 
-        # 샘플 사용 예시 표시 (항상 보이게)
-        st.markdown("### 💡 각 모드 사용 예시")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown("**👤 인물 모드**")
-            for use_case in EDITING_MODES["portrait_mode"]["use_cases"]:
-                st.markdown(f"• {use_case}")
-        with col2:
-            st.markdown("**📦 제품 모드**")
-            for use_case in EDITING_MODES["product_mode"]["use_cases"]:
-                st.markdown(f"• {use_case}")
-        with col3:
-            st.markdown("**✨ 고급 모드**")
-            for use_case in EDITING_MODES["hybrid_mode"]["use_cases"]:
-                st.markdown(f"• {use_case}")
-        return
+#         # 샘플 사용 예시 표시 (항상 보이게)
+#         st.markdown("### 💡 각 모드 사용 예시")
+#         col1, col2, col3 = st.columns(3)
+#         with col1:
+#             st.markdown("**👤 인물 모드**")
+#             for use_case in EDITING_MODES["portrait_mode"]["use_cases"]:
+#                 st.markdown(f"• {use_case}")
+#         with col2:
+#             st.markdown("**📦 제품 모드**")
+#             for use_case in EDITING_MODES["product_mode"]["use_cases"]:
+#                 st.markdown(f"• {use_case}")
+#         with col3:
+#             st.markdown("**✨ 고급 모드**")
+#             for use_case in EDITING_MODES["hybrid_mode"]["use_cases"]:
+#                 st.markdown(f"• {use_case}")
+#         return
 
-    # 업로드된 이미지 표시
-    image_bytes = uploaded_file.read()
-    image = Image.open(BytesIO(image_bytes))
+#     # 업로드된 이미지 표시
+#     image_bytes = uploaded_file.read()
+#     image = Image.open(BytesIO(image_bytes))
 
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        st.image(image, caption="원본 이미지", use_container_width=True)
-    with col2:
-        st.markdown("**이미지 정보**")
-        st.write(f"• 크기: {image.size[0]} x {image.size[1]} 픽셀")
-        st.write(f"• 포맷: {image.format}")
-        st.write(f"• 파일 크기: {len(image_bytes) / 1024:.1f} KB")
+#     col1, col2 = st.columns([1, 1])
+#     with col1:
+#         st.image(image, caption="원본 이미지", use_container_width=True)
+#     with col2:
+#         st.markdown("**이미지 정보**")
+#         st.write(f"• 크기: {image.size[0]} x {image.size[1]} 픽셀")
+#         st.write(f"• 포맷: {image.format}")
+#         st.write(f"• 파일 크기: {len(image_bytes) / 1024:.1f} KB")
 
-    # 2️⃣ 선택된 편집 모드 확인
-    if "selected_editing_mode" not in st.session_state:
-        st.warning("⚠️ 사이드바에서 편집 모드를 선택해주세요.")
-        return
+#     # 2️⃣ 선택된 편집 모드 확인
+#     if "selected_editing_mode" not in st.session_state:
+#         st.warning("⚠️ 사이드바에서 편집 모드를 선택해주세요.")
+#         return
 
-    selected_mode_id = st.session_state["selected_editing_mode"]
-    selected_mode = EDITING_MODES[selected_mode_id]
+#     selected_mode_id = st.session_state["selected_editing_mode"]
+#     selected_mode = EDITING_MODES[selected_mode_id]
 
-    st.subheader(f"2️⃣ 선택된 모드: {selected_mode['name']}")
-    st.info(f"**{selected_mode['description']}**\n\n{selected_mode['detail']}")
-    st.divider()
+#     st.subheader(f"2️⃣ 선택된 모드: {selected_mode['name']}")
+#     st.info(f"**{selected_mode['description']}**\n\n{selected_mode['detail']}")
+#     st.divider()
 
-    # 3️⃣ 프롬프트 입력
-    st.subheader("3️⃣ 편집 내용 입력")
+#     # 3️⃣ 프롬프트 입력
+#     st.subheader("3️⃣ 편집 내용 입력")
 
-    # 모드별 프롬프트 입력
-    if selected_mode_id == "portrait_mode":
-        prompt = st.text_area(
-            "의상과 배경 설명",
-            placeholder="예: Wearing a professional navy blue suit, modern office background with glass windows, natural daylight, high quality",
-            help="변경하고 싶은 의상과 배경을 영어로 상세히 설명하세요. 얼굴은 자동으로 보호됩니다.",
-            height=100,
-            key="prompt"
-        )
+#     # 모드별 프롬프트 입력
+#     if selected_mode_id == "portrait_mode":
+#         prompt = st.text_area(
+#             "의상과 배경 설명",
+#             placeholder="예: Wearing a professional navy blue suit, modern office background with glass windows, natural daylight, high quality",
+#             help="변경하고 싶은 의상과 배경을 영어로 상세히 설명하세요. 얼굴은 자동으로 보호됩니다.",
+#             height=100,
+#             key="prompt"
+#         )
 
-    elif selected_mode_id == "product_mode":
-        background_prompt = st.text_area(
-            "배경 설명",
-            placeholder="예: Cyberpunk city at night, neon lights, futuristic atmosphere, bokeh effect, high quality",
-            help="생성하고 싶은 배경을 영어로 상세히 설명하세요. 제품은 자동으로 분리되어 보존됩니다.",
-            height=100,
-            key="background_prompt"
-        )
-        prompt = background_prompt  # API 호출 시 사용
+#     elif selected_mode_id == "product_mode":
+#         background_prompt = st.text_area(
+#             "배경 설명",
+#             placeholder="예: Cyberpunk city at night, neon lights, futuristic atmosphere, bokeh effect, high quality",
+#             help="생성하고 싶은 배경을 영어로 상세히 설명하세요. 제품은 자동으로 분리되어 보존됩니다.",
+#             height=100,
+#             key="background_prompt"
+#         )
+#         prompt = background_prompt  # API 호출 시 사용
 
-    elif selected_mode_id == "hybrid_mode":
-        prompt = st.text_area(
-            "의상과 배경 설명",
-            placeholder="예: Woman in elegant red dress holding champagne bottle, luxury hotel lobby background, golden lighting, professional photography",
-            help="변경하고 싶은 의상과 배경을 영어로 설명하세요. 얼굴과 손에 든 제품은 자동으로 보호됩니다.",
-            height=100,
-            key="prompt"
-        )
+#     elif selected_mode_id == "hybrid_mode":
+#         prompt = st.text_area(
+#             "의상과 배경 설명",
+#             placeholder="예: Woman in elegant red dress holding champagne bottle, luxury hotel lobby background, golden lighting, professional photography",
+#             help="변경하고 싶은 의상과 배경을 영어로 설명하세요. 얼굴과 손에 든 제품은 자동으로 보호됩니다.",
+#             height=100,
+#             key="prompt"
+#         )
 
-    # 4️⃣ 파라미터 설정
-    st.subheader("4️⃣ 파라미터 조정")
+#     # 4️⃣ 파라미터 설정
+#     st.subheader("4️⃣ 파라미터 조정")
 
-    # 모드별 파라미터 설정
-    col1, col2 = st.columns(2)
+#     # 모드별 파라미터 설정
+#     col1, col2 = st.columns(2)
 
-    with col1:
-        steps = st.slider(
-            "생성 품질 (Steps)",
-            min_value=10,
-            max_value=50,
-            value=28,
-            help="높을수록 품질이 향상되지만 시간이 오래 걸립니다"
-        )
+#     with col1:
+#         steps = st.slider(
+#             "생성 품질 (Steps)",
+#             min_value=10,
+#             max_value=50,
+#             value=28,
+#             help="높을수록 품질이 향상되지만 시간이 오래 걸립니다"
+#         )
 
-    with col2:
-        if selected_mode_id == "portrait_mode":
-            guidance_scale = st.slider(
-                "프롬프트 반영 강도",
-                min_value=1.0,
-                max_value=10.0,
-                value=3.5,
-                step=0.5,
-                help="높을수록 프롬프트를 강하게 반영합니다"
-            )
-        elif selected_mode_id == "product_mode":
-            guidance_scale = st.slider(
-                "배경 디테일 강도",
-                min_value=3.0,
-                max_value=10.0,
-                value=5.0,
-                step=0.5,
-                help="높을수록 배경 프롬프트를 강하게 반영합니다"
-            )
-        elif selected_mode_id == "hybrid_mode":
-            guidance_scale = st.slider(
-                "프롬프트 반영 강도",
-                min_value=1.0,
-                max_value=10.0,
-                value=3.5,
-                step=0.5,
-                help="높을수록 프롬프트를 강하게 반영합니다"
-            )
+#     with col2:
+#         if selected_mode_id == "portrait_mode":
+#             guidance_scale = st.slider(
+#                 "프롬프트 반영 강도",
+#                 min_value=1.0,
+#                 max_value=10.0,
+#                 value=3.5,
+#                 step=0.5,
+#                 help="높을수록 프롬프트를 강하게 반영합니다"
+#             )
+#         elif selected_mode_id == "product_mode":
+#             guidance_scale = st.slider(
+#                 "배경 디테일 강도",
+#                 min_value=3.0,
+#                 max_value=10.0,
+#                 value=5.0,
+#                 step=0.5,
+#                 help="높을수록 배경 프롬프트를 강하게 반영합니다"
+#             )
+#         elif selected_mode_id == "hybrid_mode":
+#             guidance_scale = st.slider(
+#                 "프롬프트 반영 강도",
+#                 min_value=1.0,
+#                 max_value=10.0,
+#                 value=3.5,
+#                 step=0.5,
+#                 help="높을수록 프롬프트를 강하게 반영합니다"
+#             )
 
-    # 모드별 추가 파라미터
-    if selected_mode_id == "portrait_mode" or selected_mode_id == "hybrid_mode":
-        col1, col2, col3 = st.columns(3)
+#     # 모드별 추가 파라미터
+#     if selected_mode_id == "portrait_mode" or selected_mode_id == "hybrid_mode":
+#         col1, col2, col3 = st.columns(3)
 
-        with col1:
-            controlnet_type = st.selectbox(
-                "체형 유지 방식",
-                ["depth", "canny"],
-                index=0 if selected_mode_id == "portrait_mode" else 1,
-                help="Depth: 체형/포즈 유지 | Canny: 손가락 디테일 유지"
-            )
+#         with col1:
+#             controlnet_type = st.selectbox(
+#                 "체형 유지 방식",
+#                 ["depth", "canny"],
+#                 index=0 if selected_mode_id == "portrait_mode" else 1,
+#                 help="Depth: 체형/포즈 유지 | Canny: 손가락 디테일 유지"
+#             )
 
-        with col2:
-            controlnet_strength = st.slider(
-                "체형 유지 강도",
-                min_value=0.0,
-                max_value=1.0,
-                value=0.7 if selected_mode_id == "portrait_mode" else 0.8,
-                step=0.05,
-                help="높을수록 원본 체형/포즈를 강하게 유지합니다"
-            )
+#         with col2:
+#             controlnet_strength = st.slider(
+#                 "체형 유지 강도",
+#                 min_value=0.0,
+#                 max_value=1.0,
+#                 value=0.7 if selected_mode_id == "portrait_mode" else 0.8,
+#                 step=0.05,
+#                 help="높을수록 원본 체형/포즈를 강하게 유지합니다"
+#             )
 
-        with col3:
-            denoise_strength = st.slider(
-                "변경 강도",
-                min_value=0.7 if selected_mode_id == "hybrid_mode" else 0.0,
-                max_value=1.0,
-                value=1.0 if selected_mode_id == "portrait_mode" else 0.9,
-                step=0.05,
-                help="1.0 = 완전히 새로 그림, 낮을수록 원본 보존"
-            )
+#         with col3:
+#             denoise_strength = st.slider(
+#                 "변경 강도",
+#                 min_value=0.7 if selected_mode_id == "hybrid_mode" else 0.0,
+#                 max_value=1.0,
+#                 value=1.0 if selected_mode_id == "portrait_mode" else 0.9,
+#                 step=0.05,
+#                 help="1.0 = 완전히 새로 그림, 낮을수록 원본 보존"
+#             )
 
-    elif selected_mode_id == "product_mode":
-        blending_strength = st.slider(
-            "합성 자연스러움",
-            min_value=0.2,
-            max_value=0.6,
-            value=0.35,
-            step=0.05,
-            help="낮을수록 원본 제품 보존, 높을수록 배경과 자연스럽게 융합"
-        )
+#     elif selected_mode_id == "product_mode":
+#         blending_strength = st.slider(
+#             "합성 자연스러움",
+#             min_value=0.2,
+#             max_value=0.6,
+#             value=0.35,
+#             step=0.05,
+#             help="낮을수록 원본 제품 보존, 높을수록 배경과 자연스럽게 융합"
+#         )
 
-    # 네거티브 프롬프트 (선택 사항)
-    with st.expander("⚙️ 추가 설정 (선택)"):
-        negative_prompt = st.text_area(
-            "네거티브 프롬프트",
-            value="blurry, low quality, distorted, bad anatomy",
-            help="생성하지 않을 요소를 설명하세요 (FLUX 모델은 효과가 제한적)",
-            height=60,
-            key="negative_prompt"
-        )
+#     # 네거티브 프롬프트 (선택 사항)
+#     with st.expander("⚙️ 추가 설정 (선택)"):
+#         negative_prompt = st.text_area(
+#             "네거티브 프롬프트",
+#             value="blurry, low quality, distorted, bad anatomy",
+#             help="생성하지 않을 요소를 설명하세요 (FLUX 모델은 효과가 제한적)",
+#             height=60,
+#             key="negative_prompt"
+#         )
 
-    # 5️⃣ 편집 실행
-    st.subheader("5️⃣ 편집 실행")
+#     # 5️⃣ 편집 실행
+#     st.subheader("5️⃣ 편집 실행")
 
-    # 버튼 비활성화 처리를 위한 세션 상태
-    if "editing_in_progress" not in st.session_state:
-        st.session_state["editing_in_progress"] = False
+#     # 버튼 비활성화 처리를 위한 세션 상태
+#     if "editing_in_progress" not in st.session_state:
+#         st.session_state["editing_in_progress"] = False
 
-    if "editing_request" not in st.session_state:
-        st.session_state["editing_request"] = None
+#     if "editing_request" not in st.session_state:
+#         st.session_state["editing_request"] = None
 
-    # 편집 버튼 (진행 중일 때 비활성화)
-    button_disabled = st.session_state["editing_in_progress"]
+#     # 편집 버튼 (진행 중일 때 비활성화)
+#     button_disabled = st.session_state["editing_in_progress"]
 
-    if st.button(f"{selected_mode['icon']} 편집 시작", type="primary", use_container_width=True, disabled=button_disabled):
-        # 프롬프트 체크
-        if not prompt or not prompt.strip():
-            st.warning("⚠️ 프롬프트를 입력하세요")
-            st.stop()
+#     if st.button(f"{selected_mode['icon']} 편집 시작", type="primary", use_container_width=True, disabled=button_disabled):
+#         # 프롬프트 체크
+#         if not prompt or not prompt.strip():
+#             st.warning("⚠️ 프롬프트를 입력하세요")
+#             st.stop()
 
-        # 편집 요청 저장 (모드별 파라미터 포함)
-        payload = {
-            "experiment_id": selected_mode_id,
-            "input_image_base64": base64.b64encode(image_bytes).decode("utf-8"),
-            "prompt": prompt,
-            "negative_prompt": negative_prompt,
-            "steps": steps,
-            "guidance_scale": guidance_scale,
-            "strength": 0.8,  # 하위 호환성 (deprecated)
-        }
+#         # 편집 요청 저장 (모드별 파라미터 포함)
+#         payload = {
+#             "experiment_id": selected_mode_id,
+#             "input_image_base64": base64.b64encode(image_bytes).decode("utf-8"),
+#             "prompt": prompt,
+#             "negative_prompt": negative_prompt,
+#             "steps": steps,
+#             "guidance_scale": guidance_scale,
+#             "strength": 0.8,  # 하위 호환성 (deprecated)
+#         }
 
-        # 모드별 추가 파라미터
-        if selected_mode_id == "portrait_mode" or selected_mode_id == "hybrid_mode":
-            payload["controlnet_type"] = controlnet_type
-            payload["controlnet_strength"] = controlnet_strength
-            payload["denoise_strength"] = denoise_strength
+#         # 모드별 추가 파라미터
+#         if selected_mode_id == "portrait_mode" or selected_mode_id == "hybrid_mode":
+#             payload["controlnet_type"] = controlnet_type
+#             payload["controlnet_strength"] = controlnet_strength
+#             payload["denoise_strength"] = denoise_strength
 
-        if selected_mode_id == "product_mode":
-            payload["blending_strength"] = blending_strength
-            payload["background_prompt"] = prompt  # 배경 프롬프트를 background_prompt로도 전달
+#         if selected_mode_id == "product_mode":
+#             payload["blending_strength"] = blending_strength
+#             payload["background_prompt"] = prompt  # 배경 프롬프트를 background_prompt로도 전달
 
-        st.session_state["editing_request"] = payload
-        st.session_state["editing_in_progress"] = True
-        st.rerun()
+#         st.session_state["editing_request"] = payload
+#         st.session_state["editing_in_progress"] = True
+#         st.rerun()
 
-    # 편집 요청이 있으면 실행
-    if st.session_state["editing_in_progress"] and st.session_state["editing_request"]:
-        payload = st.session_state["editing_request"]
+#     # 편집 요청이 있으면 실행
+#     if st.session_state["editing_in_progress"] and st.session_state["editing_request"]:
+#         payload = st.session_state["editing_request"]
 
-        # 진행상황 표시
-        selected_mode = EDITING_MODES.get(payload["experiment_id"], {})
-        mode_name = selected_mode.get("name", "이미지 편집")
+#         # 진행상황 표시
+#         selected_mode = EDITING_MODES.get(payload["experiment_id"], {})
+#         mode_name = selected_mode.get("name", "이미지 편집")
 
-        # 파이프라인 단계 정의
-        pipeline_steps = {
-            "portrait_mode": [
-                "📥 이미지 업로드 및 전처리",
-                "🔍 얼굴 영역 자동 감지",
-                "🎭 얼굴 마스크 생성 및 반전",
-                "📊 체형 가이드 추출 (Depth/Canny)",
-                "🎨 ControlNet 적용",
-                "🚀 이미지 생성 (의상/배경 변경)",
-                "💾 결과 저장 및 후처리"
-            ],
-            "product_mode": [
-                "📥 이미지 업로드 및 전처리",
-                "✂️ BEN2 배경 제거 (제품 분리)",
-                "🎨 AI 배경 생성 (T2I)",
-                "🔗 제품+배경 레이어 합성",
-                "🖼️ FLUX Fill 자연스러운 블렌딩",
-                "💾 결과 저장 및 후처리"
-            ],
-            "hybrid_mode": [
-                "📥 이미지 업로드 및 전처리",
-                "🔍 얼굴 + 제품 영역 감지",
-                "🎭 멀티 마스크 생성 및 합성",
-                "📊 윤곽선 가이드 추출 (Canny)",
-                "🎨 ControlNet 적용",
-                "🚀 이미지 생성 (의상/배경 변경)",
-                "💾 결과 저장 및 후처리"
-            ]
-        }
+#         # 파이프라인 단계 정의
+#         pipeline_steps = {
+#             "portrait_mode": [
+#                 "📥 이미지 업로드 및 전처리",
+#                 "🔍 얼굴 영역 자동 감지",
+#                 "🎭 얼굴 마스크 생성 및 반전",
+#                 "📊 체형 가이드 추출 (Depth/Canny)",
+#                 "🎨 ControlNet 적용",
+#                 "🚀 이미지 생성 (의상/배경 변경)",
+#                 "💾 결과 저장 및 후처리"
+#             ],
+#             "product_mode": [
+#                 "📥 이미지 업로드 및 전처리",
+#                 "✂️ BEN2 배경 제거 (제품 분리)",
+#                 "🎨 AI 배경 생성 (T2I)",
+#                 "🔗 제품+배경 레이어 합성",
+#                 "🖼️ FLUX Fill 자연스러운 블렌딩",
+#                 "💾 결과 저장 및 후처리"
+#             ],
+#             "hybrid_mode": [
+#                 "📥 이미지 업로드 및 전처리",
+#                 "🔍 얼굴 + 제품 영역 감지",
+#                 "🎭 멀티 마스크 생성 및 합성",
+#                 "📊 윤곽선 가이드 추출 (Canny)",
+#                 "🎨 ControlNet 적용",
+#                 "🚀 이미지 생성 (의상/배경 변경)",
+#                 "💾 결과 저장 및 후처리"
+#             ]
+#         }
 
-        steps = pipeline_steps.get(payload["experiment_id"], [])
+#         steps = pipeline_steps.get(payload["experiment_id"], [])
 
-        try:
-            # 진행상황 안내 표시
-            st.info(f"🎨 **{mode_name} 파이프라인 실행 중...**\n\n" +
-                   "\n".join([f"{i+1}. {step}" for i, step in enumerate(steps)]) +
-                   "\n\n💡 백엔드 로그를 모니터링하여 실시간 진행상황을 확인하세요!")
+#         try:
+#             # 진행상황 안내 표시
+#             st.info(f"🎨 **{mode_name} 파이프라인 실행 중...**\n\n" +
+#                    "\n".join([f"{i+1}. {step}" for i, step in enumerate(steps)]) +
+#                    "\n\n💡 백엔드 로그를 모니터링하여 실시간 진행상황을 확인하세요!")
 
-            with st.spinner(f"{mode_name} 실행 중... 잠시만 기다려주세요 (평균 30-60초 소요)"):
-                result = api.edit_with_comfyui(payload)
+#             with st.spinner(f"{mode_name} 실행 중... 잠시만 기다려주세요 (평균 30-60초 소요)"):
+#                 result = api.edit_with_comfyui(payload)
 
-            # 편집 완료 - 버튼 다시 활성화 및 요청 초기화
-            st.session_state["editing_in_progress"] = False
-            st.session_state["editing_request"] = None
+#             # 편집 완료 - 버튼 다시 활성화 및 요청 초기화
+#             st.session_state["editing_in_progress"] = False
+#             st.session_state["editing_request"] = None
 
-            if result and result.get("success"):
-                st.success(f"✅ 편집 완료! ({selected_mode['name']} | 소요 시간: {result.get('elapsed_time', 0):.1f}초)")
+#             if result and result.get("success"):
+#                 st.success(f"✅ 편집 완료! ({selected_mode['name']} | 소요 시간: {result.get('elapsed_time', 0):.1f}초)")
 
-                # 6️⃣ 결과 표시
-                st.subheader("6️⃣ 편집 결과")
+#                 # 6️⃣ 결과 표시
+#                 st.subheader("6️⃣ 편집 결과")
 
-                # 배경 제거 이미지 (있는 경우)
-                if result.get("background_removed_image_base64"):
-                    bg_removed_bytes = base64.b64decode(result["background_removed_image_base64"])
-                    bg_removed_image = Image.open(BytesIO(bg_removed_bytes))
+#                 # 배경 제거 이미지 (있는 경우)
+#                 if result.get("background_removed_image_base64"):
+#                     bg_removed_bytes = base64.b64decode(result["background_removed_image_base64"])
+#                     bg_removed_image = Image.open(BytesIO(bg_removed_bytes))
 
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.markdown("**📸 원본 이미지**")
-                        st.image(image, use_container_width=True)
-                    with col2:
-                        st.markdown("**✂️ 배경 제거 (중간 단계)**")
-                        st.image(bg_removed_image, use_container_width=True)
-                    with col3:
-                        st.markdown(f"**{selected_mode['icon']} 최종 결과**")
-                        output_bytes = base64.b64decode(result["output_image_base64"])
-                        output_image = Image.open(BytesIO(output_bytes))
-                        st.image(output_image, use_container_width=True)
+#                     col1, col2, col3 = st.columns(3)
+#                     with col1:
+#                         st.markdown("**📸 원본 이미지**")
+#                         st.image(image, use_container_width=True)
+#                     with col2:
+#                         st.markdown("**✂️ 배경 제거 (중간 단계)**")
+#                         st.image(bg_removed_image, use_container_width=True)
+#                     with col3:
+#                         st.markdown(f"**{selected_mode['icon']} 최종 결과**")
+#                         output_bytes = base64.b64decode(result["output_image_base64"])
+#                         output_image = Image.open(BytesIO(output_bytes))
+#                         st.image(output_image, use_container_width=True)
 
-                    # 다운로드 버튼
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.download_button(
-                            "⬇️ 배경 제거 이미지 다운로드",
-                            BytesIO(bg_removed_bytes).getvalue(),
-                            f"background_removed_{selected_mode_id}.png",
-                            "image/png",
-                            use_container_width=True
-                        )
-                    with col2:
-                        st.download_button(
-                            "⬇️ 최종 결과 다운로드",
-                            BytesIO(output_bytes).getvalue(),
-                            f"edited_{selected_mode_id}.png",
-                            "image/png",
-                            use_container_width=True
-                        )
+#                     # 다운로드 버튼
+#                     col1, col2 = st.columns(2)
+#                     with col1:
+#                         st.download_button(
+#                             "⬇️ 배경 제거 이미지 다운로드",
+#                             BytesIO(bg_removed_bytes).getvalue(),
+#                             f"background_removed_{selected_mode_id}.png",
+#                             "image/png",
+#                             use_container_width=True
+#                         )
+#                     with col2:
+#                         st.download_button(
+#                             "⬇️ 최종 결과 다운로드",
+#                             BytesIO(output_bytes).getvalue(),
+#                             f"edited_{selected_mode_id}.png",
+#                             "image/png",
+#                             use_container_width=True
+#                         )
 
-                else:
-                    # 배경 제거 이미지 없이 최종 결과만
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("**📸 원본 이미지**")
-                        st.image(image, use_container_width=True)
-                    with col2:
-                        st.markdown(f"**{selected_mode['icon']} 편집 결과**")
-                        output_bytes = base64.b64decode(result["output_image_base64"])
-                        output_image = Image.open(BytesIO(output_bytes))
-                        st.image(output_image, use_container_width=True)
+#                 else:
+#                     # 배경 제거 이미지 없이 최종 결과만
+#                     col1, col2 = st.columns(2)
+#                     with col1:
+#                         st.markdown("**📸 원본 이미지**")
+#                         st.image(image, use_container_width=True)
+#                     with col2:
+#                         st.markdown(f"**{selected_mode['icon']} 편집 결과**")
+#                         output_bytes = base64.b64decode(result["output_image_base64"])
+#                         output_image = Image.open(BytesIO(output_bytes))
+#                         st.image(output_image, use_container_width=True)
 
-                    # 다운로드 버튼
-                    st.download_button(
-                        "⬇️ 편집 결과 다운로드",
-                        BytesIO(output_bytes).getvalue(),
-                        f"edited_{selected_mode_id}.png",
-                        "image/png",
-                        use_container_width=True
-                    )
+#                     # 다운로드 버튼
+#                     st.download_button(
+#                         "⬇️ 편집 결과 다운로드",
+#                         BytesIO(output_bytes).getvalue(),
+#                         f"edited_{selected_mode_id}.png",
+#                         "image/png",
+#                         use_container_width=True
+#                     )
 
-            else:
-                # 편집 실패 - 버튼 다시 활성화 및 요청 초기화
-                st.session_state["editing_in_progress"] = False
-                st.session_state["editing_request"] = None
-                error_msg = result.get("error", "알 수 없는 오류") if result else "응답 없음"
-                st.error(f"❌ 편집 실패: {error_msg}")
+#             else:
+#                 # 편집 실패 - 버튼 다시 활성화 및 요청 초기화
+#                 st.session_state["editing_in_progress"] = False
+#                 st.session_state["editing_request"] = None
+#                 error_msg = result.get("error", "알 수 없는 오류") if result else "응답 없음"
+#                 st.error(f"❌ 편집 실패: {error_msg}")
 
-        except Exception as e:
-            # 예외 발생 시에도 버튼 다시 활성화 및 요청 초기화
-            st.session_state["editing_in_progress"] = False
-            st.session_state["editing_request"] = None
-            st.error(f"❌ 오류 발생: {e}")
+#         except Exception as e:
+#             # 예외 발생 시에도 버튼 다시 활성화 및 요청 초기화
+#             st.session_state["editing_in_progress"] = False
+#             st.session_state["editing_request"] = None
+#             st.error(f"❌ 오류 발생: {e}")
 
 # ============================================================
 # 실행
