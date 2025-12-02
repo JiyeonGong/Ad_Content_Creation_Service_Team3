@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from .model_registry import get_registry
 from .model_loader import ModelLoader
+from .text_overlay import create_base_text_image, remove_background, apply_controlnet_3d_rendering
 from .exceptions import (
     ServiceError,
     PromptOptimizationError,
@@ -1202,3 +1203,64 @@ def check_comfyui_status() -> dict:
             "connected": False,
             "error": str(e)
         }
+
+# ===========================
+# 3D 캘리그라피 생성 (텍스트 오버레이)
+# ===========================
+DEFAULT_FONT_PATH = "/home/shared/RiaSans-Bold.ttf"
+
+def generate_calligraphy_core(
+    text: str,
+    color_hex: str,
+    style: str,
+    font_path: str = ""
+) -> bytes:
+    """
+    3D 캘리그라피 이미지 생성 (팀원 코드 기반)
+    
+    Args:
+        text: 생성할 텍스트
+        color_hex: 색상 HEX 코드 (예: "#FF5733")
+        style: 스타일 (현재는 사용하지 않음, 향후 확장용)
+        font_path: 폰트 파일 경로 (비어있으면 기본 폰트 사용)
+    
+    Returns:
+        bytes: PNG 이미지 바이트
+    
+    Raises:
+        ImageProcessingError: 이미지 생성 실패 시
+    """
+    try:
+        # 폰트 경로 검증
+        if not font_path or font_path.strip() == "":
+            font_path = DEFAULT_FONT_PATH
+            print(f"ℹ️ 기본 폰트 사용: {font_path}")
+        
+        if not os.path.exists(font_path):
+            raise ImageProcessingError(f"폰트 파일을 찾을 수 없습니다: {font_path}")
+        
+        # 1. 기본 텍스트 이미지 생성 (흑백, 형태 제어용)
+        print(f"📝 텍스트 이미지 생성 중: '{text}'")
+        base_image = create_base_text_image(text, font_path, font_size=600)
+        
+        # 2. ControlNet Depth SDXL로 3D 렌더링 적용 (색상 + 스타일)
+        print(f"🎨 3D 렌더링 적용 중 (색상: {color_hex}, 스타일: {style})...")
+        rendered_image = apply_controlnet_3d_rendering(base_image, color_hex, style)
+        
+        # 3. 배경 제거
+        print(f"✂️ 배경 제거 중...")
+        no_bg_image = remove_background(rendered_image)
+        
+        # 4. PNG로 변환
+        output_io = io.BytesIO()
+        no_bg_image.save(output_io, format="PNG")
+        output_bytes = output_io.getvalue()
+        
+        print(f"✅ 캘리그라피 생성 완료 ({len(output_bytes)} bytes)")
+        return output_bytes
+        
+    except FileNotFoundError as e:
+        raise ImageProcessingError(f"폰트 파일 오류: {e}")
+    except Exception as e:
+        logger.error(f"캘리그라피 생성 실패: {e}")
+        raise ImageProcessingError(f"캘리그라피 생성 중 오류 발생: {e}")

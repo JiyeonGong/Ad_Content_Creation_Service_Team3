@@ -10,6 +10,7 @@
 
 **최근 업데이트:**
 - ✅ Phase 1 & Phase 2 구조 개선 완료 (2025-12-01)
+- 🔤 3D 캘리그라피 생성 기능 추가 (2025-12-02) NEW!
 - 🚀 GPT API 비용 66% 절감, 처리 속도 50% 향상
 - 🎨 ComfyUI 통합으로 전문가급 이미지 편집 지원
 - 🔧 코드 복잡도 95% 감소 (리팩토링 완료)
@@ -70,6 +71,15 @@
 - **✨ 하이브리드 모드**: Qwen-Image-Edit로 얼굴+제품 동시 보존
 - ControlNet 통합 (Depth, Canny, Pose 등 7가지 타입)
 - 실시간 프리뷰 및 비교
+
+#### 5. 🔤 3D 캘리그라피 생성 (NEW!)
+- **AI 배경 제거 (rembg)** 기반 입체적인 텍스트 이미지 생성
+- 배경 투명 PNG 출력 → 다른 이미지 위에 합성 가능
+- 주요 기능:
+  - 한글/영문 지원
+  - 커스텀 폰트 경로 지정
+  - 자동 후처리 (Threshold → Erosion → Gaussian Blur)
+- 사용 예시: 광고 문구, 이벤트 제목, 강조 텍스트
 
 ---
 
@@ -222,6 +232,8 @@
 - **Diffusers**: Hugging Face 모델 (레거시 지원)
 - **Transformers**: NLP 모델
 - **Accelerate**: 모델 최적화
+- **rembg**: AI 배경 제거 (u2net 모델)
+- **OpenCV**: 이미지 후처리
 
 ### 기타
 - **Pillow**: 이미지 처리
@@ -1322,6 +1334,7 @@ git push origin feature/amazing-feature
 **필수 문서:**
 - **[ComfyUI 통합 가이드](./docs/COMFYUI_INTEGRATION.md)** - ComfyUI 설치, 워크플로우, 후처리 옵션
 - **[이미지 편집 가이드](./docs/IMAGE_EDITING_GUIDE.md)** - BEN2, FLUX.1-Fill, Qwen-Image 사용법
+- **[텍스트 오버레이 통합 기록](./recoding/2025-12-02_text_overlay_integration.md)** - 3D 캘리그라피 구현 상세
 - **[ARCHITECTURE_ANALYSIS.md](./ARCHITECTURE_ANALYSIS.md)** - 코드 구조 분석 및 개선 권장사항
 - **[PHASE_1_2_IMPLEMENTATION.md](./PHASE_1_2_IMPLEMENTATION.md)** - Phase 1 & 2 구현 완료 보고서
 
@@ -1358,6 +1371,37 @@ git push origin feature/amazing-feature
 ---
 
 ## 📝 업데이트 로그
+
+### v3.1.0 (2025-12-02) - 3D 캘리그라피 기능 추가 🔤
+
+**주요 기능:**
+- ✨ **3D 캘리그라피 생성**: 페이지 5 신규 추가
+- 🎨 **AI 배경 제거**: rembg (u2net) 기반 투명 배경 생성
+- 🖼️ **후처리 파이프라인**: Threshold → Erosion → Gaussian Blur
+- 📦 **PNG 출력**: 배경 투명 이미지로 다른 이미지와 합성 가능
+
+**신규 파일:**
+- `src/backend/text_overlay.py` - 캘리그라피 생성 핵심 로직
+- `recoding/2025-12-02_text_overlay_integration.md` - 구현 상세 문서
+
+**수정 파일:**
+- `src/backend/services.py` - generate_calligraphy_core() 추가
+- `src/backend/main.py` - /api/generate_calligraphy 엔드포인트 추가
+- `src/frontend/app.py` - render_text_overlay_page() 구현
+- `src/frontend/frontend_config.yaml` - 페이지 5 설정 추가
+- `README.md` - 캘리그라피 기능 문서화
+
+**기술 스택:**
+- rembg (u2net 모델)
+- OpenCV (cv2)
+- PIL (Pillow)
+
+**성능:**
+- 평균 생성 시간: 2-5초
+- 이미지 크기: 1024x1024 ~ 2048x2048 (자동 조정)
+- 파일 크기: 50KB ~ 500KB (PNG)
+
+---
 
 ### v3.0.0 (2025-12-01) - Phase 1 & 2 아키텍처 개선 🚀
 

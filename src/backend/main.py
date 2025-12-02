@@ -96,6 +96,12 @@ class ImageEditingResponse(BaseModel):
     error: Optional[str] = None
     elapsed_time: Optional[float] = None
 
+class CalligraphyRequest(BaseModel):
+    text: str
+    color_hex: str = "#FFFFFF"  # 기본값: 흰색
+    style: str = "default"
+    font_path: str = ""  # 비어있으면 기본 폰트 사용
+
 # 🆕 개선: startup에서 모델 로드 (1회만)
 @app.on_event("startup")
 async def startup_event():
@@ -307,3 +313,42 @@ def unload_model_comfyui():
 def get_current_model():
     """현재 로드된 모델 확인"""
     return {"current_model": services.get_current_comfyui_model()}
+
+@app.post("/api/generate_calligraphy")
+async def generate_calligraphy(req: CalligraphyRequest):
+    """
+    3D 캘리그라피 이미지 생성
+    
+    Args:
+        req: CalligraphyRequest (text, color_hex, style, font_path)
+    
+    Returns:
+        PNG 이미지 (Response with media_type="image/png")
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        
+        from functools import partial
+        generate_func = partial(
+            services.generate_calligraphy_core,
+            req.text,
+            req.color_hex,
+            req.style,
+            req.font_path
+        )
+        
+        image_bytes = await loop.run_in_executor(None, generate_func)
+        
+        # PNG 이미지를 직접 반환
+        from fastapi.responses import Response
+        return Response(content=image_bytes, media_type="image/png")
+        
+    except ImageProcessingError as e:
+        # 이미지 처리 실패
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e), "type": "image_processing_error"}
+        )
+    except Exception as e:
+        logger.error(f"캘리그라피 생성 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"캘리그라피 생성 실패: {e}")

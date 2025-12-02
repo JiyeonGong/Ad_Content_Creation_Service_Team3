@@ -32,6 +32,11 @@ pages:
     title: "배경 제거 + 편집"
     description: "BEN2 배경 제거 + 이미지 편집 (FLUX.1-Fill, Qwen-Image)"
 
+  - id: "text_overlay"
+    icon: "🔤"
+    title: "3D 캘리그라피 생성"
+    description: "입체적인 3D 텍스트 이미지를 생성합니다 (배경 투명)"
+
 # 문구 생성 설정
 caption:
   service_types:

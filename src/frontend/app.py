@@ -296,6 +296,24 @@ class APIClient:
         except Exception as e:
             raise RuntimeError(f"call_image_editing_experiment 오류: {e}")
 
+    # ============================================================
+    # 🆕 3D 캘리그라피 생성 (페이지5)
+    # ============================================================
+    def call_calligraphy(self, payload: dict) -> Optional[BytesIO]:
+        """페이지5: 3D 캘리그라피 생성 API 호출"""
+        try:
+            url = f"{self.base_url}/api/generate_calligraphy"
+            response = requests.post(url, json=payload, timeout=self.timeout)
+            
+            if response.status_code != 200:
+                raise RuntimeError(f"캘리그라피 생성 실패: {response.text}")
+            
+            # PNG 이미지 바이트 직접 반환
+            return BytesIO(response.content)
+            
+        except Exception as e:
+            raise RuntimeError(f"call_calligraphy 오류: {e}")
+
 
 
 
@@ -360,7 +378,7 @@ def main():
     # 모델 선택 (ModelSelector 사용)
     st.sidebar.markdown("---")
     
-    from .model_selector import ModelSelector
+    from model_selector import ModelSelector
     selector = ModelSelector(api)
     
     if page_id == "image_editing_experiment":
@@ -417,6 +435,8 @@ def main():
         render_i2i_page(config, api, connect_mode)
     elif page_id == "image_editing_experiment":
         render_image_editing_experiment_page(config, api)
+    elif page_id == "text_overlay":
+        render_text_overlay_page(config, api)
 
 # ============================================================
 # 페이지 1: 문구 생성
@@ -532,7 +552,7 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         )
 
     # 페이지1 문구를 보조 컨텍스트로 붙이기 (PromptHelper 사용)
-    from .utils import PromptHelper
+    from utils import PromptHelper
     
     raw_prompt = PromptHelper.combine_caption_and_prompt(
         base_prompt, selected_caption, hashtags, connect_mode
@@ -544,6 +564,8 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
     # ─────────────────────────────────────────
     # 2) 모델 / 해상도 / steps / guidance 설정
     # ─────────────────────────────────────────
+    from utils import PromptHelper
+    
     # 사이드바에서 선택된 생성 모델 ID
     selected_model_id = st.session_state.get("selected_generation_model_id")
     current_model_name = api.get_current_comfyui_model()
@@ -1037,7 +1059,7 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         st.info("💡 기본 문구에 균형 잡힌 분위기 키워드를 섞어 안정적으로 조절된 이미지를 생성합니다.")
 
     # PromptHelper 사용 (중복 제거)
-    from .utils import PromptHelper
+    from utils import PromptHelper
     
     support_prompt = ""
     if connect_mode and selected_caption:
@@ -1220,180 +1242,6 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
 
 
 
-
-
-
-
-
-
-# def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
-#     st.title("🖼️ 이미지 편집 (Image-to-Image)")
-#     st.info("💡 업로드된 이미지를 AI로 편집합니다 (배경 변경, 스타일 변경 등)")
-    
-#     # 이미지 소스
-#     uploaded = st.file_uploader("이미지 업로드", type=["png", "jpg", "jpeg"])
-#     preloaded = st.session_state.get("generated_images", [])
-    
-#     image_bytes = None
-#     display_image = None
-    
-#     if uploaded:
-#         image_bytes = uploaded.getvalue()
-#         display_image = image_bytes
-#     elif preloaded and connect_mode:
-#         st.info("🔗 연결 모드: 페이지2 이미지 사용")
-#         idx = st.selectbox("이미지 선택", range(len(preloaded)), format_func=lambda x: f"버전 {x+1}")
-#         image_bytes = preloaded[idx]["bytes"].getvalue()
-#         display_image = image_bytes
-    
-#     if display_image:
-#         st.image(display_image, caption="선택된 이미지", width=300)
-#     else:
-#         st.warning("⚠️ 이미지를 업로드하거나 페이지2에서 생성하세요")
-    
-#     # 문구
-#     selected_caption = ""
-#     if connect_mode and "selected_caption" in st.session_state:
-#         st.info(f"🔗 사용할 문구: {st.session_state['selected_caption']}")
-#         selected_caption = st.session_state["selected_caption"]
-#     else:
-#         selected_caption = st.text_input("편집 문구", placeholder=config.get("ui.placeholders.caption", ""))
-    
-#     # I2I 설정
-#     i2i_config = config.get("image.i2i", {})
-#     strength = st.slider(
-#         "✨ 변화 강도 (Strength)",
-#         min_value=i2i_config.get("strength", {}).get("min", 0.0),
-#         max_value=i2i_config.get("strength", {}).get("max", 1.0),
-#         value=i2i_config.get("strength", {}).get("default", 0.75),
-#         step=i2i_config.get("strength", {}).get("step", 0.05),
-#         help="0.0: 원본 유지, 1.0: 완전히 새로운 이미지"
-#     )
-    
-#     edit_prompt = st.text_area(
-#         "추가 지시 (선택)",
-#         placeholder=config.get("ui.placeholders.edit_prompt", "")
-#     )
-
-#     # 선택된 모델 ID 가져오기 (사이드바에서 선택한 모델)
-#     selected_model_id = st.session_state.get("selected_generation_model_id")
-
-#     # 현재 로드된 모델 확인
-#     current_model_name = api.get_current_comfyui_model()
-#     is_flux = (selected_model_id and "flux" in selected_model_id.lower()) or (current_model_name and "flux" in current_model_name.lower())
-
-#     # 출력 크기 (입력 이미지가 이 크기로 리사이즈됨)
-#     preset_sizes = config.get("image.preset_sizes", [])
-
-#     # FLUX 모델 사용 시 권장 크기 표시
-#     size_options = []
-#     for s in preset_sizes:
-#         label = f"{s['name']} ({s['width']}x{s['height']})"
-#         if is_flux and s['width'] == 1024 and s['height'] == 1024:
-#             label += " ⭐ 권장"
-#         size_options.append(label)
-
-#     # 모델 선택 상태 표시
-#     if not selected_model_id or selected_model_id == "none":
-#         st.warning("⚠️ 사이드바에서 생성 모델을 먼저 선택하세요")
-
-#     selected_size = st.selectbox(
-#         "출력 크기",
-#         size_options,
-#         help="입력 이미지가 이 크기로 리사이즈된 후 편집됩니다"
-#     )
-
-#     size_idx = size_options.index(selected_size)
-#     width = preset_sizes[size_idx]["width"]
-#     height = preset_sizes[size_idx]["height"]
-
-#     # 후처리 방식 선택
-#     st.divider()
-#     st.subheader("🔧 후처리 옵션")
-
-#     post_process_method = st.radio(
-#         "후처리 방식",
-#         options=["none", "impact_pack"],
-#         format_func=lambda x: {
-#             "none": "없음 (빠름)",
-#             "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)"
-#         }[x],
-#         index=0,
-#         help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 얼굴/손 보정",
-#         key="i2i_post_process"
-#     )
-
-#     # ADetailer 제거됨 (ComfyUI 사용으로 인해 비활성화)
-#     enable_adetailer = False
-#     adetailer_targets = None
-
-#     # 처리 중 상태 확인
-#     is_processing = st.session_state.get("is_processing_i2i", False)
-
-#     # 버튼 표시 (처리 중이면 비활성화)
-#     if is_processing:
-#         st.warning("⏳ 이미지 편집 중입니다... 잠시만 기다려주세요.")
-#         submitted = False
-#     else:
-#         submitted = st.button("✨ 이미지 편집", type="primary", disabled=is_processing)
-    
-#     if submitted:
-#         if not image_bytes:
-#             st.error("❌ 이미지를 먼저 업로드하세요")
-#             return
-#         if not selected_caption:
-#             st.error("❌ 문구를 입력하세요")
-#             return
-        
-#         # 처리 시작 상태 설정
-#         st.session_state["is_processing_i2i"] = True
-#         st.rerun()
-
-#     # 실제 처리 로직 (rerun 후 실행됨)
-#     if is_processing and image_bytes and selected_caption:
-#         aligned_w = align_to_64(width)
-#         aligned_h = align_to_64(height)
-        
-#         final_prompt = caption_to_prompt(selected_caption)
-#         if edit_prompt:
-#             final_prompt += f", {edit_prompt}"
-        
-#         payload = {
-#             "input_image_base64": base64.b64encode(image_bytes).decode(),
-#             "prompt": final_prompt,
-#             "strength": strength,
-#             "width": aligned_w,
-#             "height": aligned_h,
-#             "steps": 30,
-#             "post_process_method": post_process_method,
-#             "enable_adetailer": enable_adetailer,
-#             "adetailer_targets": adetailer_targets,
-#             "model_name": selected_model_id  # 선택된 모델 전달
-#         }
-        
-#         try:
-#             with st.spinner("편집 중..."):
-#                 edited = api.call_i2i(payload)
-
-#             # 처리 완료 - 상태 해제
-#             st.session_state["is_processing_i2i"] = False
-
-#             if edited:
-#                 col1, col2 = st.columns(2)
-#                 with col1:
-#                     st.subheader("원본")
-#                     st.image(image_bytes, use_container_width=True)
-#                 with col2:
-#                     st.subheader("편집됨")
-#                     st.image(edited, use_container_width=True)
-
-#                 st.success("✅ 완료!")
-#                 st.download_button("⬇️ 편집 이미지 다운로드", edited, "edited.png", "image/png")
-#         except Exception as e:
-#             # 에러 발생 시에도 상태 해제
-#             st.session_state["is_processing_i2i"] = False
-#             st.error(f"❌ 편집 실패: {e}")
-
 # ============================================================
 # 🆕 페이지 4: 이미지 편집 (v3.0 - FLUX 보조 프롬프팅 적용)
 # ============================================================
@@ -1405,10 +1253,29 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     # 0) 유틸 - 보조 프롬프트 생성 (페이지2/3와 동일)
     # ---------------------------------------------------------------------
     # PromptHelper 사용 (중복 제거)
-    from .utils import PromptHelper
+    from utils import PromptHelper
 
     # ---------------------------------------------------------------------
-    # 1) 이미지 입력
+    # 1) 사이드바에서 선택된 편집 모드 가져오기
+    # ---------------------------------------------------------------------
+    # 사이드바에서 이미 ModelSelector를 통해 편집 모드를 선택했으므로
+    # 세션 스테이트에서 가져와 사용
+    selected_mode_id = st.session_state.get("selected_editing_mode", "portrait_mode")
+    
+    # 모드 이름 표시를 위한 매핑
+    mode_display_names = {
+        "portrait_mode": "👤 인물 모드",
+        "product_mode": "📦 제품 모드",
+        "hybrid_mode": "✨ 고급(하이브리드) 모드"
+    }
+    
+    # 선택된 모드의 이름 가져오기
+    selected_mode_name = mode_display_names.get(selected_mode_id, selected_mode_id)
+    
+    st.info(f"**선택된 모드**: {selected_mode_name}")
+
+    # ---------------------------------------------------------------------
+    # 2) 이미지 입력
     # ---------------------------------------------------------------------
     uploaded_file = st.file_uploader("편집할 이미지 업로드", type=["png", "jpg", "jpeg"])
     generated_images = st.session_state.get("generated_images", [])
@@ -1440,25 +1307,6 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     else:
         st.warning("⚠️ 이미지를 업로드하거나 페이지2에서 생성하세요.")
         return
-
-    # ---------------------------------------------------------------------
-    # 2) 편집 모드 선택
-    # ---------------------------------------------------------------------
-    EDITING_MODES = {
-        "portrait_mode": {"id": "portrait_mode", "name": "👤 인물 모드"},
-        "product_mode": {"id": "product_mode", "name": "📦 제품 모드"},
-        "hybrid_mode": {"id": "hybrid_mode", "name": "✨ 고급(하이브리드) 모드"},
-    }
-
-    mode_ids = list(EDITING_MODES.keys())
-    mode_names = [EDITING_MODES[m]["name"] for m in mode_ids]
-
-    selected_mode_name = st.selectbox(
-        "편집 모드",
-        mode_names,
-        key="page4_editing_mode_selector"
-    )
-    selected_mode_id = mode_ids[mode_names.index(selected_mode_name)]
 
     st.markdown("---")
 
@@ -2087,6 +1935,176 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
 #             st.session_state["editing_in_progress"] = False
 #             st.session_state["editing_request"] = None
 #             st.error(f"❌ 오류 발생: {e}")
+
+# ============================================================
+# 페이지 5: 3D 캘리그라피 생성 (텍스트 오버레이)
+# ============================================================
+def render_text_overlay_page(config: ConfigLoader, api: APIClient):
+    """텍스트 오버레이 페이지 - 3D 캘리그라피 생성 (ControlNet Depth SDXL 활용)"""
+    st.title("🔤 3D 캘리그라피 생성")
+    
+    st.info("""
+    💡 **ControlNet Depth SDXL**을 활용하여 입체적인 3D 텍스트를 생성합니다.
+    - Depth Map 기반으로 자연스러운 입체감 구현
+    - 배경이 투명한 PNG로 생성되어 다른 이미지와 합성 가능
+    - 다양한 3D 스타일 지원 (엠보싱, 조각, 플로팅 등)
+    """)
+    
+    col1, col2 = st.columns([1, 1.5])
+    
+    with col1:
+        st.subheader("⚙️ 텍스트 설정")
+        
+        # 텍스트 입력
+        text_input = st.text_input(
+            "생성할 텍스트",
+            placeholder="예: 새해 대박!",
+            help="한글, 영문 모두 가능합니다",
+            key="calligraphy_text"
+        )
+        
+        # 색상 선택
+        color_hex = st.color_picker(
+            "텍스트 색상",
+            value="#FFFFFF",
+            help="생성 후 색상 적용 (흰색 권장)",
+            key="calligraphy_color"
+        )
+        
+        # 3D 스타일 선택 (ControlNet Depth 활용)
+        style_options = {
+            "default": "기본 (Default) - 자연스러운 3D 입체감",
+            "emboss": "엠보싱 (Emboss) - 돌출된 금속 효과",
+            "carved": "조각 (Carved) - 돌에 새긴 듯한 효과",
+            "floating": "플로팅 (Floating) - 공중에 떠 있는 효과"
+        }
+        
+        style_display = st.selectbox(
+            "3D 스타일",
+            list(style_options.values()),
+            help="ControlNet Depth를 사용한 다양한 입체감 표현",
+            key="calligraphy_style"
+        )
+        
+        # 역매핑: 표시명 -> 실제 style 값
+        style = [k for k, v in style_options.items() if v == style_display][0]
+        
+        # 폰트 경로 (고급 옵션)
+        with st.expander("🔧 고급 설정"):
+            font_path = st.text_input(
+                "폰트 파일 경로 (선택)",
+                placeholder="/home/shared/RiaSans-Bold.ttf",
+                help="비워두면 기본 폰트 사용. 서버에 있는 폰트 경로를 입력하세요",
+                key="calligraphy_font_path"
+            )
+            
+            st.caption("""
+            **ℹ️ 사용 모델:**
+            - ControlNet Depth SDXL (Depth Map 추출)
+            - Stable Diffusion XL Base (3D 효과 생성)
+            - Rembg (배경 제거)
+            """)
+        
+        # 생성 버튼
+        st.markdown("---")
+        generate_btn = st.button(
+            "🎨 3D 캘리그라피 생성",
+            type="primary",
+            use_container_width=True,
+            disabled=not text_input or not text_input.strip()
+        )
+    
+    with col2:
+        st.subheader("📋 미리보기 및 결과")
+        
+        # 생성 버튼 클릭 시
+        if generate_btn:
+            if not text_input or not text_input.strip():
+                st.warning("⚠️ 텍스트를 입력하세요")
+            else:
+                # API 호출 준비
+                payload = {
+                    "text": text_input,
+                    "color_hex": color_hex,
+                    "style": style,  # default, emboss, carved, floating
+                    "font_path": font_path.strip() if font_path else ""
+                }
+                
+                try:
+                    with st.spinner(f"⏳ ControlNet Depth로 3D 효과 생성 중... (스타일: {style})"):
+                        # API 호출
+                        result_image = api.call_calligraphy(payload)
+                    
+                    if result_image:
+                        st.success("✅ 3D 캘리그라피 생성 완료!")
+                        
+                        # 결과 이미지 표시
+                        result_image.seek(0)
+                        st.image(
+                            result_image,
+                            caption=f"생성된 캘리그라피: {text_input}",
+                            use_container_width=True
+                        )
+                        
+                        # 다운로드 버튼
+                        result_image.seek(0)
+                        st.download_button(
+                            "⬇️ PNG 다운로드 (배경 투명)",
+                            result_image.read(),
+                            f"calligraphy_{text_input[:10]}.png",
+                            "image/png",
+                            use_container_width=True,
+                            key="download_calligraphy"
+                        )
+                        
+                        # 세션 상태에 저장 (재사용 가능)
+                        result_image.seek(0)
+                        st.session_state["last_calligraphy"] = {
+                            "text": text_input,
+                            "image": result_image.read()
+                        }
+                    else:
+                        st.error("❌ 이미지 생성 실패")
+                        
+                except Exception as e:
+                    st.error(f"❌ 생성 실패: {e}")
+        
+        # 이전 결과 표시
+        elif "last_calligraphy" in st.session_state:
+            st.info("이전 생성 결과:")
+            last_result = st.session_state["last_calligraphy"]
+            st.image(
+                last_result["image"],
+                caption=f"이전 결과: {last_result['text']}",
+                use_container_width=True
+            )
+            st.download_button(
+                "⬇️ PNG 다운로드",
+                last_result["image"],
+                f"calligraphy_{last_result['text'][:10]}.png",
+                "image/png",
+                use_container_width=True,
+                key="download_last_calligraphy"
+            )
+        else:
+            st.markdown("텍스트를 입력하고 생성 버튼을 눌러주세요.")
+    
+    # 사용 예시
+    st.markdown("---")
+    st.markdown("### 💡 사용 예시")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("**광고 문구**")
+        st.caption("• 신년 특가\n• 오픈 기념\n• 할인 중")
+    
+    with col2:
+        st.markdown("**이벤트 제목**")
+        st.caption("• 새해 대박\n• PT 무료 체험\n• 회원 모집")
+    
+    with col3:
+        st.markdown("**강조 텍스트**")
+        st.caption("• SALE\n• NEW\n• HOT")
 
 # ============================================================
 # 실행
