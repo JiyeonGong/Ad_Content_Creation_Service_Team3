@@ -1266,7 +1266,9 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     mode_display_names = {
         "portrait_mode": "👤 인물 모드",
         "product_mode": "📦 제품 모드",
-        "hybrid_mode": "✨ 고급(하이브리드) 모드"
+        "hybrid_mode": "✨ 고급(하이브리드) 모드",
+        "flux_fill_mode": "🖌️ 인페인팅 모드",
+        "qwen_edit_mode": "🎯 정밀 편집 모드"
     }
     
     # 선택된 모드의 이름 가져오기
@@ -1387,6 +1389,10 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     )
 
     # ControlNet 옵션 (portrait/hybrid)
+    controlnet_type = "depth"
+    controlnet_strength = 0.0
+    denoise_strength = 0.8
+    
     if selected_mode_id in ["portrait_mode", "hybrid_mode"]:
         controlnet_type = st.selectbox(
             "ControlNet 타입",
@@ -1407,10 +1413,20 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
             step=0.05,
             key="page4_denoise_strength"
         )
-    else:
-        controlnet_type = "depth"
-        controlnet_strength = 0.0
-        denoise_strength = 1.0
+    elif selected_mode_id in ["flux_fill_mode", "qwen_edit_mode"]:
+        # FLUX Fill / Qwen 모드 - denoise_strength만 사용
+        denoise_strength = st.slider(
+            "편집 강도 (Denoise)",
+            0.5, 1.0,
+            value=0.9 if selected_mode_id == "flux_fill_mode" else 0.7,
+            step=0.05,
+            key="page4_denoise_strength",
+            help="높을수록 변화가 큽니다"
+        )
+        
+        # FLUX Fill 전용: BEN2 자동 마스크 옵션
+        if selected_mode_id == "flux_fill_mode":
+            st.info("💡 BEN2로 자동 배경 제거하여 마스크 생성합니다")
 
     # Product 모드 전용 옵션
     blending_strength = None

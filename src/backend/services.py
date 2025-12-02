@@ -792,7 +792,7 @@ def generate_i2i_core(
         output_images, history = client.execute_workflow(
             workflow=workflow,
             input_image=input_image_bytes,
-            input_image_node_id="11"  # LoadImage 노드 ID
+            input_image_node_id="5"  # LoadImage 노드 ID (I2I 워크플로우)
         )
 
         if not output_images:
@@ -861,7 +861,7 @@ def edit_image_with_comfyui(
     ComfyUI를 사용한 이미지 편집
 
     Args:
-        experiment_id: 실험 ID ("portrait_mode", "product_mode", "hybrid_mode", "ben2_flux_fill", "ben2_qwen_image")
+        experiment_id: 실험 ID ("portrait_mode", "product_mode", "hybrid_mode", "flux_fill_mode", "qwen_edit_mode")
         input_image_bytes: 입력 이미지 바이트
         prompt: 편집 프롬프트
         steps: 추론 단계
@@ -1027,37 +1027,40 @@ def get_image_editing_experiments() -> dict:
 
     try:
         config = load_image_editing_config()
-        experiments = config.get("experiments", [])
-
-        # 편집 실험 목록
-        editing_experiments = [
-            {
-                "id": exp["id"],
-                "name": exp["name"],
-                "description": exp["description"],
-                "background_removal_model": exp["background_removal"]["model"],
-                "editing_model": exp["image_editing"]["model"],
-                "features": exp.get("features", [])  # 모델별 기능 목록 포함
-            }
-            for exp in experiments
-        ]
+        
+        # 새로운 구조: editing_modes 사용
+        editing_modes = config.get("editing_modes", {})
+        
+        # 편집 모드 목록 생성
+        mode_experiments = []
+        for mode_key, mode_data in editing_modes.items():
+            mode_experiments.append({
+                "id": mode_data["id"],
+                "name": mode_data["name"],
+                "description": mode_data["description"],
+                "icon": mode_data.get("icon", "🎨"),
+                "models": mode_data.get("models", {}),
+                "params": mode_data.get("params", {})
+            })
 
         # 생성 모델 목록 추가
         generation_models = [
             {
                 "id": "FLUX.1-dev-Q8",
                 "name": "FLUX.1-dev Q8",
-                "description": "FLUX.1-dev GGUF 8-bit 양자화 (이미지 생성, 권장)"
+                "description": "FLUX.1-dev GGUF 8-bit 양자화 (이미지 생성, 권장)",
+                "icon": "🎨"
             },
             {
                 "id": "FLUX.1-dev-Q4",
                 "name": "FLUX.1-dev Q4",
-                "description": "FLUX.1-dev GGUF 4-bit 양자화 (메모리 절약)"
+                "description": "FLUX.1-dev GGUF 4-bit 양자화 (메모리 절약)",
+                "icon": "🎨"
             }
         ]
 
         # 생성 모델 + 편집 모델 모두 반환
-        all_experiments = generation_models + editing_experiments
+        all_experiments = generation_models + mode_experiments
 
         return {
             "success": True,
