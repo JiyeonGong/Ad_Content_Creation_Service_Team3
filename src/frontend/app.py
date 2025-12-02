@@ -331,10 +331,6 @@ def parse_caption_output(output: str) -> tuple:
         captions = [output]
     return captions, hashtags
 
-def caption_to_prompt(caption: str, style: str = "Instagram banner") -> str:
-    """문구를 이미지 프롬프트로 변환"""
-    return f"{caption}, {style}, vibrant, professional, motivational"
-
 # ============================================================
 # 메인 앱
 # ============================================================
@@ -361,126 +357,18 @@ def main():
     selected_idx = page_options.index(menu)
     page_id = pages_config[selected_idx]["id"]
 
-    # 모델 선택
+    # 모델 선택 (ModelSelector 사용)
     st.sidebar.markdown("---")
-
+    
+    from .model_selector import ModelSelector
+    selector = ModelSelector(api)
+    
     if page_id == "image_editing_experiment":
         # 4페이지: 편집 모드 선택
-        st.sidebar.subheader("✨ 편집 모드 선택")
-
-        # 편집 모드 정의
-        EDITING_MODES = {
-            "portrait_mode": {"id": "portrait_mode", "name": "👤 인물 모드", "icon": "👤"},
-            "product_mode": {"id": "product_mode", "name": "📦 제품 모드", "icon": "📦"},
-            "hybrid_mode": {"id": "hybrid_mode", "name": "✨ 고급 모드", "icon": "✨"}
-        }
-
-        mode_ids = list(EDITING_MODES.keys())
-        mode_names = [EDITING_MODES[m]["name"] for m in mode_ids]
-
-        # 세션에 저장된 모드가 있으면 기본값으로 설정
-        default_mode_idx = 0
-        if "selected_editing_mode" in st.session_state:
-            saved_mode = st.session_state["selected_editing_mode"]
-            if saved_mode in mode_ids:
-                default_mode_idx = mode_ids.index(saved_mode)
-
-        selected_mode_name = st.sidebar.selectbox(
-            "편집 모드",
-            mode_names,
-            index=default_mode_idx,
-            help="원하는 편집 모드를 선택하세요",
-            key="editing_mode_selector"
-        )
-
-        selected_mode_idx = mode_names.index(selected_mode_name)
-        selected_mode_id = mode_ids[selected_mode_idx]
-
-        # 세션에 선택된 모드 저장
-        st.session_state["selected_editing_mode"] = selected_mode_id
-
-        # 모드 설명
-        mode_descriptions = {
-            "portrait_mode": "얼굴은 보존하고, 의상과 배경만 변경",
-            "product_mode": "제품은 보존하고, 배경을 창의적으로 변경",
-            "hybrid_mode": "얼굴과 제품을 동시에 보존"
-        }
-        st.sidebar.info(mode_descriptions[selected_mode_id])
-
+        selected_mode_id = selector.render_editing_mode_selector()
     else:
         # 1,2,3 페이지: 이미지 생성 모델 선택
-        st.sidebar.subheader("🤖 이미지 생성 모델")
-
-        # 현재 로드된 ComfyUI 모델 상태 확인
-        current_comfyui_model = api.get_current_comfyui_model()
-
-        # ComfyUI experiments에서 생성 모델만 필터링
-        experiments_data = api.get_image_editing_experiments()
-        if experiments_data and experiments_data.get("success"):
-            experiments = experiments_data.get("experiments", [])
-
-            # 생성 모델만 필터링 (FLUX.1-dev-Q8, FLUX.1-dev-Q4)
-            generation_models = [exp for exp in experiments if "FLUX.1-dev-Q" in exp["id"]]
-
-            if generation_models:
-                exp_map = {exp["id"]: exp for exp in generation_models}
-                exp_ids = ["none"] + [exp["id"] for exp in generation_models]
-                exp_names = ["모델 없음"] + [f"{exp['name']}" for exp in generation_models]
-
-                # 기본값 설정
-                default_idx = 0
-                if current_comfyui_model and current_comfyui_model in exp_ids:
-                    default_idx = exp_ids.index(current_comfyui_model)
-
-                selected_exp_name = st.sidebar.selectbox(
-                    "모델 선택",
-                    exp_names,
-                    index=default_idx,
-                    help="이미지 생성에 사용할 모델을 선택하세요. '모델 없음'을 선택하면 메모리를 비웁니다.",
-                    key="generation_model_selector"
-                )
-
-                # 선택된 실험 객체 찾기
-                selected_idx = exp_names.index(selected_exp_name)
-                selected_exp_id = exp_ids[selected_idx]
-
-                # 세션에 선택된 모델 ID 저장 (페이지에서 사용)
-                st.session_state["selected_generation_model_id"] = selected_exp_id
-
-                # "모델 없음" 선택 시 처리
-                if selected_exp_id == "none":
-                    if current_comfyui_model:
-                        # 언로드 필요
-                        with st.spinner("모델 언로드 중..."):
-                            try:
-                                res = api.unload_model_comfyui()
-                                if res.get("success"):
-                                    st.sidebar.success("모델이 꺼졌습니다.")
-                                    time.sleep(1)
-                                    st.rerun()
-                                else:
-                                    st.sidebar.error(f"언로드 실패: {res.get('message')}")
-                            except Exception as e:
-                                st.sidebar.error(f"❌ {e}")
-                    else:
-                        st.sidebar.markdown(f"⚫ **OFF** (Unloaded)")
-                else:
-                    # 일반 모델 선택
-                    selected_experiment = generation_models[selected_idx - 1]  # "모델 없음" 제외
-
-                    # 상태 표시 (선택한 모델이 실제로 로드되었는지 확인)
-                    if current_comfyui_model == selected_exp_id:
-                        st.sidebar.success(f"💡 **ON** (Loaded: {selected_experiment['name']})")
-                    else:
-                        st.sidebar.markdown(f"⚫ **OFF** (Unloaded)")
-
-                    # 모델 정보 표시
-                    st.sidebar.caption(f"📝 {selected_experiment.get('description', '')}")
-
-            else:
-                st.sidebar.warning("사용 가능한 생성 모델이 없습니다.")
-        else:
-            st.sidebar.error("모델 목록을 불러올 수 없습니다.")
+        selected_model_id = selector.render_generation_model_selector()
 
     # ComfyUI 상태 표시 (사이드바 바로 보이게)
     st.sidebar.markdown("---")
@@ -643,23 +531,15 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             value=st.session_state.get("base_prompt_t2i", "")
         )
 
-    # 페이지1 문구를 보조 컨텍스트로 붙이기
-    raw_prompt = ""
-    if connect_mode and selected_caption:
-        if base_prompt.strip():
-            # 사용자 프롬프트 + (페이지1 문구/해시태그)
-            raw_prompt = f"{base_prompt.strip()} — {selected_caption} {hashtags}".strip()
-        else:
-            # 사용자 프롬프트가 비어 있으면, 페이지1 문구만 사용
-            raw_prompt = f"{selected_caption} {hashtags}".strip()
-    else:
-        raw_prompt = base_prompt.strip()
+    # 페이지1 문구를 보조 컨텍스트로 붙이기 (PromptHelper 사용)
+    from .utils import PromptHelper
+    
+    raw_prompt = PromptHelper.combine_caption_and_prompt(
+        base_prompt, selected_caption, hashtags, connect_mode
+    )
 
-    # 이미지용 프롬프트로 1차 변환 (나머지 FLUX 3단계 변환은 백엔드에서)
-    final_prompt = caption_to_prompt(raw_prompt) if raw_prompt else ""
-
-    if final_prompt:
-        st.caption(f"**전달될 PROMPT (1차 변환 후, FLUX 전용 3단계는 백엔드 처리):** {final_prompt[:150]}...")
+    if raw_prompt:
+        st.caption(f"**전달될 PROMPT (백엔드에서 최적화 처리됨):** {raw_prompt[:150]}...")
 
     # ─────────────────────────────────────────
     # 2) 모델 / 해상도 / steps / guidance 설정
@@ -757,10 +637,10 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
     # ─────────────────────────────────────────
     # 3) 이미지 생성 버튼 (rerun 사용 X, 한 번에 처리)
     # ─────────────────────────────────────────
-    generate_disabled = not final_prompt or not selected_model_id or selected_model_id == "none"
+    generate_disabled = not raw_prompt or not selected_model_id or selected_model_id == "none"
 
     if st.button(f"🖼 이미지 생성 ({num_images}개)", type="primary", disabled=generate_disabled):
-        if not final_prompt:
+        if not raw_prompt:
             st.error("❌ 프롬프트를 입력하세요.")
             return
         if not selected_model_id or selected_model_id == "none":
@@ -778,9 +658,9 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         for i in range(num_images):
             # 여러 장 생성 시 약간의 텍스트 variation만 추가 (seed는 백엔드/ComfyUI가 관리)
             if num_images == 1:
-                prompt_for_this = final_prompt
+                prompt_for_this = raw_prompt
             else:
-                prompt_for_this = f"{final_prompt}, variation {i+1}"
+                prompt_for_this = f"{raw_prompt}, variation {i+1}"
 
             payload = {
                 "prompt": prompt_for_this,
@@ -1156,30 +1036,22 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
     else:
         st.info("💡 기본 문구에 균형 잡힌 분위기 키워드를 섞어 안정적으로 조절된 이미지를 생성합니다.")
 
-    def build_support(text, method, strength_label):
-        if not text:
-            return ""
-        if method == "단순 키워드 변환":
-            base = ", ".join(re.split(r"[ ,.\n]+", text)[:20])
-        elif method == "GPT 기반 자연스럽게":
-            base = f"{text}, cinematic soft light, premium mood, refined rendering"
-        else:
-            base = f"{text}, balanced framing, clean aesthetic"
-
-        ratio = {"약하게": "0.3", "중간": "0.6", "강하게": "1.0"}[strength_label]
-        return f"({base}:{ratio})"
-
+    # PromptHelper 사용 (중복 제거)
+    from .utils import PromptHelper
+    
     support_prompt = ""
     if connect_mode and selected_caption:
-        support_prompt = build_support(captions_for_support, support_method, support_strength)
+        support_prompt = PromptHelper.build_support_prompt(
+            captions_for_support, support_method, support_strength
+        )
 
-    # 최종 프롬프트 조합 (나머지 FLUX 3단계 변환은 백엔드에서)
+    # 최종 프롬프트 조합 (나머지 변환은 백엔드에서)
     final_prompt = edit_prompt.strip()
     if connect_mode and selected_caption and support_prompt:
         final_prompt = f"{edit_prompt.strip()}, {support_prompt}".strip(", ")
 
     if final_prompt:
-        st.caption(f"최종 PROMPT (백엔드에서 FLUX 전용 3단계 변환 적용): {final_prompt[:120]}...")
+        st.caption(f"최종 PROMPT (백엔드에서 최적화 처리): {final_prompt[:120]}...")
 
     # ─────────────────────────────────────────
     # 4) I2I 세부 옵션 (strength / steps / size / guidance / 후처리)
@@ -1532,18 +1404,8 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     # ---------------------------------------------------------------------
     # 0) 유틸 - 보조 프롬프트 생성 (페이지2/3와 동일)
     # ---------------------------------------------------------------------
-    def build_support_prompt(text, method, strength):
-        if not text:
-            return ""
-        if method == "단순 키워드 변환":
-            base = ", ".join(re.split(r"[ ,.\n]+", text)[:20])
-        elif method == "GPT 기반 자연스럽게":
-            base = f"{text}, cinematic soft light, premium mood, refined composition"
-        else:
-            base = f"{text}, warm tone, clean aesthetic, balanced framing"
-
-        w = {"약하게": "0.3", "중간": "0.6", "강하게": "1.0"}[strength]
-        return f"({base}:{w})"
+    # PromptHelper 사용 (중복 제거)
+    from .utils import PromptHelper
 
     # ---------------------------------------------------------------------
     # 1) 이미지 입력
@@ -1627,7 +1489,7 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
 
     support_prompt = ""
     if selected_caption:
-        support_prompt = build_support_prompt(
+        support_prompt = PromptHelper.build_support_prompt(
             captions_for_support,
             support_method,
             support_strength
@@ -1650,7 +1512,7 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
         final_prompt = f"{base_prompt}, {support_prompt}"
 
     if final_prompt.strip():
-        st.caption(f"**최종 PROMPT (백엔드에서 FLUX 3단계 프롬프팅 적용):** {final_prompt[:150]}...")
+        st.caption(f"**최종 PROMPT (백엔드에서 최적화 처리):** {final_prompt[:150]}...")
 
     # ---------------------------------------------------------------------
     # 5) 모델/파라미터 설정

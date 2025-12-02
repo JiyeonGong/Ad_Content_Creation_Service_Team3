@@ -5,10 +5,19 @@ import logging
 import sys
 from typing import Optional, List
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import asyncio
 
 from . import services
+from .exceptions import (
+    ServiceError,
+    PromptOptimizationError,
+    ModelLoadError,
+    WorkflowExecutionError,
+    ImageProcessingError,
+    ConfigurationError
+)
 
 # 로깅 설정 - stdout으로 출력하여 uvicorn 로그에 포함
 logging.basicConfig(
@@ -145,6 +154,30 @@ async def generate_t2i_image(req: T2IRequest):
         image_bytes = await loop.run_in_executor(None, generate_func)
         b64 = base64.b64encode(image_bytes).decode("utf-8")
         return T2IResponse(image_base64=b64)
+    except PromptOptimizationError as e:
+        # 프롬프트 처리 실패
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": str(e), "type": "prompt_error"}
+        )
+    except ModelLoadError as e:
+        # 모델 로딩 실패
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": str(e), "type": "model_error"}
+        )
+    except WorkflowExecutionError as e:
+        # 워크플로우 실행 실패
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e), "type": "workflow_error"}
+        )
+    except ServiceError as e:
+        # 일반 서비스 에러
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e), "type": "service_error"}
+        )
     except RuntimeError as re_err:
         raise HTTPException(status_code=503, detail=str(re_err))
     except Exception as e:
