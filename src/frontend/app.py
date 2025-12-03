@@ -24,7 +24,8 @@ class ConfigLoader:
     
     def __init__(self, config_path: Optional[str] = None):
         if config_path is None:
-            config_path = os.path.join(os.path.dirname(__file__), "frontend_config.yaml")
+            # 프로젝트 루트의 configs/frontend_config.yaml로 이동
+            config_path = os.path.join(os.path.dirname(__file__), "..", "..", "configs", "frontend_config.yaml")
         
         self.config_path = config_path
         self.config = self._load_config()

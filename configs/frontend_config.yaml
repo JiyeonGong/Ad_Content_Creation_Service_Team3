@@ -1,0 +1,143 @@
+# frontend_config.yaml
+# Streamlit 프론트엔드 설정
+
+app:
+  title: "💼 소상공인 AI 콘텐츠 제작"
+  layout: "wide"
+  
+api:
+  base_url: "http://localhost:8000"  # 환경변수 API_BASE_URL로 오버라이드 가능
+  timeout: 3600  # 초 (60분, CPU offload 사용 시)
+  retry_attempts: 2  # GPU OOM 시 재시도 횟수
+
+# 페이지 설정
+pages:
+  - id: "caption"
+    icon: "📝"
+    title: "홍보 문구+해시태그 생성"
+    description: "AI가 인스타그램 홍보 문구와 해시태그를 자동 생성합니다"
+  
+  - id: "t2i"
+    icon: "🖼"
+    title: "인스타그램 이미지 생성"
+    description: "문구를 기반으로 3가지 버전의 이미지를 생성합니다"
+  
+  - id: "i2i"
+    icon: "🖼️"
+    title: "이미지 스타일 변경"
+    description: "기존 이미지를 AI로 편집하고 스타일을 변경합니다"
+
+  - id: "image_editing_experiment"
+    icon: "✂️"
+    title: "배경 제거 + 편집"
+    description: "BEN2 배경 제거 + 이미지 편집 (FLUX.1-Fill)"
+
+  - id: "text_overlay"
+    icon: "🔤"
+    title: "3D 캘리그라피 생성"
+    description: "입체적인 3D 텍스트 이미지를 생성합니다 (배경 투명)"
+
+# 문구 생성 설정
+caption:
+  service_types: []  # 사용자 직접 입력 방식으로 변경
+  
+  tones:
+    - "친근하고 동기부여"
+    - "전문적이고 신뢰감"
+    - "재미있고 트렌디"
+    - "차분하고 감성적"
+
+# 이미지 생성 설정
+image:
+  # 사전 정의된 크기 (백엔드에서 동적으로 가져올 수도 있음)
+  preset_sizes:
+    - name: "정사각형 1024x1024"
+      width: 1024
+      height: 1024
+      description: "FLUX/SDXL 최적 크기"
+
+    - name: "Instagram 세로 (4:5)"
+      width: 1080
+      height: 1350
+      description: "피드 게시물 최적"
+
+    - name: "Instagram 정사각형 (1:1)"
+      width: 1080
+      height: 1080
+      description: "범용"
+
+    - name: "Instagram 가로 (16:9)"
+      width: 1080
+      height: 608
+      description: "풍경 이미지"
+  
+  # Steps 범위 (모델별로 다를 수 있음)
+  steps:
+    min: 1
+    max: 50
+    default: 28
+  
+  # I2I 설정
+  i2i:
+    strength:
+      min: 0.0
+      max: 1.0
+      default: 0.75
+      step: 0.05
+
+  # 🆕 후처리 설정
+  post_processing:
+    # 후처리 방식 (none, impact_pack, adetailer)
+    methods:
+      - id: "none"
+        name: "없음 (빠름)"
+        description: "후처리 없이 빠르게 생성"
+      - id: "impact_pack"
+        name: "ComfyUI Impact Pack"
+        description: "YOLO+SAM 기반 얼굴/손 보정 (새로운 방식)"
+      - id: "adetailer"
+        name: "기존 ADetailer"
+        description: "YOLO+MediaPipe 기반 후처리 (호환성)"
+
+    # ADetailer 타겟
+    adetailer_targets:
+      - "hand"
+      - "face"
+
+  # 🆕 이미지 편집 실험 설정
+  editing_experiment:
+    strength:
+      min: 0.0
+      max: 1.0
+      default: 0.8
+      step: 0.05
+    steps:
+      min: 10
+      max: 50
+      default: 28
+    guidance_scale:
+      min: 1.0
+      max: 15.0
+      default: 3.5
+      step: 0.5
+
+# UI 텍스트
+ui:
+  messages:
+    connecting: "백엔드 서버에 연결 중..."
+    loading: "AI가 작업 중입니다... ⏳"
+    success: "✅ 완료!"
+    error: "❌ 오류가 발생했습니다"
+    no_input: "⚠️ 필수 항목을 모두 입력해주세요"
+    
+  placeholders:
+    service_name: "예: 30일 다이어트 챌리지"
+    features: "예: 전문 PT와 함께하는 맞춤형 운동, 영양 관리 포함"
+    location: "예: 강남, 마포구, 온라인"
+    caption: "예: 💪 새해 목표, 이번엔 꼭 이루자!"
+    edit_prompt: "예: 더 밝고 활기찬 분위기로, 파란색 배경 추가"
+
+# 연결 모드 설정
+connection_mode:
+  enabled_by_default: true
+  description: "연결 모드 ON: 페이지1에서 생성된 문구를 자동으로 페이지2/3에 사용\nOFF: 각 페이지 독립 입력 사용"

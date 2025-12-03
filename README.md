@@ -135,22 +135,23 @@
 
 ---
 
-### 페이지 5️⃣: 3D 캘리그라피 생성
+### 페이지 5️⃣: 캘리그라피 생성
 
 **입력**
 - 텍스트 (예: "새해 대박!")
-- 폰트 선택
+- 폰트 자동 지정(기본 경로, 필요 시 변경 가능)
 - 색상 선택
-- 렌더링 스타일 (default / emboss / carved / floating)
+- 렌더링 모드 선택
+  - Pillow 기본 모드(빠르고 안정적)
+  - AI 스타일 모드(SDXL+ControlNet: emboss / carved / floating)
 
 **출력**
-- 입체적인 3D 텍스트 이미지
-- 투명 배경 (PNG)
+- 고해상도 텍스트 이미지(PNG)
+- 투명 배경 지원
 
 **기술**
-- ControlNet Depth SDXL
-- 3D 뎁스맵 렌더링
-- Rembg 배경 제거
+- Pillow 기반 텍스트 렌더링(기본)
+- SDXL ControlNet Depth + Rembg(스타일 모드 선택 시)
 
 **용도**
 - 인스타그램 스토리 텍스트
@@ -158,7 +159,10 @@
 - 썸네일 제작
 
 **현재 상태 요약**
-- CLIP 77 토큰 제한으로 긴 프롬프트에서 일부 잘림이 발생할 수 있으나, 최근 개선으로 기본 Pillow 모드와 AI 스타일 모드 모두 생성 자체는 이전보다 안정적으로 작동합니다. 실사용에서 큰 문제 없이 결과 이미지를 얻을 수 있습니다.
+- 기본값은 Pillow 모드로 설정되어 빠르고 안정적으로 생성됩니다.
+- AI 스타일 모드(SDXL+ControlNet)는 추가 VRAM을 사용하며 상황에 따라 시간이 더 소요될 수 있습니다.
+- 폰트 경로는 시스템 기본 경로를 자동 적용하며, 없는 경우 대체 폰트로 폴백합니다.
+- CLIP 77 토큰 제한은 스타일 모드에만 영향을 주며, 프롬프트 길이 자동 클램핑으로 완화했습니다.
 
 ---
 
@@ -844,7 +848,7 @@ Ad_Content_Creation_Service_Team3/
 ├── src/
 │   ├── frontend/
 │   │   ├── app.py                     # Streamlit 메인
-│   │   ├── frontend_config.yaml       # UI 설정
+│   │   ├── (이전 위치)                 # UI 설정은 configs로 이동
 │   │   └── utils.py                   # 유틸리티
 │   └── backend/
 │       ├── main.py                    # FastAPI 앱
@@ -859,6 +863,8 @@ Ad_Content_Creation_Service_Team3/
 │   ├── custom_nodes/                  # 커스텀 노드들
 │   └── models/                        # 모델 저장소
 ├── configs/
+│   ├── frontend_config.yaml           # 프론트엔드 UI 설정(이동됨)
+│   ├── model_config.yaml              # 모델/런타임 설정(이동됨)
 │   ├── image_editing_config.yaml      # 이미지 편집 설정
 │   └── test_flux_gcp.yaml             # 테스트 설정
 ├── docs/                              # 상세 문서

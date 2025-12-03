@@ -30,8 +30,7 @@ Thumbs.db
 experiments/
 gitclone/
 cache/
-# src/outfitanyone 디렉토리 전체를 무시
-src/outfitanyone
+recording/
 
 # 이미지 관련 파일 전부 제외
 #assets/outputs/
