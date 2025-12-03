@@ -2,7 +2,7 @@
 # Streamlit 프론트엔드 설정
 
 app:
-  title: "💪 헬스케어 AI 콘텐츠 제작"
+  title: "💼 소상공인 AI 콘텐츠 제작"
   layout: "wide"
   
 api:
@@ -30,7 +30,7 @@ pages:
   - id: "image_editing_experiment"
     icon: "✂️"
     title: "배경 제거 + 편집"
-    description: "BEN2 배경 제거 + 이미지 편집 (FLUX.1-Fill, Qwen-Image)"
+    description: "BEN2 배경 제거 + 이미지 편집 (FLUX.1-Fill)"
 
   - id: "text_overlay"
     icon: "🔤"
@@ -39,12 +39,7 @@ pages:
 
 # 문구 생성 설정
 caption:
-  service_types:
-    - "헬스장"
-    - "PT (개인 트레이닝)"
-    - "요가/필라테스"
-    - "건강 식품/보조제"
-    - "기타"
+  service_types: []  # 사용자 직접 입력 방식으로 변경
   
   tones:
     - "친근하고 동기부여"

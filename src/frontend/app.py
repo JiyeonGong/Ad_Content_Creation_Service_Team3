@@ -1,6 +1,6 @@
 # app.py (리팩토링 버전)
 """
-헬스케어 AI 콘텐츠 제작 앱 - Streamlit 프론트엔드
+소상공인 AI 콘텐츠 제작 앱 - Streamlit 프론트엔드
 설정 기반 아키텍처로 하드코딩 최소화
 """
 import os
@@ -47,7 +47,7 @@ class ConfigLoader:
             "app": {"title": "AI 콘텐츠 제작", "layout": "wide"},
             "api": {"base_url": "http://localhost:8000", "timeout": 180, "retry_attempts": 2},
             "caption": {
-                "service_types": ["헬스장", "PT", "요가/필라테스", "기타"],
+                "service_types": [],  # 사용자 직접 입력 방식으로 변경
                 "tones": ["친근하고 동기부여", "전문적이고 신뢰감"]
             },
             "image": {
@@ -445,43 +445,68 @@ def render_caption_page(config: ConfigLoader, api: APIClient):
     st.title("📝 홍보 문구 & 해시태그 생성")
     
     with st.form("content_form"):
-        service_type = st.selectbox(
-            "서비스 종류",
-            config.get("caption.service_types", [])
+        # 가게 이름 입력 (NEW)
+        shop_name = st.text_input(
+            "가게 이름 *",
+            placeholder='예: "마단식 +피라다음"',
+            help="의류/마사지/카페 등",
+            key="shop_name"
+        )
+        
+        # 서비스 종류 직접 입력 (CHANGED from selectbox)
+        service_type = st.text_input(
+            "서비스 종류 *",
+            placeholder="예: 단발 마사지, 문신 상담, 메이크업 들",
+            help="여러 개를 쉼표로 입력 가능",
+            key="service_type"
         )
         
         location = st.text_input(
-            "지역",
-            placeholder=config.get("ui.placeholders.location", "예: 강남")
+            "지역 *",
+            placeholder=config.get("ui.placeholders.location", "예: 강남, 진보봉"),
+            key="location"
         )
         
         service_name = st.text_input(
-            "제품/클래스 이름",
-            placeholder=config.get("ui.placeholders.service_name", "")
+            "대표 제품/클래스 이름",
+            placeholder=config.get("ui.placeholders.service_name", "예: 김영실 탄나 마사지"),
+            key="service_name"
         )
         
         features = st.text_area(
-            "핵심 특징 및 장점",
-            placeholder=config.get("ui.placeholders.features", "")
+            "핵심 특징 및 장점 *",
+            placeholder=config.get("ui.placeholders.features", "예: 완전 충동 시스템, 10년 뽈의 뒹력 기질"),
+            key="features"
         )
         
         tone = st.selectbox(
             "톤 선택",
-            config.get("caption.tones", [])
+            config.get("caption.tones", []),
+            key="tone"
         )
         
         submitted = st.form_submit_button("✨ 문구+해시태그 생성")
     
     if submitted:
-        if not service_name.strip() or not features.strip() or not location.strip():
+        if not shop_name.strip():
+            st.warning("📄 가게 이름을 입력하세요.")
+            return
+        if not service_type.strip():
+            st.warning("📄 서비스 종류를 입력하세요.")
+            return
+        if not location.strip():
+            st.warning("📄 지역을 입력하세요.")
+            return
+        if not features.strip():
             st.warning(config.get("ui.messages.no_input"))
             return
         
         payload = {
-            "service_type": service_type,
-            "service_name": service_name,
-            "features": features,
-            "location": location,
+            "shop_name": shop_name.strip(),
+            "service_type": service_type.strip(),
+            "service_name": service_name.strip(),
+            "features": features.strip(),
+            "location": location.strip(),
             "tone": tone
         }
         
@@ -1157,6 +1182,8 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         aligned_w = align_to_64(width)
         aligned_h = align_to_64(height)
 
+        selected_model_id = st.session_state.get("selected_generation_model_id")
+        
         payload = {
             "input_image_base64": base64.b64encode(image_bytes).decode(),
             "prompt": final_prompt,
@@ -1168,7 +1195,7 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             "post_process_method": post_process_method,
             "enable_adetailer": enable_adetailer,
             "adetailer_targets": adetailer_targets,
-            # model_name은 생략 시 백엔드에서 현재 로드된 모델 사용
+            "model_name": selected_model_id,  # 사이드바에서 선택한 모델 이름 전달
         }
 
         try:

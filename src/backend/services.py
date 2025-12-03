@@ -456,7 +456,7 @@ def generate_caption_core(info: dict, tone: str) -> str:
         raise RuntimeError("OpenAI 클라이언트가 초기화되지 않았습니다.")
 
     prompt = f"""
-당신은 헬스케어 소상공인을 위한 전문 인스타그램 콘텐츠 크리에이터입니다.
+당신은 소상공인을 위한 전문 인스타그램 콘텐츠 크리에이터입니다.
 아래 정보를 바탕으로 인스타그램 게시물에 최적화된 콘텐츠를 생성해 주세요.
 
 요청:
@@ -467,6 +467,7 @@ def generate_caption_core(info: dict, tone: str) -> str:
 2. 해시태그 15개 추천 (중복 제거)
 
 [정보]
+가게 이름: {info.get('shop_name')}
 서비스 종류: {info.get('service_type')}
 서비스명: {info.get('service_name')}
 핵심 특징: {info.get('features')}
@@ -737,6 +738,11 @@ def generate_i2i_core(
     elif not current_model_name:
         raise RuntimeError("모델이 로드되지 않았습니다. 먼저 모델을 선택하세요.")
 
+    # 📊 입력 이미지 및 프롬프트 검증 (디버깅)
+    logger.info(f"📸 입력 이미지 크기: {len(input_image_bytes)} bytes")
+    logger.info(f"📝 원본 프롬프트: {prompt[:100] if prompt else 'N/A'}...")
+    logger.info(f"💪 Strength: {strength}")
+
     # 모델 설정 가져오기
     model_config = registry.get_model(current_model_name)
     if not model_config:
@@ -760,6 +766,8 @@ def generate_i2i_core(
 
     print(f"✏️ ComfyUI로 I2I 이미지 편집 중")
     print(f"   모델: {current_model_name}")
+    print(f"   원본 프롬프트: {prompt[:80]}...")
+    print(f"   최종 프롬프트: {final_prompt[:80]}...")
     print(f"   후처리: {post_process_method}")
     print(f"   Strength: {strength}")
     print(f"   Steps: {steps}")
@@ -792,7 +800,7 @@ def generate_i2i_core(
         output_images, history = client.execute_workflow(
             workflow=workflow,
             input_image=input_image_bytes,
-            input_image_node_id="11"  # LoadImage 노드 ID
+            input_image_node_id="5"  # I2I 워크플로우의 LoadImage 노드 ID
         )
 
         if not output_images:
@@ -861,7 +869,7 @@ def edit_image_with_comfyui(
     ComfyUI를 사용한 이미지 편집
 
     Args:
-        experiment_id: 실험 ID ("portrait_mode", "product_mode", "hybrid_mode", "ben2_flux_fill", "ben2_qwen_image")
+        experiment_id: 실험 ID ("portrait_mode", "product_mode", "hybrid_mode", "ben2_flux_fill")
         input_image_bytes: 입력 이미지 바이트
         prompt: 편집 프롬프트
         steps: 추론 단계

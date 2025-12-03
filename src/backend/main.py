@@ -27,13 +27,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="헬스케어 AI 콘텐츠 API (개선)")
+app = FastAPI(title="소상공인 AI 콘텐츠 API (개선)")
 
 # 서버 시작 시간 (재시작 감지용)
 SERVER_START_TIME = time.time()
 
 # Pydantic schemas
 class CaptionRequest(BaseModel):
+    shop_name: str
     service_type: str
     service_name: str
     features: str
@@ -72,7 +73,7 @@ class I2IRequest(BaseModel):
 
 # 🆕 이미지 편집 실험 스키마
 class ImageEditingRequest(BaseModel):
-    experiment_id: str  # "portrait_mode", "product_mode", "hybrid_mode", "ben2_flux_fill", "ben2_qwen_image"
+    experiment_id: str  # "portrait_mode", "product_mode", "hybrid_mode", "ben2_flux_fill"
     input_image_base64: str
     prompt: str
     negative_prompt: Optional[str] = ""

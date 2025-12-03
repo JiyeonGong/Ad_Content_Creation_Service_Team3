@@ -715,9 +715,14 @@ def get_workflow_input_image_node_id(experiment_id: str) -> str:
         experiment_id: 실험 ID
 
     Returns:
-        노드 ID (예: "1")
+        노드 ID (예: "1", "5")
     """
-    # 모든 워크플로우에서 노드 1이 LoadImage
+    # 기본 I2I 워크플로우 (페이지 3): 노드 5가 LoadImage
+    if experiment_id in [None, "", "i2i", "basic_i2i"]:
+        return "5"
+    
+    # 고급 편집 모드 워크플로우 (페이지 4): 노드 1이 LoadImage
+    # (portrait_mode, product_mode, hybrid_mode, etc.)
     return "1"
 
 
