@@ -37,5 +37,22 @@ src/outfitanyone
 #assets/outputs/
 
 # 입력폴더 공유시 주석처리
-#assets/inputs/outputs/
+#assets/inputs/
+data/
+outputs/
 models/
+#assets/inputs/outputs/
+volumes/
+
+# ComfyUI (external git repository)
+comfyui/*
+# 단, 모델 경로 설정은 추적
+!comfyui/extra_model_paths.yaml
+
+# Logs
+logs/
+*.log
+
+# Backup files
+*.backup
+*.backup_*

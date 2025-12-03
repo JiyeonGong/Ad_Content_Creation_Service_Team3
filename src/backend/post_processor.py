@@ -79,8 +79,15 @@ class PostProcessor:
         if self.yolo_model is None:
             print("📥 YOLO 모델 로딩 중...")
             # YOLOv8n (nano) - 가벼움, 사람 감지용
-            self.yolo_model = YOLO("yolov8n.pt")
-            print("✅ YOLO 모델 로드 완료")
+            import os
+            model_path = os.path.join("models", "yolov8n.pt")
+            
+            # models 폴더가 없으면 생성
+            if not os.path.exists("models"):
+                os.makedirs("models", exist_ok=True)
+                
+            self.yolo_model = YOLO(model_path)
+            print(f"✅ YOLO 모델 로드 완료: {model_path}")
 
     def _load_mediapipe(self):
         """MediaPipe 감지기 로드"""
@@ -479,18 +486,12 @@ class PostProcessor:
         steps: int = 20
     ) -> Image.Image:
         """
-        ADetailer 스타일 후처리
-        - 손/얼굴 감지 → 해당 영역 Inpaint로 재생성
-
-        Args:
-            image: 원본 이미지
-            inpaint_pipeline: Flux/SD Inpaint 파이프라인
-            prompt: 재생성용 프롬프트
-            targets: 감지 대상 ["hand", "face"]
-            strength: Inpaint 강도 (0.3-0.5 권장)
-            steps: 추론 스텝
+        ADetailer 스타일 후처리 (Crop & Paste 방식)
+        - 마스크 인자를 지원하지 않는 모델(FLUX 등)을 위해
+        - 감지된 영역을 잘라내어 I2I 수행 후 다시 합성
         """
         result_image = image.copy()
+        w, h = image.size
 
         all_boxes = []
 
@@ -509,30 +510,68 @@ class PostProcessor:
             print("  ℹ️ 감지된 영역 없음 - 원본 반환")
             return result_image
 
-        # 마스크 생성
-        mask = self.create_mask_from_boxes(
-            image.size,
-            all_boxes,
-            expand_ratio=1.3,
-            feather=15
-        )
+        print(f"  🎨 ADetailer: {len(all_boxes)}개 영역에 대해 I2I 수행 (Crop & Paste)...")
 
-        # Inpaint 실행
-        print(f"  🎨 Inpaint 실행 중 (strength={strength}, steps={steps})...")
+        # 각 박스별로 처리
+        for i, box in enumerate(all_boxes):
+            # 1. 영역 확장 및 클리핑
+            expanded = box.expand(1.3) # 30% 확장
+            x1 = max(0, expanded.x1)
+            y1 = max(0, expanded.y1)
+            x2 = min(w, expanded.x2)
+            y2 = min(h, expanded.y2)
+            
+            # 너무 작은 영역 무시
+            if (x2 - x1) < 32 or (y2 - y1) < 32:
+                continue
 
-        # Flux Inpaint 호출
-        inpaint_result = inpaint_pipeline(
-            prompt=prompt,
-            image=result_image,
-            mask_image=mask,
-            strength=strength,
-            num_inference_steps=steps,
-            guidance_scale=3.5
-        )
+            # 2. 이미지 Crop
+            crop_img = result_image.crop((x1, y1, x2, y2))
+            
+            # 3. I2I 수행
+            try:
+                # 프롬프트 보강
+                local_prompt = prompt
+                if box.label == "hand":
+                    local_prompt += ", detailed hand, correct anatomy, 5 fingers, best quality"
+                elif box.label == "face":
+                    local_prompt += ", detailed face, high quality, realistic eyes"
 
-        result_image = inpaint_result.images[0]
+                # I2I 호출 (mask_image 없이)
+                processed_crop = inpaint_pipeline(
+                    prompt=local_prompt,
+                    image=crop_img,
+                    strength=strength, # 0.3~0.5
+                    num_inference_steps=steps,
+                    guidance_scale=3.5,
+                    output_type="pil"
+                ).images[0]
+                
+                # 4. 크기 복원 (혹시 변경되었을 경우)
+                if processed_crop.size != crop_img.size:
+                    processed_crop = processed_crop.resize(crop_img.size, Image.LANCZOS)
+
+                # 5. 합성 (Feathering 적용)
+                # 부드러운 합성을 위한 알파 마스크 생성
+                blend_mask = Image.new("L", crop_img.size, 0)
+                draw = ImageDraw.Draw(blend_mask)
+                
+                # 가장자리에서 10px 안쪽은 255(불투명), 나머지는 0(투명)으로 시작해서 블러링
+                margin = min(10, crop_img.size[0]//4, crop_img.size[1]//4)
+                draw.rectangle(
+                    [margin, margin, crop_img.size[0]-margin, crop_img.size[1]-margin], 
+                    fill=255
+                )
+                blend_mask = blend_mask.filter(ImageFilter.GaussianBlur(margin))
+
+                result_image.paste(processed_crop, (x1, y1), blend_mask)
+                print(f"    ✅ 영역 {i+1} 처리 완료 ({box.label})")
+
+            except Exception as e:
+                print(f"    ⚠️ 영역 {i+1} 처리 실패: {e}")
+                continue
+
         print("  ✅ ADetailer 처리 완료")
-
         return result_image
 
     def detect_anomalies(

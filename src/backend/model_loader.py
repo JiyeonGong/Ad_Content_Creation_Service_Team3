@@ -46,9 +46,10 @@ class ModelLoader:
     
     def get_current_model_info(self) -> dict:
         """현재 로드된 모델 정보"""
-        if not self.current_model_config:
+        # 파이프라인이 실제로 로드되어 있어야 loaded: true
+        if not self.is_loaded() or not self.current_model_config:
             return {"loaded": False}
-        
+
         return {
             "loaded": True,
             "name": self.current_model_name,
@@ -152,17 +153,17 @@ class ModelLoader:
                 load_kwargs["load_in_8bit"] = True
                 print("  ✓ 8-bit 양자화 모드 (deprecated)")
 
-        # 모델 타입별 로딩
+        # 모델 타입별 로딩 (레거시 - 현재는 ComfyUI 사용)
         if model_type == "flux-bnb-4bit":
-            # 사전 양자화 4-bit 모델 (diffusers/FLUX.1-dev-bnb-4bit)
+            # 레거시: 사전 양자화 4-bit 모델
             from diffusers import FluxPipeline
             print("  📥 사전 양자화 4-bit 모델 (bitsandbytes) 로딩 중...")
-            print("  ⚠️ 첫 로드 시 다운로드에 시간이 걸릴 수 있습니다.")
 
             t2i = FluxPipeline.from_pretrained(
                 model_id,
                 torch_dtype=self.dtype,
-                cache_dir=self.cache_dir
+                cache_dir=self.cache_dir,
+                local_files_only=True  # 로컬 캐시만 사용
             )
             t2i = t2i.to(self.device)
             print("  ✓ 사전 양자화 4-bit 모델 로드 완료")
@@ -180,15 +181,15 @@ class ModelLoader:
                 print("  ⚠️ I2I 파이프라인 공유")
 
         elif model_type == "flux-bnb-8bit":
-            # 사전 양자화 8-bit 모델 (diffusers/FLUX.1-dev-bnb-8bit)
+            # 레거시: 사전 양자화 8-bit 모델
             from diffusers import FluxPipeline
             print("  📥 사전 양자화 8-bit 모델 (bitsandbytes) 로딩 중...")
-            print("  ⚠️ 첫 로드 시 다운로드에 시간이 걸릴 수 있습니다.")
 
             t2i = FluxPipeline.from_pretrained(
                 model_id,
                 torch_dtype=self.dtype,
-                cache_dir=self.cache_dir
+                cache_dir=self.cache_dir,
+                local_files_only=True  # 로컬 캐시만 사용
             )
             t2i = t2i.to(self.device)
             print("  ✓ 사전 양자화 8-bit 모델 로드 완료")
@@ -359,7 +360,55 @@ class ModelLoader:
             from diffusers import AutoPipelineForText2Image
             t2i = AutoPipelineForText2Image.from_pretrained(model_id, **load_kwargs).to(self.device)
             i2i = AutoPipelineForImage2Image.from_pipe(t2i)
-        
+
+        elif model_type == "flux-gguf":
+            # FLUX GGUF 편집 모델 (ComfyUI에서 처리)
+            print("  📥 FLUX GGUF 모델 로딩 중...")
+            print(f"  📂 경로: {model_id}")
+
+            # ComfyUI API를 통해 모델 로드
+            from .comfyui_client import ComfyUIClient
+            from .comfyui_workflows import get_ben2_flux_fill_workflow
+            comfyui = ComfyUIClient()
+
+            try:
+                # ComfyUI 워크플로우로 모델 로드
+                print("  🔄 ComfyUI 워크플로우로 모델 로드 중...")
+                workflow = get_ben2_flux_fill_workflow()
+                prompt_id = comfyui.queue_prompt(workflow)
+                print(f"  ✓ 워크플로우 실행: {prompt_id}")
+
+                # 파이프라인은 None (ComfyUI가 관리)
+                t2i = None
+                i2i = None
+            except Exception as e:
+                print(f"  ❌ 워크플로우 실행 실패: {e}")
+                raise
+
+        elif model_type == "qwen-image-edit":
+            # Qwen Image Edit 모델 (ComfyUI에서 처리)
+            print("  📥 Qwen Image Edit 모델 로딩 중...")
+            print(f"  📂 경로: {model_id}")
+
+            # ComfyUI API를 통해 모델 로드
+            from .comfyui_client import ComfyUIClient
+            from .comfyui_workflows import get_ben2_qwen_workflow
+            comfyui = ComfyUIClient()
+
+            try:
+                # ComfyUI 워크플로우로 모델 로드
+                print("  🔄 ComfyUI 워크플로우로 모델 로드 중...")
+                workflow = get_ben2_qwen_workflow()
+                prompt_id = comfyui.queue_prompt(workflow)
+                print(f"  ✓ 워크플로우 실행: {prompt_id}")
+
+                # 파이프라인은 None (ComfyUI가 관리)
+                t2i = None
+                i2i = None
+            except Exception as e:
+                print(f"  ❌ 워크플로우 실행 실패: {e}")
+                raise
+
         else:
             # 기본 (Auto 파이프라인)
             print(f"  ⚠️ 알 수 없는 타입 '{model_type}', Auto 파이프라인 사용")
@@ -369,13 +418,13 @@ class ModelLoader:
             except:
                 i2i = t2i
         
-        # 메모리 최적화 적용 (사전 양자화 모델은 최적화 불필요)
-        is_prequantized = model_type in ["flux-bnb-4bit", "flux-bnb-8bit", "flux-fp8-pretrained"]
-        if is_prequantized:
-            print("  ℹ️ 사전 양자화 모델 - 메모리 최적화 스킵 (이미 최적화됨)")
-        else:
+        # 메모리 최적화 적용 (사전 양자화 모델 및 ComfyUI 전용 모델은 최적화 불필요)
+        skip_optimization = model_type in ["flux-bnb-4bit", "flux-bnb-8bit", "flux-fp8-pretrained", "flux-gguf", "qwen-image-edit"]
+        if skip_optimization:
+            print("  ℹ️ 메모리 최적화 스킵 (사전 양자화 또는 ComfyUI 전용)")
+        elif t2i is not None:
             t2i = self._apply_memory_optimizations(t2i, model_type, "T2I", use_quantization)
-            if i2i != t2i:
+            if i2i is not None and i2i != t2i:
                 i2i = self._apply_memory_optimizations(i2i, model_type, "I2I", use_quantization)
 
         return t2i, i2i
@@ -478,22 +527,12 @@ class ModelLoader:
         """모델 언로드 (메모리 해제)"""
         import gc
 
+        # 파이프라인 삭제 (CPU 이동 시도 제거 - 양자화 모델 호환성 문제 해결)
         if self.t2i_pipe:
-            # 파이프라인 내부 컴포넌트도 명시적 해제
-            if hasattr(self.t2i_pipe, 'to'):
-                try:
-                    self.t2i_pipe.to('cpu')
-                except:
-                    pass
             del self.t2i_pipe
             self.t2i_pipe = None
 
         if self.i2i_pipe:
-            if hasattr(self.i2i_pipe, 'to'):
-                try:
-                    self.i2i_pipe.to('cpu')
-                except:
-                    pass
             del self.i2i_pipe
             self.i2i_pipe = None
 

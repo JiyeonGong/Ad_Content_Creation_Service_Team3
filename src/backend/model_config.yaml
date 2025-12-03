@@ -3,14 +3,14 @@
 
 models:
   # ========================================
-  # 사전 양자화 8-bit 모델 (bitsandbytes) ⭐ 권장
+  # GGUF 8-bit 모델 ⭐ 권장
   # ========================================
   # - 속도: ~77초/이미지 (1024x1024, 28 steps)
   # - GPU 메모리: ~21GB
   # - 품질: 99%+
-  flux-dev-bnb-8bit:
-    id: "diffusers/FLUX.1-dev-bnb-8bit"
-    type: "flux-bnb-8bit"
+  FLUX.1-dev-Q8:
+    id: "/home/shared/flux1-dev-Q8_0.gguf"
+    type: "flux-gguf"
     requires_auth: false
     params:
       default_steps: 28
@@ -21,16 +21,16 @@ models:
       max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
-    description: "FLUX.1-dev 8-bit 양자화 (77초/이미지, 권장)"
+    description: "FLUX.1-dev GGUF 8-bit 양자화 (권장)"
 
   # ========================================
-  # 사전 양자화 4-bit 모델 (bitsandbytes)
+  # GGUF 4-bit 모델
   # ========================================
   # - GPU 메모리: ~8GB
   # - 품질: 98%+
-  flux-dev-bnb-4bit:
-    id: "diffusers/FLUX.1-dev-bnb-4bit"
-    type: "flux-bnb-4bit"
+  FLUX.1-dev-Q4:
+    id: "/home/shared/flux1-dev-Q4_0.gguf"
+    type: "flux-gguf"
     requires_auth: false
     params:
       default_steps: 28
@@ -41,17 +41,14 @@ models:
       max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
-    description: "FLUX.1-dev 4-bit 양자화 (메모리 절약)"
+    description: "FLUX.1-dev GGUF 4-bit 양자화 (메모리 절약)"
 
   # ========================================
-  # GCP VM 전용 원본 모델 (CPU offload 필요)
+  # 이미지 편집 모델 (GGUF)
   # ========================================
-  # - 속도: ~50분/이미지
-  # - GPU 메모리: CPU offload 사용
-  # - 품질: 100%
-  flux-dev-gcp:
-    id: "/home/shared/FLUX.1-dev"
-    type: "flux"
+  FLUX.1-Fill-dev-Q8_0:
+    id: "/home/shared/FLUX.1-Fill-dev-Q8_0.gguf"
+    type: "flux-gguf"
     requires_auth: false
     params:
       default_steps: 28
@@ -62,17 +59,31 @@ models:
       max_tokens: 512
       default_size: [1024, 1024]
       max_size: [2048, 2048]
-    description: "FLUX.1-dev 원본 (50분/이미지, 최고 품질)"
+    description: "FLUX.1-Fill GGUF 8-bit (Inpainting/Outpainting)"
+
+  Qwen-Image-Edit-2509:
+    id: "/home/shared/qwen-image-edit"
+    type: "qwen-image-edit"
+    requires_auth: false
+    params:
+      default_steps: 28
+      max_steps: 50
+      use_negative_prompt: false
+      guidance_scale: 3.5
+      supports_i2i: true
+      max_tokens: 512
+      default_size: [1024, 1024]
+      max_size: [2048, 2048]
+    description: "Qwen Image Edit 2509 (정밀 이미지 편집)"
 
 # ========================================
 # 실행 설정
 # ========================================
 runtime:
   # 기본 모델 선택
-  # - "flux-dev-bnb-4bit": 4-bit 양자화 (~8GB VRAM)
-  # - "flux-dev-bnb-8bit": 8-bit 양자화 (77초, 권장)
-  # - "flux-dev-gcp": 원본 (50분, 최고 품질)
-  primary_model: "flux-dev-bnb-8bit"
+  # - "FLUX.1-dev-Q4": 4-bit 양자화 (~8GB VRAM)
+  # - "FLUX.1-dev-Q8": 8-bit 양자화 (77초, 권장)
+  primary_model: "FLUX.1-dev-Q4"
 
   # 폴백 비활성화 (primary 실패 시 에러로 처리)
   enable_fallback: false

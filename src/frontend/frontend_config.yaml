@@ -2,7 +2,7 @@
 # Streamlit 프론트엔드 설정
 
 app:
-  title: "💪 헬스케어 AI 콘텐츠 제작"
+  title: "💼 소상공인 AI 콘텐츠 제작"
   layout: "wide"
   
 api:
@@ -24,17 +24,22 @@ pages:
   
   - id: "i2i"
     icon: "🖼️"
-    title: "이미지 편집"
+    title: "이미지 스타일 변경"
     description: "기존 이미지를 AI로 편집하고 스타일을 변경합니다"
+
+  - id: "image_editing_experiment"
+    icon: "✂️"
+    title: "배경 제거 + 편집"
+    description: "BEN2 배경 제거 + 이미지 편집 (FLUX.1-Fill)"
+
+  - id: "text_overlay"
+    icon: "🔤"
+    title: "3D 캘리그라피 생성"
+    description: "입체적인 3D 텍스트 이미지를 생성합니다 (배경 투명)"
 
 # 문구 생성 설정
 caption:
-  service_types:
-    - "헬스장"
-    - "PT (개인 트레이닝)"
-    - "요가/필라테스"
-    - "건강 식품/보조제"
-    - "기타"
+  service_types: []  # 사용자 직접 입력 방식으로 변경
   
   tones:
     - "친근하고 동기부여"
@@ -70,7 +75,7 @@ image:
   steps:
     min: 1
     max: 50
-    default: 10
+    default: 28
   
   # I2I 설정
   i2i:
@@ -79,6 +84,42 @@ image:
       max: 1.0
       default: 0.75
       step: 0.05
+
+  # 🆕 후처리 설정
+  post_processing:
+    # 후처리 방식 (none, impact_pack, adetailer)
+    methods:
+      - id: "none"
+        name: "없음 (빠름)"
+        description: "후처리 없이 빠르게 생성"
+      - id: "impact_pack"
+        name: "ComfyUI Impact Pack"
+        description: "YOLO+SAM 기반 얼굴/손 보정 (새로운 방식)"
+      - id: "adetailer"
+        name: "기존 ADetailer"
+        description: "YOLO+MediaPipe 기반 후처리 (호환성)"
+
+    # ADetailer 타겟
+    adetailer_targets:
+      - "hand"
+      - "face"
+
+  # 🆕 이미지 편집 실험 설정
+  editing_experiment:
+    strength:
+      min: 0.0
+      max: 1.0
+      default: 0.8
+      step: 0.05
+    steps:
+      min: 10
+      max: 50
+      default: 28
+    guidance_scale:
+      min: 1.0
+      max: 15.0
+      default: 3.5
+      step: 0.5
 
 # UI 텍스트
 ui:
