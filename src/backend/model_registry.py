@@ -57,14 +57,13 @@ class ModelConfig:
 
 
 class ModelRegistry:
-    """모델 레지스트리 - 설정 파일에서 모델 정보 로드"""
+    """yaml 설정 파일에서 모델 정보 로드"""
     
     def __init__(self, config_path: Optional[str] = None):
         if config_path is None:
-            # 기본 경로: src/backend/model_config.yaml
             config_path = os.path.join(
-                os.path.dirname(__file__), 
-                "model_config.yaml"
+                os.path.dirname(__file__),
+                "..", "..", "configs", "model_config.yaml"
             )
         
         self.config_path = config_path
@@ -72,6 +71,7 @@ class ModelRegistry:
         self.runtime_config: Dict[str, Any] = {}
         
         self._load_config()
+
     
     def _load_config(self):
         """YAML 설정 파일 로드"""
