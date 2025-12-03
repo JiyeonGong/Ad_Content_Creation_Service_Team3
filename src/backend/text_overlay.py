@@ -91,17 +91,20 @@ def get_calligraphy_pipeline():
             )
             
             # SDXL + ControlNet 파이프라인 생성 (로컬 캐시 우선)
+            # meta 텐서 문제 해결: device_map="auto" 사용
             _calligraphy_pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
                 sdxl_base_path,
                 controlnet=controlnet,
                 vae=vae,
                 cache_dir="/home/shared",
                 local_files_only=True,
-                torch_dtype=torch.float16
-            ).to("cuda")
+                torch_dtype=torch.float16,
+                device_map="auto"  # meta 텐서 자동 처리
+            )
             
             # 메모리 최적화
-            _calligraphy_pipeline.enable_model_cpu_offload()
+            # enable_model_cpu_offload()는 device_map="auto"와 함께 사용 불가
+            # _calligraphy_pipeline.enable_model_cpu_offload()
             _calligraphy_pipeline.enable_vae_slicing()
             
             print("✅ 캘리그라피 파이프라인 로드 완료")

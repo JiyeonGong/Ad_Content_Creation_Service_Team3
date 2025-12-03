@@ -4,7 +4,7 @@
 # ComfyUI 연결 설정
 comfyui:
   base_url: "http://localhost:8188"
-  timeout: 300  # 초 (5분)
+  timeout: 600  # 초 (10분) - 2025-12-02 수정: 300초 → 600초 (복잡한 워크플로우 대응)
 
 # 모델 저장 경로
 model_base_path: "/mnt/data4/models"
