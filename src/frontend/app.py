@@ -1,6 +1,6 @@
 # app.py (리팩토링 버전)
 """
-소상공인 AI 콘텐츠 제작 앱 - Streamlit 프론트엔드
+헬스케어 AI 콘텐츠 제작 앱 - Streamlit 프론트엔드
 설정 기반 아키텍처로 하드코딩 최소화
 """
 import os
@@ -47,6 +47,7 @@ class ConfigLoader:
             "app": {"title": "AI 콘텐츠 제작", "layout": "wide"},
             "api": {"base_url": "http://localhost:8000", "timeout": 180, "retry_attempts": 2},
             "caption": {
+                "service_types": ["헬스장", "PT", "요가/필라테스", "기타"],
                 "tones": ["친근하고 동기부여", "전문적이고 신뢰감"]
             },
             "image": {
@@ -444,10 +445,9 @@ def render_caption_page(config: ConfigLoader, api: APIClient):
     st.title("📝 홍보 문구 & 해시태그 생성")
     
     with st.form("content_form"):
-        service_type = st.text_input(
-            "서비스 분야 (직접 입력)",
-            placeholder=config.get("ui.placeholders.service_type", "예: 카페, 미용실, 온라인 쇼핑몰 등"),
-            help="귀하의 비즈니스 분야를 입력하세요 (예: 카페, 패션, 피트니스 등)"
+        service_type = st.selectbox(
+            "서비스 종류",
+            config.get("caption.service_types", [])
         )
         
         location = st.text_input(
@@ -537,7 +537,7 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         )
         base_prompt = st.text_area(
             "메인 프롬프트 (사용자 입력)",
-            placeholder="예: 밝고 현대적인 카페 내부, 따뜻한 조명과 편안한 분위기",
+            placeholder="예: 밝고 에너지 넘치는 필라테스 스튜디오, 건강하고 활기찬 느낌",
             key="base_prompt_t2i",
             value=st.session_state.get("base_prompt_t2i", "")
         )
@@ -546,7 +546,7 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             st.warning("⚠️ 연결 모드 ON이지만, 페이지1에서 문구가 선택되지 않았습니다.")
         base_prompt = st.text_area(
             "메인 프롬프트",
-            placeholder=config.get("ui.placeholders.caption", "예: 따뜻한 조명, 편안한 분위기의 가게 내부"),
+            placeholder=config.get("ui.placeholders.caption", "예: 따뜻한 조명, 편안한 분위기의 요가 공간"),
             key="base_prompt_t2i",
             value=st.session_state.get("base_prompt_t2i", "")
         )
@@ -1266,9 +1266,7 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     mode_display_names = {
         "portrait_mode": "👤 인물 모드",
         "product_mode": "📦 제품 모드",
-        "hybrid_mode": "✨ 고급(하이브리드) 모드",
-        "flux_fill_mode": "🖌️ 인페인팅 모드",
-        # "qwen_edit_mode": "🎯 정밀 편집 모드"  # 비활성화
+        "hybrid_mode": "✨ 고급(하이브리드) 모드"
     }
     
     # 선택된 모드의 이름 가져오기
@@ -1389,10 +1387,6 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
     )
 
     # ControlNet 옵션 (portrait/hybrid)
-    controlnet_type = "depth"
-    controlnet_strength = 0.0
-    denoise_strength = 0.8
-    
     if selected_mode_id in ["portrait_mode", "hybrid_mode"]:
         controlnet_type = st.selectbox(
             "ControlNet 타입",
@@ -1413,20 +1407,10 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
             step=0.05,
             key="page4_denoise_strength"
         )
-    elif selected_mode_id in ["flux_fill_mode"]:
-        # FLUX Fill / Qwen 모드 - denoise_strength만 사용
-        denoise_strength = st.slider(
-            "편집 강도 (Denoise)",
-            0.5, 1.0,
-            value=0.9 if selected_mode_id == "flux_fill_mode" else 0.7,
-            step=0.05,
-            key="page4_denoise_strength",
-            help="높을수록 변화가 큽니다"
-        )
-        
-        # FLUX Fill 전용: BEN2 자동 마스크 옵션
-        if selected_mode_id == "flux_fill_mode":
-            st.info("💡 BEN2로 자동 배경 제거하여 마스크 생성합니다")
+    else:
+        controlnet_type = "depth"
+        controlnet_strength = 0.0
+        denoise_strength = 1.0
 
     # Product 모드 전용 옵션
     blending_strength = None

@@ -4,7 +4,7 @@
 # ComfyUI 연결 설정
 comfyui:
   base_url: "http://localhost:8188"
-  timeout: 600  # 초 (10분) - 2025-12-02 수정: 300초 → 600초 (복잡한 워크플로우 대응)
+  timeout: 300  # 초 (5분)
 
 # 모델 저장 경로
 model_base_path: "/mnt/data4/models"
@@ -227,132 +227,6 @@ editing_modes:
       controlnet_strength: 0.8
       denoise_strength: 0.9
 
-  # 🟠 모드 D: FLUX.1-Fill (Inpainting/Outpainting)
-  # 목표: 마스크 영역 채우기 또는 이미지 확장
-  flux_fill:
-    id: "flux_fill_mode"
-    name: "🖌️ 인페인팅 모드"
-    description: "마스크 영역을 새로운 내용으로 채우거나 이미지 확장"
-    icon: "🖌️"
-
-    # 사용 모델
-    models:
-      background_removal: "BEN2 (선택적)"
-      inpainting: "FLUX.1-Fill-dev-Q8"
-
-    # 워크플로우 단계
-    pipeline:
-      - step: 1
-        name: "이미지 로드"
-        action: "입력 이미지 로드"
-        node: "LoadImage"
-
-      - step: 2
-        name: "마스크 생성"
-        action: "BEN2 배경 제거 또는 수동 마스크"
-        node: "BEN2 or Manual"
-
-      - step: 3
-        name: "인페인팅"
-        action: "FLUX Fill로 마스크 영역 채우기"
-        node: "KSampler"
-
-      - step: 4
-        name: "결과 저장"
-        action: "최종 이미지 저장"
-        node: "SaveImage"
-
-    # 제어 파라미터
-    controls:
-      - name: "편집 프롬프트"
-        type: "text_prompt"
-        description: "마스크 영역에 생성할 내용"
-        placeholder: "예: 배경을 현대적인 체육관으로 변경"
-
-      - name: "변경 강도"
-        type: "slider"
-        param: "denoise_strength"
-        min: 0.5
-        max: 1.0
-        default: 0.9
-        description: "높을수록 변화 큼"
-
-      - name: "자동 배경 제거"
-        type: "checkbox"
-        param: "use_ben2"
-        default: true
-        description: "BEN2로 자동 마스크 생성"
-
-    # 파라미터 기본값
-    params:
-      default_steps: 28
-      guidance_scale: 3.5
-      denoise_strength: 0.9
-      use_ben2: true
-
-
-    # 파라미터 기본값
-    params:
-      default_steps: 28
-      guidance_scale: 3.5
-      strength: 0.7
-
-    # 워크플로우 단계
-    pipeline:
-      - step: 1
-        name: "멀티 마스킹"
-        action: "얼굴(Face Detector) + 제품(BEN2) 마스크 합집합"
-        node: "MultiMask"
-
-      - step: 2
-        name: "마스크 반전"
-        action: "얼굴+제품 제외한 나머지(옷+배경)를 수정 영역으로"
-        node: "InvertMask"
-
-      - step: 3
-        name: "디테일 가이드"
-        action: "Canny로 손가락/제품 그립 디테일 추출"
-        node: "ControlNetCanny"
-
-      - step: 4
-        name: "생성"
-        action: "Masked I2I + ControlNet으로 옷/배경만 변경"
-        node: "KSampler"
-
-    # 제어 파라미터
-    controls:
-      - name: "보호 영역 선택"
-        type: "multi_auto"
-        description: "얼굴(자동) + 제품(자동 또는 클릭)"
-
-      - name: "상황/의상 정의"
-        type: "text_prompt"
-        description: "원하는 의상과 상황 설명"
-        placeholder: "예: Woman in suit, holding bottle, office background..."
-
-      - name: "디테일 강제"
-        type: "select"
-        param: "controlnet_type"
-        options: ["canny", "depth"]
-        default: "canny"
-        description: "Canny = 손가락 선명, Depth = 체형 유지"
-
-      - name: "생성 강도"
-        type: "slider"
-        param: "denoise_strength"
-        min: 0.7
-        max: 1.0
-        default: 0.9
-        description: "높을수록 강하게 다시 그림"
-
-    # 파라미터 기본값
-    params:
-      default_steps: 28
-      guidance_scale: 3.5
-      controlnet_type: "canny"
-      controlnet_strength: 0.8
-      denoise_strength: 0.9
-
 # ============================================================
 # 공통 모델 설정
 # ============================================================
@@ -374,13 +248,7 @@ models:
   # FLUX.1-Fill (Inpainting)
   flux_fill:
     name: "FLUX.1-Fill-dev-Q8"
-    path: "/home/shared/FLUX.1-Fill-dev-Q8_0.gguf"
-    type: "gguf"
-
-  # Qwen-Image-Edit (정밀 편집) - 비활성화됨
-  # qwen_edit:
-  #   name: "Qwen-Image-Edit-2509-Q8"
-  #   path: "/home/shared/Qwen-Image-Edit-2509-Q8_0.gguf"
+    path: "/mnt/data4/models/flux-fill/FLUX.1-Fill-dev-Q8_0.gguf"
     type: "gguf"
 
   # Impact Pack (Face/Hand Detector)

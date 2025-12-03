@@ -27,7 +27,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="소상공인 AI 콘텐츠 API (개선)")
+app = FastAPI(title="헬스케어 AI 콘텐츠 API (개선)")
 
 # 서버 시작 시간 (재시작 감지용)
 SERVER_START_TIME = time.time()

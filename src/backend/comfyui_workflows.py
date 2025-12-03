@@ -25,7 +25,7 @@ def get_pipeline_steps_for_mode(experiment_id: str) -> Dict[str, str]:
     모드별 노드 ID -> 파이프라인 단계명 매핑
 
     Args:
-        experiment_id: 모드 ID (portrait_mode, product_mode, hybrid_mode, flux_fill_mode)
+        experiment_id: 모드 ID (portrait_mode, product_mode, hybrid_mode)
 
     Returns:
         {node_id: step_name} 딕셔너리
@@ -89,22 +89,6 @@ def get_pipeline_steps_for_mode(experiment_id: str) -> Dict[str, str]:
             "61": "🎬 VAE 디코딩",
             "70": "💾 결과 저장"
         }
-    elif experiment_id == "flux_fill_mode":
-        return {
-            "1": "📥 이미지 로드",
-            "2": "🧠 FLUX Fill 모델 로드",
-            "3": "📝 CLIP 로드",
-            "4": "🎨 VAE 로드",
-            "5": "📝 프롬프트 인코딩",
-            "10": "✂️ BEN2 배경 제거 중...",
-            "11": "🎭 마스크 추출",
-            "12": "🔄 마스크 반전",
-            "20": "🎲 Latent 인코딩",
-            "21": "🖌️ 마스크 적용",
-            "30": "🚀 인페인팅 중... (KSampler)",
-            "31": "🎬 VAE 디코딩",
-            "50": "💾 결과 저장"
-        }
     else:
         return {}
 
@@ -114,7 +98,7 @@ def get_workflow_template(experiment_id: str) -> Dict[str, Any]:
     실험 ID에 따라 워크플로우 템플릿 반환
 
     Args:
-        experiment_id: 모델 ID (portrait_mode, product_mode, hybrid_mode, flux_fill_mode, FLUX.1-dev-Q8, FLUX.1-dev-Q4)
+        experiment_id: 모델 ID (portrait_mode, product_mode, hybrid_mode, FLUX.1-dev-Q8, FLUX.1-dev-Q4)
 
     Returns:
         ComfyUI 워크플로우 JSON
@@ -126,9 +110,6 @@ def get_workflow_template(experiment_id: str) -> Dict[str, Any]:
         return get_product_mode_workflow()
     elif experiment_id == "hybrid_mode":
         return get_hybrid_mode_workflow()
-    elif experiment_id == "flux_fill_mode":
-        return get_flux_fill_mode_workflow()
-    
     elif experiment_id in ["FLUX.1-dev-Q8", "FLUX.1-dev-Q4"]:
         return get_flux_t2i_workflow()
     else:
@@ -382,20 +363,11 @@ def get_flux_i2i_workflow() -> Dict[str, Any]:
             }
         },
 
-        # 노드 3: 프롬프트 인코딩 (Positive)
+        # 노드 3: 프롬프트 인코딩
         "3": {
             "class_type": "CLIPTextEncode",
             "inputs": {
                 "text": "",  # 런타임에 설정
-                "clip": ["2", 0]
-            }
-        },
-
-        # 노드 10: 빈 네거티브 프롬프트 (FLUX는 네거티브 불필요)
-        "10": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {
-                "text": "",
                 "clip": ["2", 0]
             }
         },
@@ -437,7 +409,7 @@ def get_flux_i2i_workflow() -> Dict[str, Any]:
                 "denoise": 0.75,  # strength, 런타임에 설정
                 "model": ["1", 0],
                 "positive": ["3", 0],
-                "negative": ["10", 0],  # 빈 네거티브 프롬프트
+                "negative": ["3", 0],  # FLUX는 negative 불필요
                 "latent_image": ["6", 0]
             }
         },
@@ -464,7 +436,7 @@ def get_flux_i2i_workflow() -> Dict[str, Any]:
     return workflow
 
 
-# 🗑️ 기존 실험 워크플로우 제거됨 (ben2_flux_fill 등 구버전)
+# 🗑️ 기존 실험 워크플로우 제거됨 (ben2_flux_fill, ben2_qwen_image)
 # 새로운 3가지 모드로 대체: portrait_mode, product_mode, hybrid_mode
 
 
@@ -726,28 +698,6 @@ def update_workflow_inputs(
             workflow["40"]["inputs"]["seed"] = seed
             workflow["40"]["inputs"]["steps"] = steps
             workflow["40"]["inputs"]["denoise"] = denoise_strength
-
-    # ============================================================
-    # FLUX.1-Fill Mode 워크플로우 업데이트
-    # ============================================================
-    elif experiment_id == "flux_fill_mode":
-        # 프롬프트 설정 (노드 5)
-        if "5" in workflow:
-            workflow["5"]["inputs"]["text"] = prompt
-
-        # Negative 프롬프트 (노드 6)
-        if "6" in workflow:
-            workflow["6"]["inputs"]["text"] = negative_prompt
-
-        # FluxGuidance (노드 7)
-        if "7" in workflow:
-            workflow["7"]["inputs"]["guidance"] = guidance_scale
-
-        # KSampler (노드 30)
-        if "30" in workflow:
-            workflow["30"]["inputs"]["seed"] = seed
-            workflow["30"]["inputs"]["steps"] = steps
-            workflow["30"]["inputs"]["denoise"] = denoise_strength
 
     return workflow
 
@@ -1446,159 +1396,6 @@ def get_hybrid_mode_workflow() -> Dict[str, Any]:
             "inputs": {
                 "filename_prefix": "hybrid_mode",
                 "images": ["41", 0]
-            }
-        }
-    }
-
-    return workflow
-
-
-def get_flux_fill_mode_workflow() -> Dict[str, Any]:
-    """
-    🟠 FLUX.1-Fill 인페인팅 모드 워크플로우
-    
-    파이프라인:
-    1. 이미지 로드
-    2. BEN2 배경 제거 (마스크 생성)
-    3. FLUX Fill로 마스크 영역 채우기
-    """
-    workflow = {
-        # 노드 1: 입력 이미지 로드
-        "1": {
-            "class_type": "LoadImage",
-            "inputs": {
-                "image": "input.png"
-            }
-        },
-
-        # 노드 2: FLUX Fill UNET 로드 (GGUF)
-        "2": {
-            "class_type": "UnetLoaderGGUF",
-            "inputs": {
-                "unet_name": "FLUX.1-Fill-dev-Q8_0.gguf"
-            }
-        },
-
-        # 노드 3: Dual CLIP 로드
-        "3": {
-            "class_type": "DualCLIPLoaderGGUF",
-            "inputs": {
-                "clip_name1": "clip_l.safetensors",
-                "clip_name2": "t5-v1_1-xxl-encoder-Q8_0.gguf",
-                "type": "flux"
-            }
-        },
-
-        # 노드 4: VAE 로드
-        "4": {
-            "class_type": "VAELoader",
-            "inputs": {
-                "vae_name": "ae.safetensors"
-            }
-        },
-
-        # 노드 5: 프롬프트 인코딩
-        "5": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {
-                "text": "",  # 런타임에 설정
-                "clip": ["3", 0]
-            }
-        },
-
-        # 노드 6: Negative 프롬프트
-        "6": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {
-                "text": "",
-                "clip": ["3", 0]
-            }
-        },
-
-        # 노드 7: FluxGuidance
-        "7": {
-            "class_type": "FluxGuidance",
-            "inputs": {
-                "conditioning": ["5", 0],
-                "guidance": 3.5  # 런타임에 설정
-            }
-        },
-
-        # 노드 10: BEN2 배경 제거 (마스크 생성)
-        "10": {
-            "class_type": "BackgroundEraseNetwork",
-            "inputs": {
-                "input_image": ["1", 0]
-            }
-        },
-
-        # 노드 11: 마스크 추출
-        "11": {
-            "class_type": "ImageToMask",
-            "inputs": {
-                "image": ["10", 0],
-                "channel": "alpha"
-            }
-        },
-
-        # 노드 12: Invert Mask (배경 영역만)
-        "12": {
-            "class_type": "InvertMask",
-            "inputs": {
-                "mask": ["11", 0]
-            }
-        },
-
-        # 노드 20: VAE Encode (원본 이미지)
-        "20": {
-            "class_type": "VAEEncode",
-            "inputs": {
-                "pixels": ["1", 0],
-                "vae": ["4", 0]
-            }
-        },
-
-        # 노드 21: Set Latent Noise Mask
-        "21": {
-            "class_type": "SetLatentNoiseMask",
-            "inputs": {
-                "samples": ["20", 0],
-                "mask": ["12", 0]  # 배경 영역 마스크
-            }
-        },
-
-        # 노드 30: KSampler (Inpainting)
-        "30": {
-            "class_type": "KSampler",
-            "inputs": {
-                "seed": 0,  # 런타임에 설정
-                "steps": 28,  # 런타임에 설정
-                "cfg": 1.0,
-                "sampler_name": "euler",
-                "scheduler": "simple",
-                "denoise": 0.9,  # 런타임에 설정
-                "model": ["2", 0],  # FLUX Fill
-                "positive": ["7", 0],
-                "negative": ["6", 0],
-                "latent_image": ["21", 0]
-            }
-        },
-
-        # 노드 31: VAE Decode
-        "31": {
-            "class_type": "VAEDecode",
-            "inputs": {
-                "samples": ["30", 0],
-                "vae": ["4", 0]
-            }
-        },
-
-        # 노드 50: Save Image
-        "50": {
-            "class_type": "SaveImage",
-            "inputs": {
-                "filename_prefix": "flux_fill_mode",
-                "images": ["31", 0]
             }
         }
     }
