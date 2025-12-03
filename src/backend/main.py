@@ -303,8 +303,6 @@ def get_comfyui_status():
     """ComfyUI 서버 상태 확인"""
     return services.check_comfyui_status()
 
-# 🆕 프리로드 기능 완전히 제거됨
-
 @app.post("/api/unload")
 def unload_model_comfyui():
     """ComfyUI 모델 언로드"""

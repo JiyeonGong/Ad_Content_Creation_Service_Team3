@@ -104,7 +104,7 @@ class ModelLoader:
             except:
                 pass
 
-        # Flash Attention 2 적용 (양자화와 함께 사용 시 추가 속도 개선)
+        # Flash Attention 2
         if memory_config.get("use_flash_attention", False):
             try:
                 if hasattr(pipe, 'transformer') and hasattr(pipe.transformer, 'enable_flash_attention_2'):
@@ -292,7 +292,7 @@ class ModelLoader:
 
                     elif quant_type == "nf4":
                         # NF4 양자화 (BitsAndBytes)
-                        # ⚠️ NF4 양자화 모델은 저장/로드 복잡 - 매번 양자화 수행
+                        # NF4 양자화 모델은 저장/로드 복잡 - 매번 양자화 수행
                         print("  📥 NF4 Transformer 로딩 중...")
                         nf4_config = BitsAndBytesConfig(
                             load_in_4bit=True,

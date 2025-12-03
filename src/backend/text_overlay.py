@@ -1,7 +1,7 @@
 # src/backend/text_overlay.py
 """
 텍스트 오버레이 기능 - 3D 캘리그라피 생성
-ControlNet Depth SDXL을 활용한 3D 렌더링 (팀원 코드 기반)
+ControlNet Depth SDXL을 활용한 3D 렌더링
 """
 import os
 import cv2
@@ -14,12 +14,11 @@ from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
 # 세션 로드
 rembg_session = new_session("u2net")
 
-# ControlNet 캘리그라피 전용 파이프라인 (lazy loading)
-_calligraphy_pipeline = None 
+# ControlNet 캘리그라피 전용 파이프라인
 
 def create_base_text_image(text: str, font_path: str, font_size: int = 600) -> Image.Image:
     """
-    기본 텍스트 이미지 생성 (팀원 코드)
+    기본 텍스트 이미지 생성
     """
     # 디버깅 로그
     print(f"🔍 [디버깅] 폰트 로딩 시도: '{font_path}'")
@@ -50,7 +49,7 @@ def create_base_text_image(text: str, font_path: str, font_size: int = 600) -> I
 
 def get_calligraphy_pipeline():
     """
-    캘리그라피 전용 ControlNet 파이프라인 로드 (lazy loading)
+    캘리그라피 전용 ControlNet 파이프라인 로드 
     
     Returns:
         StableDiffusionXLControlNetPipeline: ControlNet Depth SDXL 파이프라인
@@ -118,7 +117,7 @@ def apply_controlnet_3d_rendering(
     style: str = "default"
 ) -> Image.Image:
     """
-    ControlNet Depth SDXL을 사용하여 3D 렌더링 적용 (팀원 코드)
+    ControlNet Depth SDXL을 사용하여 3D 렌더링 적용
     
     흑백 텍스트 이미지를 깊이 맵으로 사용하고,
     색상과 스타일은 프롬프트를 통해 ControlNet에 전달하여
@@ -187,7 +186,7 @@ def apply_controlnet_3d_rendering(
 
 def remove_background(image: Image.Image) -> Image.Image:
     """
-    배경 제거 및 후처리 (팀원 코드)
+    배경 제거 및 후처리 
     
     1. Rembg: 1차 배경 제거
     2. Threshold: 애매한 반투명 찌꺼기 강제 제거 

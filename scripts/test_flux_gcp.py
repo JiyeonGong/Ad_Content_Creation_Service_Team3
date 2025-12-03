@@ -1,13 +1,4 @@
-#!/usr/bin/env python3
-"""
-GCP VM FLUX 테스트 스크립트 (ai-ad 방식)
-FastAPI 없이 model_loader를 직접 사용해서 빠르게 테스트
-
-Usage:
-    python scripts/test_flux_gcp.py
-    python scripts/test_flux_gcp.py --config config/test_flux_gcp.yaml
-    python scripts/test_flux_gcp.py --scenario exp01_basic_test
-"""
+# FLUX 양자화 모델 LoRA 학습 실험용 스크립트
 
 import os
 import sys

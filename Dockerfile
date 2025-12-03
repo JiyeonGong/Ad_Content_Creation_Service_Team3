@@ -10,7 +10,6 @@ WORKDIR /app
 # (Copy requirements first to leverage Docker cache)
 COPY requirements.txt requirements.txt 
 RUN pip install --no-cache-dir -r requirements.txt 
-# 여기서 requirements 복사하고 설치, 소스코드가 바뀌어도 라이브러리 잘 받아와요
 
 # 4. Copy Application Code
 # 우리 소스코드 전체 복사

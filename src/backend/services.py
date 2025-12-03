@@ -1,4 +1,4 @@
-# services.py (리팩토링 + FLUX 3단계 프롬프팅 통합 버전)
+# services.py 
 """
 AI 서비스 레이어 - 설정 기반 모델 관리
 """
@@ -254,14 +254,8 @@ Always include relevant quality hints based on the scene to prevent artifacts
 
 
 
-
-
-
-
 def build_final_prompt_v2(raw_prompt: str, context: dict = None, model_config=None) -> str:
     """통합 프롬프트 빌더 (Phase 1 개선 버전)
-    
-    GPT 호출을 3회 → 1회로 통합하여 비용 66% 절감, 처리 시간 50% 단축
     
     Args:
         raw_prompt: 원본 프롬프트 (한국어/영어 모두 가능)
@@ -310,13 +304,13 @@ def build_final_prompt_v2(raw_prompt: str, context: dict = None, model_config=No
     model_type = (getattr(model_config, "type", "") or "").lower()
     is_flux = "flux" in model_type
 
-    # 4) 단일 GPT 호출로 처리 (기존 3단계 통합)
+    # 4) 단일 GPT 호출로 처리 
     if not openai_client:
         return full_input
 
     try:
         if is_flux:
-            # FLUX 전용 통합 프롬프트 (기존 3단계를 하나로)
+            # FLUX 전용 통합 프롬프트 
             system_prompt = f"""You are an expert FLUX prompt engineer.
 Convert Korean/English input to an optimized FLUX prompt.
 
@@ -383,7 +377,7 @@ def build_final_prompt(raw_prompt: str, model_config=None) -> str:
         - 해당 ModelConfig 를 자동으로 사용
         - 모델 정보를 얻지 못하면 raw_prompt 를 그대로 반환
         
-    NOTE: 이 함수는 하위 호환성을 위해 유지됩니다. 새 코드는 build_final_prompt_v2() 사용을 권장합니다.
+    NOTE: 
     """
     # 0) model_config 가 명시되지 않은 경우(예: 편집 모드)는
     #    현재 ComfyUI 모델 기준으로 자동 추론
@@ -503,7 +497,7 @@ def generate_t2i_core(
     # 모델이 로드되지 않았고, 요청에 model_name이 있으면 자동 로드
     if not current_model_name and model_name:
         logger.info(f"🔄 모델 자동 로드 시작: {model_name}")
-        # 전역 변수 업데이트 (실제 워크플로우에서 사용됨)
+        # 전역 변수 업데이트 
         global current_comfyui_model
         current_comfyui_model = model_name
         current_model_name = model_name
@@ -701,7 +695,7 @@ def generate_i2i_core(
     # 모델이 로드되지 않았고, 요청에 model_name이 있으면 자동 로드
     if not current_model_name and model_name:
         logger.info(f"🔄 모델 자동 로드 시작: {model_name}")
-        # 전역 변수 업데이트 (실제 워크플로우에서 사용됨)
+        # 전역 변수 업데이트 
         global current_comfyui_model
         current_comfyui_model = model_name
         current_model_name = model_name
@@ -891,7 +885,6 @@ def edit_image_with_comfyui(
                 "elapsed_time": None
             }
 
-        # ✅ 편집 프롬프트에도 통합 빌더 적용 (Phase 1 개선)
         # 편집 모드는 특정 모델 설정을 바로 가져오기 어려우므로 model_config=None으로 동작 (fallback)
         context = {
             "style": "professional editing",
@@ -1316,7 +1309,6 @@ def generate_calligraphy_core(
         # 네거티브
         neg_keywords = "opaque, wood, paper, plastic, flat, dull, dark, broken"
 
-    # (나중에 다른 스타일도 여기에 elif로 추가할 예정)
     else:
         # [그 외 기본값]
         style_keywords = f"{style}, 3d render, high quality"
