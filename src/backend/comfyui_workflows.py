@@ -25,7 +25,7 @@ def get_pipeline_steps_for_mode(experiment_id: str) -> Dict[str, str]:
     모드별 노드 ID -> 파이프라인 단계명 매핑
 
     Args:
-        experiment_id: 모드 ID (portrait_mode, product_mode, hybrid_mode, flux_fill_mode, qwen_edit_mode)
+        experiment_id: 모드 ID (portrait_mode, product_mode, hybrid_mode, flux_fill_mode)
 
     Returns:
         {node_id: step_name} 딕셔너리
@@ -105,18 +105,6 @@ def get_pipeline_steps_for_mode(experiment_id: str) -> Dict[str, str]:
             "31": "🎬 VAE 디코딩",
             "50": "💾 결과 저장"
         }
-    elif experiment_id == "qwen_edit_mode":
-        return {
-            "1": "📥 이미지 로드",
-            "2": "🧠 Qwen 모델 로드",
-            "3": "📝 CLIP 로드",
-            "4": "🎨 VAE 로드",
-            "5": "📝 편집 명령 인코딩",
-            "20": "🎲 Latent 인코딩",
-            "30": "🚀 정밀 편집 중... (KSampler)",
-            "31": "🎬 VAE 디코딩",
-            "50": "💾 결과 저장"
-        }
     else:
         return {}
 
@@ -126,7 +114,7 @@ def get_workflow_template(experiment_id: str) -> Dict[str, Any]:
     실험 ID에 따라 워크플로우 템플릿 반환
 
     Args:
-        experiment_id: 모델 ID (portrait_mode, product_mode, hybrid_mode, flux_fill_mode, qwen_edit_mode, FLUX.1-dev-Q8, FLUX.1-dev-Q4)
+        experiment_id: 모델 ID (portrait_mode, product_mode, hybrid_mode, flux_fill_mode, FLUX.1-dev-Q8, FLUX.1-dev-Q4)
 
     Returns:
         ComfyUI 워크플로우 JSON
@@ -140,8 +128,7 @@ def get_workflow_template(experiment_id: str) -> Dict[str, Any]:
         return get_hybrid_mode_workflow()
     elif experiment_id == "flux_fill_mode":
         return get_flux_fill_mode_workflow()
-    elif experiment_id == "qwen_edit_mode":
-        return get_qwen_edit_mode_workflow()
+    
     elif experiment_id in ["FLUX.1-dev-Q8", "FLUX.1-dev-Q4"]:
         return get_flux_t2i_workflow()
     else:
@@ -477,7 +464,7 @@ def get_flux_i2i_workflow() -> Dict[str, Any]:
     return workflow
 
 
-# 🗑️ 기존 실험 워크플로우 제거됨 (ben2_flux_fill, ben2_qwen_image)
+# 🗑️ 기존 실험 워크플로우 제거됨 (ben2_flux_fill 등 구버전)
 # 새로운 3가지 모드로 대체: portrait_mode, product_mode, hybrid_mode
 
 
@@ -761,28 +748,6 @@ def update_workflow_inputs(
             workflow["30"]["inputs"]["seed"] = seed
             workflow["30"]["inputs"]["steps"] = steps
             workflow["30"]["inputs"]["denoise"] = denoise_strength
-
-    # ============================================================
-    # Qwen-Image-Edit Mode 워크플로우 업데이트
-    # ============================================================
-    elif experiment_id == "qwen_edit_mode":
-        # 편집 명령 설정 (노드 5)
-        if "5" in workflow:
-            workflow["5"]["inputs"]["text"] = prompt
-
-        # Negative 프롬프트 (노드 6)
-        if "6" in workflow:
-            workflow["6"]["inputs"]["text"] = negative_prompt
-
-        # FluxGuidance (노드 7)
-        if "7" in workflow:
-            workflow["7"]["inputs"]["guidance"] = guidance_scale
-
-        # KSampler (노드 30)
-        if "30" in workflow:
-            workflow["30"]["inputs"]["seed"] = seed
-            workflow["30"]["inputs"]["steps"] = steps
-            workflow["30"]["inputs"]["denoise"] = strength if strength else 0.7  # Qwen은 strength 사용
 
     return workflow
 
@@ -1637,126 +1602,5 @@ def get_flux_fill_mode_workflow() -> Dict[str, Any]:
             }
         }
     }
-
-    return workflow
-
-
-def get_qwen_edit_mode_workflow() -> Dict[str, Any]:
-    """
-    🟡 Qwen-Image-Edit 정밀 편집 모드 워크플로우
-    
-    파이프라인:
-    1. 이미지 로드
-    2. 자연어 명령 인코딩
-    3. Qwen으로 정밀 편집
-    """
-    workflow = {
-        # 노드 1: 입력 이미지 로드
-        "1": {
-            "class_type": "LoadImage",
-            "inputs": {
-                "image": "input.png"
-            }
-        },
-
-        # 노드 2: Qwen UNET 로드 (GGUF)
-        "2": {
-            "class_type": "UnetLoaderGGUF",
-            "inputs": {
-                "unet_name": "Qwen-Image-Edit-2509-Q8_0.gguf"
-            }
-        },
-
-        # 노드 3: Dual CLIP 로드
-        "3": {
-            "class_type": "DualCLIPLoaderGGUF",
-            "inputs": {
-                "clip_name1": "clip_l.safetensors",
-                "clip_name2": "t5-v1_1-xxl-encoder-Q8_0.gguf",
-                "type": "flux"
-            }
-        },
-
-        # 노드 4: VAE 로드
-        "4": {
-            "class_type": "VAELoader",
-            "inputs": {
-                "vae_name": "ae.safetensors"
-            }
-        },
-
-        # 노드 5: 편집 명령 인코딩
-        "5": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {
-                "text": "",  # 런타임에 설정 (자연어 편집 명령)
-                "clip": ["3", 0]
-            }
-        },
-
-        # 노드 6: Negative 프롬프트
-        "6": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {
-                "text": "",
-                "clip": ["3", 0]
-            }
-        },
-
-        # 노드 7: FluxGuidance
-        "7": {
-            "class_type": "FluxGuidance",
-            "inputs": {
-                "conditioning": ["5", 0],
-                "guidance": 3.5  # 런타임에 설정
-            }
-        },
-
-        # 노드 20: VAE Encode (원본 이미지)
-        "20": {
-            "class_type": "VAEEncode",
-            "inputs": {
-                "pixels": ["1", 0],
-                "vae": ["4", 0]
-            }
-        },
-
-        # 노드 30: KSampler (Qwen 편집)
-        "30": {
-            "class_type": "KSampler",
-            "inputs": {
-                "seed": 0,  # 런타임에 설정
-                "steps": 28,  # 런타임에 설정
-                "cfg": 1.0,
-                "sampler_name": "euler",
-                "scheduler": "simple",
-                "denoise": 0.7,  # 런타임에 설정 (strength)
-                "model": ["2", 0],  # Qwen
-                "positive": ["7", 0],
-                "negative": ["6", 0],
-                "latent_image": ["20", 0]
-            }
-        },
-
-        # 노드 31: VAE Decode
-        "31": {
-            "class_type": "VAEDecode",
-            "inputs": {
-                "samples": ["30", 0],
-                "vae": ["4", 0]
-            }
-        },
-
-        # 노드 50: Save Image
-        "50": {
-            "class_type": "SaveImage",
-            "inputs": {
-                "filename_prefix": "qwen_edit_mode",
-                "images": ["31", 0]
-            }
-        }
-    }
-
-    return workflow
 
     return workflow

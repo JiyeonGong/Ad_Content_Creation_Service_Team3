@@ -30,7 +30,7 @@ class ModelSelector:
             "product_mode": {"id": "product_mode", "name": "📦 제품 모드", "icon": "📦"},
             "hybrid_mode": {"id": "hybrid_mode", "name": "✨ 고급 모드", "icon": "✨"},
             "flux_fill_mode": {"id": "flux_fill_mode", "name": "🖌️ 인페인팅 모드", "icon": "🖌️"},
-            "qwen_edit_mode": {"id": "qwen_edit_mode", "name": "🎯 정밀 편집 모드", "icon": "🎯"}
+            # "qwen_edit_mode": {"id": "qwen_edit_mode", "name": "🎯 정밀 편집 모드", "icon": "🎯"}
         }
         
         mode_ids = list(EDITING_MODES.keys())
@@ -60,7 +60,7 @@ class ModelSelector:
             "product_mode": "제품은 보존하고, 배경을 창의적으로 변경",
             "hybrid_mode": "얼굴과 제품을 동시에 보존",
             "flux_fill_mode": "마스크 영역을 새로운 내용으로 채우거나 이미지 확장 (FLUX.1-Fill)",
-            "qwen_edit_mode": "자연어 명령으로 정밀하게 이미지 편집 (Qwen-Image-Edit)"
+            # "qwen_edit_mode": "자연어 명령으로 정밀하게 이미지 편집 (Qwen-Image-Edit)"
         }
         st.sidebar.info(mode_descriptions[selected_mode_id])
         

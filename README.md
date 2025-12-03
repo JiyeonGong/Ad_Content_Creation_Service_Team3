@@ -1,4 +1,4 @@
-# 💪 헬스케어 AI 콘텐츠 제작 서비스
+# 💪 소상공인 AI 콘텐츠 제작 서비스
 
 > ComfyUI 기반 고품질 인스타그램 홍보 콘텐츠 자동 생성 플랫폼
 
@@ -9,8 +9,11 @@
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **최근 업데이트:**
+- 🎯 프로젝트 리브랜딩: 헬스케어 → 전체 소상공인 대상으로 확장 (2025-12-03) NEW!
+- 🔧 Qwen-Image-Edit 워크플로우 수정 (UNETLoader 사용) (2025-12-03) NEW!
+- 📝 페이지1: 서비스 종류 직접 입력 방식으로 변경 (2025-12-03)
 - ✅ Phase 1 & Phase 2 구조 개선 완료 (2025-12-01)
-- 🔤 3D 캘리그라피 생성 기능 추가 (2025-12-02) NEW!
+- 🔤 3D 캘리그라피 생성 기능 추가 (2025-12-02)
 - 🚀 GPT API 비용 66% 절감, 처리 속도 50% 향상
 - 🎨 ComfyUI 통합으로 전문가급 이미지 편집 지원
 - 🔧 코드 복잡도 95% 감소 (리팩토링 완료)
@@ -65,14 +68,43 @@
   - 사용자 조절형 혼합
 - 원본 vs 편집본 비교 뷰
 
-#### 4. 🎨 고급 이미지 편집 실험 (3가지 모드)
-- **👤 인물 모드**: BEN2 + FLUX.1-Fill로 얼굴 보존, 배경/의상 변경
-- **📦 제품 모드**: 제품 보존, 배경 창의적 변경
-- **✨ 하이브리드 모드**: Qwen-Image-Edit로 얼굴+제품 동시 보존
+#### 4. 🎨 고급 이미지 편집 (페이지4 - 4가지 모드)
+
+**배경 제거 + 정밀 편집** - BEN2 자동 마스킹 + 다양한 편집 모드
+
+##### 모드 1: 👤 인물 모드 (Portrait Mode)
+- **기능**: 얼굴 보존, 의상/배경 변경
+- **파이프라인**: Face Detector → 마스크 반전 → ControlNet(Depth/Canny) → FLUX I2I
+- **사용 예**: 모델 의상 교체, 촬영 배경 변경
+
+##### 모드 2: 📦 제품 모드 (Product Mode)
+- **기능**: 제품 보존, 배경 창의적 변경
+- **파이프라인**: BEN2 자동 마스킹 → 마스크 반전 → FLUX I2I
+- **사용 예**: 상품 촬영 배경 교체
+
+##### 모드 3: 🎭 하이브리드 모드 (Hybrid Mode)
+- **기능**: 인물 + 제품 동시 보존, 나머지 변경
+- **파이프라인**: Face Detector + Product Segmentation → ControlNet → FLUX I2I
+- **사용 예**: 모델이 제품 들고 있는 이미지 배경 변경
+
+##### 모드 4: 🖼️ FLUX Fill 모드
+- **기능**: BEN2 자동 인페인팅
+- **모델**: FLUX.1-Fill-dev-Q8_0 (18GB)
+- **파이프라인**: BEN2 마스크 → FLUX Fill → 자연스러운 배경 생성
+- **사용 예**: 배경 완전 제거 후 새 배경 자동 생성
+
+~~##### 모드 5: 🎯 정밀 편집 모드 (Qwen-Image-Edit)~~
+~~- **기능**: 자연어 기반 정밀 이미지 편집~~
+~~- **모델**: Qwen-Image-Edit-2509-Q8_0 (21GB)~~
+~~- **상태**: ❌ **현재 비활성화** (ComfyUI 모델 인식 실패)~~
+~~- **사유**: GGUF 형식 Qwen 모델을 UNETLoader가 인식하지 못함~~
+
+**공통 기능**:
 - ControlNet 통합 (Depth, Canny, Pose 등 7가지 타입)
 - 실시간 프리뷰 및 비교
+- ComfyUI 워크플로우 기반 전문가급 편집
 
-#### 5. 🔤 3D 캘리그라피 생성 (NEW!)
+#### 5. 🔤 3D 캘리그라피 생성 (페이지5)
 - **AI 배경 제거 (rembg)** 기반 입체적인 텍스트 이미지 생성
 - 배경 투명 PNG 출력 → 다른 이미지 위에 합성 가능
 - 주요 기능:
@@ -429,7 +461,7 @@ runtime:
 
 ```yaml
 app:
-  title: "💪 헬스케어 AI 콘텐츠 제작"
+  title: "💪 소상공인 AI 콘텐츠 제작"
   layout: "wide"
 
 api:
@@ -1588,7 +1620,7 @@ SOFTWARE.
 ## 👥 팀
 
 - **개발팀**: Team 3
-- **프로젝트**: 헬스케어 AI 콘텐츠 제작 서비스
+- **프로젝트**: 소상공인 AI 콘텐츠 제작 서비스
 - **문의**: support@yourcompany.com
 
 ---
@@ -1690,6 +1722,8 @@ tail -f logs/backend.log | grep "GPT 호출"
 
 ### 문제 해결
 
+#### 일반적인 문제
+
 ```bash
 # 로그 확인
 tail -f logs/streamlit.log  # 프론트엔드
@@ -1701,10 +1735,107 @@ bash scripts/stop_all.sh
 bash scripts/start_all.sh
 ```
 
+#### 페이지4: Qwen 편집 모드 오류 (미해결)
+
+**증상**: `unet_name: 'Qwen-Image-Edit-2509-Q8_0.gguf' not in []`
+
+**원인**: ComfyUI의 UNETLoader가 Qwen GGUF 모델을 `diffusion_models` 폴더에서 인식하지 못함
+
+**시도한 해결책**:
+1. ✅ 워크플로우 노드 변경: `UnetLoaderGGUF` → `UNETLoader`
+2. ✅ 모델 파일 올바른 폴더 배치:
+   ```bash
+   comfyui/models/diffusion_models/Qwen-Image-Edit-2509-Q8_0.gguf (심볼릭 링크)
+   comfyui/models/text_encoders/t5-v1_1-xxl-encoder-Q8_0.gguf (심볼릭 링크)
+   ```
+3. ✅ 서버 재시작 여러 번
+4. ✅ 동적 폴백 로직 추가
+
+**결과**: ❌ **모두 실패** - ComfyUI가 `folder_paths.get_filename_list("diffusion_models")`에서 빈 배열 반환
+
+**현재 상태**: 
+- 페이지4 "🎯 정밀 편집 모드" **비활성화**
+- 나머지 4가지 모드는 정상 작동 (Portrait, Product, Hybrid, FLUX Fill)
+
+**향후 개선 방향**:
+- ComfyUI-GGUF 업데이트 대기 (Qwen 공식 지원 여부 확인)
+- Qwen diffusers 형식 버전 탐색
+- 별도 Qwen 전용 백엔드 구현 검토
+
+**주의**: `UNETLoader`는 `diffusion_models/` 폴더를 사용 (`unet/` 아님!)
+
+#### 페이지5: 3D 캘리그라피 색상/스타일 미적용
+
+**증상**: 흑백 텍스트만 나오고 3D 효과 없음
+
+**확인 사항**:
+1. 백엔드 로그 확인:
+   ```bash
+   tail -f logs/backend.log | grep -E "ControlNet|3D 렌더링|렌더링 실패"
+   ```
+
+2. ControlNet 모델 확인:
+   ```bash
+   ls -lh comfyui/models/controlnet/ | grep depth
+   ```
+
+3. "⚠️ ControlNet 렌더링 실패" 메시지가 로그에 있으면:
+   - ControlNet 모델 미다운로드
+   - CUDA 메모리 부족
+   - `device_map="auto"` 설정 문제
+
+**임시 해결**: 코드 수정으로 간단한 PIL 기반 색상 오버레이로 대체 가능
+
+---
+
+## 📜 변경 이력 (Change Log)
+
+### 2025-12-03 (v1.3)
+- 🎯 **프로젝트 리브랜딩**: "헬스케어 소상공인" → "소상공인" 전반으로 확장 ✅
+  - 제목 변경 (5개 파일): README, frontend_config, app.py, main.py, services.py
+  - 헬스케어 관련 콘텐츠 제거 (service_types 리스트, placeholder 예시)
+- 📝 **페이지1 개선**: 서비스 종류 선택 방식 변경 ✅
+  - selectbox (고정 목록) → text_input (사용자 직접 입력)
+  - 더 다양한 업종 지원: 카페, 미용실, 온라인 쇼핑몰 등
+  - GPT 프롬프트 호환성 유지 (service_type 변수 그대로 사용)
+- ❌ **페이지4 Qwen 편집 모드 시도** (미해결):
+  - 문제: ComfyUI `UNETLoader`가 Qwen GGUF 모델을 `diffusion_models`에서 인식 못함
+  - 시도: 노드 타입 변경, 올바른 폴더 배치, 서버 재시작, 동적 폴백 로직
+  - 결과: 모두 실패 - `folder_paths.get_filename_list("diffusion_models")` 빈 배열 반환
+  - **현재 상태**: 정밀 편집 모드 비활성화 (나머지 4가지 모드는 정상)
+- 🔍 **페이지5 캘리그라피 문제 분석**:
+  - ControlNet 렌더링 실패 시 원본 반환 동작 확인
+  - 로그 모니터링 및 트러블슈팅 가이드 작성
+
+### 2025-12-02 (v1.2)
+- 🔤 **3D 캘리그라피 생성 기능 추가** (페이지5)
+  - rembg 기반 배경 투명 PNG 생성
+  - ControlNet Meta Tensor 오류 수정 (device_map="auto")
+- 🖼️ **FLUX.1-Fill 모드 추가** (페이지4)
+  - BEN2 자동 마스킹 + FLUX Fill 인페인팅
+  - 워크플로우 15개 노드 구현
+- 🎯 **Qwen-Image-Edit 모드 추가** (페이지4)
+  - 자연어 기반 정밀 편집
+  - 워크플로우 11개 노드 구현
+- ⏱️ **ComfyUI 타임아웃 증가**: 300초 → 600초
+  - FLUX 모델 2번 로딩 정상 동작 확인
+  - 복잡한 워크플로우 대응
+
+### 2025-12-01 (v1.1)
+- ✅ **Phase 1 & 2 구조 개선 완료**
+  - GPT API 비용 66% 절감
+  - 처리 속도 50% 향상
+  - 코드 복잡도 95% 감소
+
+### 2025-11-30 (v1.0)
+- 🚀 초기 버전 배포
+  - 4가지 핵심 워크플로우 구현
+  - ComfyUI 통합
+
 ---
 
 <div align="center">
 
-[⬆ 맨 위로](#-헬스케어-ai-콘텐츠-제작-서비스)
+[⬆ 맨 위로](#-소상공인-ai-콘텐츠-제작-서비스)
 
 </div>

@@ -11,6 +11,11 @@ from rembg import remove, new_session
 import torch
 from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
 
+# 수치 연산 경고 억제
+os.environ["PYTHONWARNINGS"] = "ignore"
+import warnings
+warnings.filterwarnings("ignore")
+
 # 세션 로드
 rembg_session = new_session("u2net")
 
@@ -73,39 +78,51 @@ def get_calligraphy_pipeline():
         
         try:
             from diffusers import AutoencoderKL
-            
+
+            # GPU 가용 여부에 따라 dtype과 디바이스 매핑을 조정한다.
+            has_cuda = torch.cuda.is_available()
+            weight_dtype = torch.float16 if has_cuda else torch.float32
+            device_map = "balanced" if has_cuda else None
+
             # VAE 로드 (로컬 캐시 우선)
             vae = AutoencoderKL.from_pretrained(
                 vae_path,
                 cache_dir="/home/shared",
                 local_files_only=True,
-                torch_dtype=torch.float16
+                torch_dtype=weight_dtype
             )
-            
+
             # ControlNet 로드 (로컬 캐시 우선)
             controlnet = ControlNetModel.from_pretrained(
                 controlnet_path,
                 cache_dir="/home/shared",
                 local_files_only=True,
-                torch_dtype=torch.float16
+                torch_dtype=weight_dtype
             )
-            
+
             # SDXL + ControlNet 파이프라인 생성 (로컬 캐시 우선)
-            # meta 텐서 문제 해결: device_map="auto" 사용
+            # device_map 사용 시 .to() 호출 불가하므로 device_map 없이 로드 후 수동 이동
+            pipeline_kwargs = {
+                "controlnet": controlnet,
+                "vae": vae,
+                "cache_dir": "/home/shared",
+                "local_files_only": True,
+                "torch_dtype": weight_dtype,
+            }
+
             _calligraphy_pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
                 sdxl_base_path,
-                controlnet=controlnet,
-                vae=vae,
-                cache_dir="/home/shared",
-                local_files_only=True,
-                torch_dtype=torch.float16,
-                device_map="auto"  # meta 텐서 자동 처리
+                **pipeline_kwargs
             )
-            
+
+            # GPU 사용 시 명시적으로 CUDA로 이동시킨다.
+            if has_cuda:
+                _calligraphy_pipeline.to("cuda")
+
             # 메모리 최적화
-            # enable_model_cpu_offload()는 device_map="auto"와 함께 사용 불가
-            # _calligraphy_pipeline.enable_model_cpu_offload()
             _calligraphy_pipeline.enable_vae_slicing()
+            if has_cuda:
+                _calligraphy_pipeline.enable_model_cpu_offload()
             
             print("✅ 캘리그라피 파이프라인 로드 완료")
             
@@ -197,15 +214,19 @@ def remove_background(image: Image.Image) -> Image.Image:
     3. Erode: 테두리 안쪽으로 깎기
     4. Blur: 깎인 단면 부드럽게 처리
     """
-    # 1. AI 배경 제거
-    no_bg_image = remove(
-        image, 
-        session=rembg_session,
-        alpha_matting=True,
-        alpha_matting_foreground_threshold=240,
-        alpha_matting_background_threshold=10,
-        alpha_matting_erode_size=5  # rembg 자체 erode는 줄임
-    )
+    import warnings
+    
+    # Rembg 수치 안정성 경고 억제
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        
+        # 1. AI 배경 제거
+        no_bg_image = remove(
+            image, 
+            session=rembg_session,
+            alpha_matting=False,  # alpha_matting 비활성화 (수치 안정성 문제 회피)
+            post_process_mask=True  # 마스크 후처리 활성화
+        )
     
     img_np = np.array(no_bg_image)
     

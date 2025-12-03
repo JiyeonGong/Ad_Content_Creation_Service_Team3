@@ -456,7 +456,7 @@ def generate_caption_core(info: dict, tone: str) -> str:
         raise RuntimeError("OpenAI 클라이언트가 초기화되지 않았습니다.")
 
     prompt = f"""
-당신은 헬스케어 소상공인을 위한 전문 인스타그램 콘텐츠 크리에이터입니다.
+당신은 소상공인을 위한 전문 인스타그램 콘텐츠 크리에이터입니다.
 아래 정보를 바탕으로 인스타그램 게시물에 최적화된 콘텐츠를 생성해 주세요.
 
 요청:

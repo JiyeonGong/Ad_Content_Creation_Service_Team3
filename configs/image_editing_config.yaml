@@ -290,54 +290,6 @@ editing_modes:
       denoise_strength: 0.9
       use_ben2: true
 
-  # 🟡 모드 E: Qwen-Image-Edit (정밀 편집)
-  # 목표: 자연어 기반 정밀 이미지 편집
-  qwen_edit:
-    id: "qwen_edit_mode"
-    name: "🎯 정밀 편집 모드"
-    description: "자연어 명령으로 정밀하게 이미지 편집"
-    icon: "🎯"
-
-    # 사용 모델
-    models:
-      image_editing: "Qwen-Image-Edit-2509-Q8"
-
-    # 워크플로우 단계
-    pipeline:
-      - step: 1
-        name: "이미지 로드"
-        action: "입력 이미지 로드"
-        node: "LoadImage"
-
-      - step: 2
-        name: "명령 인코딩"
-        action: "자연어 편집 명령 처리"
-        node: "CLIPTextEncode"
-
-      - step: 3
-        name: "정밀 편집"
-        action: "Qwen으로 이미지 편집"
-        node: "KSampler"
-
-      - step: 4
-        name: "결과 저장"
-        action: "최종 이미지 저장"
-        node: "SaveImage"
-
-    # 제어 파라미터
-    controls:
-      - name: "편집 명령"
-        type: "text_prompt"
-        description: "자연어로 편집 내용 설명"
-        placeholder: "예: 운동복을 파란색에서 빨간색으로 변경"
-
-      - name: "편집 강도"
-        type: "slider"
-        param: "strength"
-        min: 0.5
-        max: 1.0
-        default: 0.7
-        description: "높을수록 변화 큼"
 
     # 파라미터 기본값
     params:
@@ -425,10 +377,10 @@ models:
     path: "/home/shared/FLUX.1-Fill-dev-Q8_0.gguf"
     type: "gguf"
 
-  # Qwen-Image-Edit (정밀 편집)
-  qwen_edit:
-    name: "Qwen-Image-Edit-2509-Q8"
-    path: "/home/shared/Qwen-Image-Edit-2509-Q8_0.gguf"
+  # Qwen-Image-Edit (정밀 편집) - 비활성화됨
+  # qwen_edit:
+  #   name: "Qwen-Image-Edit-2509-Q8"
+  #   path: "/home/shared/Qwen-Image-Edit-2509-Q8_0.gguf"
     type: "gguf"
 
   # Impact Pack (Face/Hand Detector)
