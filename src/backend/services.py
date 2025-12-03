@@ -5,11 +5,12 @@ AI 서비스 레이어 - 설정 기반 모델 관리
 import os
 import io
 import logging
+import math
 from typing import Optional
 
 from openai import OpenAI
 import torch
-from PIL import Image
+from PIL import Image, ImageFont, ImageDraw, ImageOps, ImageColor
 from dotenv import load_dotenv
 
 from .model_registry import get_registry
@@ -416,37 +417,6 @@ def build_final_prompt(raw_prompt: str, model_config=None) -> str:
     # 4) 혹시 결과가 비어 있으면 폴백으로 raw_prompt 사용
     return final_prompt.strip() or raw_prompt.strip()
 
-
-
-
-
-
-
-
-
-
-
-
-
-# def build_final_prompt(raw_prompt: str, model_config) -> str:
-#     """
-#     공용 최종 프롬프트 빌더 (T2I / I2I / 편집 공용)
-#     - FLUX: 3단계 (한국어 확장 → FLUX 템플릿 → 최종 폴리시)
-#     - 그 외: 단일 최종 폴리시
-#     """
-#     if not model_config:
-#         return raw_prompt
-
-#     model_type = (model_config.type if model_config else "").lower()
-
-#     if "flux" in model_type:
-#         expanded = expand_prompt_with_gpt(raw_prompt)
-#         templated = apply_flux_template(expanded)
-#         final_prompt = optimize_prompt(templated, model_config)
-#     else:
-#         final_prompt = optimize_prompt(raw_prompt, model_config)
-
-#     return final_prompt.strip() or raw_prompt
 
 # ===========================
 # GPT-5 Mini: 문구 생성
@@ -1217,58 +1187,175 @@ def check_comfyui_status() -> dict:
 # ===========================
 DEFAULT_FONT_PATH = "/home/shared/RiaSans-Bold.ttf"
 
+# ===========================
+# 색상 변환 헬퍼 함수
+# ===========================
+def hex_to_color_name(hex_str):
+    """Hex 코드를 AI가 이해하기 쉬운 영어 색상 이름으로 근사 변환"""
+    COLORS = {
+        "#FF0000": "Red", "#00FF00": "Green", "#0000FF": "Blue",
+        "#FFFF00": "Yellow", "#00FFFF": "Cyan", "#FF00FF": "Magenta",
+        "#FFFFFF": "White", "#000000": "Black", "#808080": "Gray",
+        "#FFA500": "Orange", "#800080": "Purple", "#FFC0CB": "Pink",
+        "#FFD700": "Gold", "#A52A2A": "Brown", "#40E0D0": "Turquoise",
+        "#FF6347": "Tomato Red", "#1E90FF": "Dodger Blue", "#32CD32": "Lime Green"
+    }
+    
+    hex_str = hex_str.lstrip('#')
+    try:
+        r, g, b = tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
+    except:
+        return "Color"
+
+    min_diff = float('inf')
+    closest_name = "Color"
+
+    for c_hex, c_name in COLORS.items():
+        cr, cg, cb = tuple(int(c_hex.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+        diff = math.sqrt((r - cr)**2 + (g - cg)**2 + (b - cb)**2)
+        if diff < min_diff:
+            min_diff = diff
+            closest_name = c_name
+            
+    return closest_name
+
 def generate_calligraphy_core(
     text: str,
     color_hex: str,
     style: str,
-    font_path: str = ""
+    font_path: str
 ) -> bytes:
     """
-    3D 캘리그라피 이미지 생성 (팀원 코드 기반)
-    
-    Args:
-        text: 생성할 텍스트
-        color_hex: 색상 HEX 코드 (예: "#FF5733")
-        style: 스타일 (현재는 사용하지 않음, 향후 확장용)
-        font_path: 폰트 파일 경로 (비어있으면 기본 폰트 사용)
-    
-    Returns:
-        bytes: PNG 이미지 바이트
-    
-    Raises:
-        ImageProcessingError: 이미지 생성 실패 시
+    캘리그라피 생성 메인 함수
+    - Basic 모드: Non-AI (Pillow) -> 즉시 생성
+    - 스타일 모드: AI (SDXL) -> 스타일 입히고 생성
     """
-    try:
-        # 폰트 경로 검증
-        if not font_path or font_path.strip() == "":
-            font_path = DEFAULT_FONT_PATH
-            print(f"ℹ️ 기본 폰트 사용: {font_path}")
+    global model_loader
+    
+    # 폰트 경로 결정
+    if not font_path or font_path == "":
+        real_font_path = DEFAULT_FONT_PATH
+    else:
+        real_font_path = font_path
+
+    # 효과 없음(기본)
+    if style == "basic_color":
+        print(f"⚡ [Basic 모드] 투명 캔버스에 직접 그립니다. 색상: {color_hex}")
         
-        if not os.path.exists(font_path):
-            raise ImageProcessingError(f"폰트 파일을 찾을 수 없습니다: {font_path}")
+        try:
+            font = ImageFont.truetype(real_font_path, 600)
+        except:
+            font = ImageFont.load_default()
+            
+        # 텍스트 크기 측정 (기존 로직 재사용)
+        dummy = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+        bbox = dummy.textbbox((0, 0), text, font=font)
+        w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
         
-        # 1. 기본 텍스트 이미지 생성 (흑백, 형태 제어용)
-        print(f"📝 텍스트 이미지 생성 중: '{text}'")
-        base_image = create_base_text_image(text, font_path, font_size=600)
+        # 캔버스 크기 계산
+        padding = 200
+        cw = ((w + padding) // 64 + 1) * 64
+        ch = ((h + padding) // 64 + 1) * 64
+        cw, ch = max(1024, cw), max(1024, ch)
         
-        # 2. ControlNet Depth SDXL로 3D 렌더링 적용 (색상 + 스타일)
-        print(f"🎨 3D 렌더링 적용 중 (색상: {color_hex}, 스타일: {style})...")
-        rendered_image = apply_controlnet_3d_rendering(base_image, color_hex, style)
+        # 투명(RGBA) 캔버스 생성
+        img = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
         
-        # 3. 배경 제거
-        print(f"✂️ 배경 제거 중...")
-        no_bg_image = remove_background(rendered_image)
+        # 중앙 정렬 좌표 계산
+        tx = (cw - w) // 2 - bbox[0]
+        ty = (ch - h) // 2 - bbox[1]
         
-        # 4. PNG로 변환
-        output_io = io.BytesIO()
-        no_bg_image.save(output_io, format="PNG")
-        output_bytes = output_io.getvalue()
+        # 사용자가 원하는 색으로 직접 그리기
+        # ImageColor.getrgb는 "#FF0000"을 (255, 0, 0)으로 바꾸는 역할
+        text_color_rgb = ImageColor.getrgb(color_hex)
+        draw.text((tx, ty), text, font=font, fill=text_color_rgb)
         
-        print(f"✅ 캘리그라피 생성 완료 ({len(output_bytes)} bytes)")
-        return output_bytes
-        
-    except FileNotFoundError as e:
-        raise ImageProcessingError(f"폰트 파일 오류: {e}")
-    except Exception as e:
-        logger.error(f"캘리그라피 생성 실패: {e}")
-        raise ImageProcessingError(f"캘리그라피 생성 중 오류 발생: {e}")
+        # 반환
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    
+    # =========================================================
+    # 스타일 선택 (AI - SDXL) 
+    # =========================================================
+    
+    # 1. 캘리그라피 파이프라인 로드 (독립 로더 사용)
+    from .text_overlay import get_calligraphy_pipeline
+    pipe = get_calligraphy_pipeline()
+    
+    # 2. 베이스 이미지 (Pillow) - Depth ControlNet용
+    base_image = create_base_text_image(text, real_font_path)
+    
+    # 3. 색상 변환
+    color_name = hex_to_color_name(color_hex)
+    print(f"🎨 AI 스타일 생성: {style} / 색상: {color_name} ({color_hex})")
+    
+    # 스타일별 전용 프롬프트 매핑
+    if style == "smooth matte plastic":
+        # [매트 플라스틱] 
+        style_keywords = (
+            f"Sleek 3D typography, "
+            f"thin elegant font, "
+            f"subtle shadows, "
+            f"geometric and symmetrical layout, "
+            f"minimalist clean background, "
+            f"soft blue and white tones, "
+            f"professional and focused vibe, "
+            f"photorealistic, 8k"
+        )
+        neg_keywords = "watermark, low quality, blurry, ugly, messy, distorted letters, jpeg artifacts"
+
+    elif style == "neon light":
+        # [네온 사인]
+        style_keywords = (
+            f"glowing neon light sign, glass tube texture, "
+            f"self-luminous, emission, cyberpunk style, "
+            f"volumetric lighting, cinematic lighting, electric"
+        )
+        # 네거티브
+        neg_keywords = "opaque, wood, paper, plastic, flat, dull, dark, broken"
+
+    # (나중에 다른 스타일도 여기에 elif로 추가할 예정)
+    else:
+        # [그 외 기본값]
+        style_keywords = f"{style}, 3d render, high quality"
+        neg_keywords = "bad quality, blurry"
+
+    # 4. 최종 프롬프트 조립
+    # - 색상 가중치를 1.5배로 높여서 재질에 먹히지 않게 함
+    prompt = (
+        f"solid 3D volumetric object, '{text}', "
+        f"({color_name} color:1.5), (hex code {color_hex}:1.2), "
+        f"{style_keywords}, "
+        f"isolated on solid white background"
+    )
+    
+    neg_prompt = (
+        f"{neg_keywords}, "
+        f"shadow, cast shadow, hard shadow, dark background, "
+        f"messy, wireframe, low quality, jpeg artifacts, watermark, text"
+    )
+
+    print(f"🖋️ AI 생성 프롬프트: {prompt}")
+    
+    # 5. 생성
+    generator = torch.Generator(device="cuda").manual_seed(42)
+    
+    image = pipe(
+        prompt=prompt,
+        negative_prompt=neg_prompt,
+        image=base_image,
+        controlnet_conditioning_scale=1.0,
+        num_inference_steps=30,
+        guidance_scale=7.5,
+        generator=generator
+    ).images[0]
+    
+    # 6. 배경 제거 (Rembg)
+    print("✂️ 배경 제거 중...")
+    final_image = remove_background(image)
+    
+    buf = io.BytesIO()
+    final_image.save(buf, format="PNG")
+    return buf.getvalue()

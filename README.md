@@ -20,8 +20,9 @@
 7. [API 엔드포인트](#api-엔드포인트)
 8. [성능 정보 및 주의사항](#성능-정보-및-주의사항)
 9. [ComfyUI 통합](#comfyui-통합)
-10. [추후 개선 가능 사항](#추후-개선-가능-사항)
-11. [FAQ](#faq)
+10. [알려진 문제점 (종합)](#알려진-문제점-종합)
+11. [추후 개선 가능 사항](#추후-개선-가능-사항)
+12. [FAQ](#faq)
 
 ---
 
@@ -155,6 +156,9 @@
 - 인스타그램 스토리 텍스트
 - 바너 디자인
 - 썸네일 제작
+
+**현재 상태 요약**
+- CLIP 77 토큰 제한으로 긴 프롬프트에서 일부 잘림이 발생할 수 있으나, 최근 개선으로 기본 Pillow 모드와 AI 스타일 모드 모두 생성 자체는 이전보다 안정적으로 작동합니다. 실사용에서 큰 문제 없이 결과 이미지를 얻을 수 있습니다.
 
 ---
 
@@ -598,6 +602,39 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 ---
 
+## 알려진 문제점 (종합)
+
+아래 문제점은 기존 README에 기록된 사항과 최신 코드 리뷰에서 추가로 확인한 사항을 통합한 목록입니다.
+
+- 기능/구현 미완성
+  - `generate_t2i_core`, `generate_i2i_core`, `edit_image_with_comfyui`의 일부 분기/핵심 로직이 스텁 상태로 호출 시 실패 가능
+  - 프롬프트 최적화 통합(`build_final_prompt_v2`, `optimize_prompt`) 일부 분기 미완성으로 실제 최종 프롬프트 일관성 저하 가능
+  - ComfyUI 상태/언로드 유틸(`unload_comfyui_model`, `check_comfyui_status`, `get_image_editing_experiments`) 일부 미구현
+
+- 메모리/성능
+  - 여러 페이지 기능을 연속 실행 시 ComfyUI 파이프라인/모델이 VRAM에 잔존하여 OOM 발생 가능
+  - 스타일 모드 캘리그라피(SDXL+ControlNet) 실행 전 다른 고메모리 작업 수행 시 실패 위험
+
+- 프롬프트/토큰 길이 제약
+  - CLIP 입력 최대 토큰은 77로, 이를 초과하면 모델이 입력을 잘라내어 품질에 영향을 줄 수 있음
+  - 로그 예시: `Token indices sequence length is longer than the specified maximum sequence length for this model (92 > 77). ... truncated ...`
+  - 영향: 문장 끝부분(예: "photorealistic, 8k, isolated on solid white background")이 잘려 실제 렌더링 품질/스타일 반영이 약해질 수 있음
+  - 임시 대응: 프롬프트를 60~70 토큰 내로 유지, 불필요한 접미 키워드(8k, photorealistic 등) 제거, 핵심 주어/행동/환경/조명 위주로 서술
+
+- 설정/경로 의존성
+  - 기본 폰트 경로 `/home/shared/RiaSans-Bold.ttf` 하드코딩: 환경에 따라 폰트가 없을 수 있음 (대체 폰트 폴백 필요)
+  - 모델 경로 일부 하드코딩/`extra_model_paths.yaml` 활용 미흡으로 환경 이식성 제한
+
+- 프론트/백엔드 페이로드 일치
+  - 프론트에서 전달하는 `post_process_method`, `model_name` 등의 필드가 백엔드에서 일관되게 소비/검증되는지 재확인 필요
+
+- 문서/명칭 불일치 가능성
+  - 페이지 5 명칭 및 사양 변경(캘리그라피 기본 Pillow/스타일 AI) 반영 완료 여부를 관련 문서(가이드/FAQ)에서 재검증 필요
+
+위 문제점은 아래 [추후 개선 가능 사항](#추후-개선-가능-사항) 섹션의 개선 방안과 매핑됩니다.
+
+---
+
 ## 📈 추후 개선 가능 사항
 
 ### 1. GPU 메모리 최적화
@@ -717,6 +754,42 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 - **성능 대시보드**: 실시간 성능 모니터링 (선택사항)
 
 ---
+
+### 6. 프롬프트 토큰 길이 관리 (CLIP 77 토큰 대응)
+
+**현재 문제**:
+- CLIP 최대 입력 길이는 77 토큰입니다. 이를 초과하는 프롬프트(예: 92 토큰)는 자동으로 잘려 품질/스타일 반영이 약해질 수 있습니다.
+- 로그 예시: `Token indices sequence length is longer than the specified maximum sequence length for this model (92 > 77). ... truncated ...`
+
+**개선 방안**:
+- 규칙화된 프롬프트 압축: 주어/행동/환경/조명 중심 2~3문장으로 제한, 접미 키워드(8k, photorealistic 등) 제거
+- 토큰 카운터 적용: 생성 직전 토큰 길이 측정 후 70 토큰 내로 잘라 안정적 실행
+- 스타일 키워드 화이트리스트 사용: 캘리그라피에 필요한 최소 스타일만 포함
+
+**예시 코드**:
+```python
+def clamp_prompt_length(text: str, max_tokens: int = 70) -> str:
+  """CLIP 토큰 길이(77 미만)로 프롬프트를 안전하게 압축"""
+  # 1) 불필요 접미 키워드 제거
+  ban = ["8k", "photorealistic", "ultra", "masterpiece", "high quality"]
+  for w in ban:
+    text = text.replace(w, "")
+
+  # 2) 간단 토큰 분할(공백 기준) 후 자르기
+  toks = text.split()
+  if len(toks) > max_tokens:
+    text = " ".join(toks[:max_tokens])
+  return text.strip()
+
+# 사용 위치 예시 (캘리그라피):
+prompt = clamp_prompt_length(prompt)
+neg_prompt = clamp_prompt_length(neg_prompt, max_tokens=40)
+```
+
+**운영 가이드**:
+- 프롬프트 길이 경고 로깅 추가 및 UI 힌트 제공(“프롬프트를 간결하게 유지하세요”) 
+- 자동 압축 후 사용자에게 적용된 프롬프트를 표시하여 투명성 확보
+
 
 ## ComfyUI 통합
 

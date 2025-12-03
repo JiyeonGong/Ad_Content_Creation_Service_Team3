@@ -760,216 +760,6 @@ def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
                 img_bytes.seek(0)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# def render_t2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
-#     st.title("🖼 문구 기반 이미지 생성 (3가지 버전)")
-    
-#     # 문구 입력
-#     selected_caption = ""
-#     if connect_mode and "selected_caption" in st.session_state:
-#         st.info(f"🔗 연결 모드: 페이지1 문구 사용\n\n**선택된 문구:** {st.session_state['selected_caption']}")
-#         selected_caption = st.session_state["selected_caption"]
-#     else:
-#         if connect_mode:
-#             st.warning("⚠️ 페이지1에서 문구를 먼저 생성하세요")
-#         selected_caption = st.text_area(
-#             "문구 입력",
-#             placeholder=config.get("ui.placeholders.caption", "")
-#         )
-    
-#     # 선택된 모델 ID 가져오기 (사이드바에서 선택한 모델)
-#     selected_model_id = st.session_state.get("selected_generation_model_id")
-
-#     # 현재 로드된 모델 확인
-#     current_model_name = api.get_current_comfyui_model()
-#     is_flux = (selected_model_id and "flux" in selected_model_id.lower()) or (current_model_name and "flux" in current_model_name.lower())
-
-#     # 이미지 크기 (설정 기반)
-#     preset_sizes = config.get("image.preset_sizes", [])
-
-#     # FLUX 모델 사용 시 권장 크기 표시
-#     size_options = []
-#     for s in preset_sizes:
-#         label = f"{s['name']} ({s['width']}x{s['height']})"
-#         # FLUX 모델이고 1024x1024인 경우 권장 표시
-#         if is_flux and s['width'] == 1024 and s['height'] == 1024:
-#             label += " ⭐ 권장"
-#         size_options.append(label)
-
-#     selected_size = st.selectbox("이미지 크기", size_options)
-
-#     # 선택된 크기 파싱
-#     size_idx = size_options.index(selected_size)
-#     width = preset_sizes[size_idx]["width"]
-#     height = preset_sizes[size_idx]["height"]
-
-#     # Steps & Guidance Scale (기본값 사용)
-#     default_steps = config.get("image.steps.default", 28)
-#     default_guidance = 3.5
-
-#     # 모델 선택 상태 표시
-#     if not selected_model_id or selected_model_id == "none":
-#         st.warning("⚠️ 사이드바에서 생성 모델을 먼저 선택하세요")
-#     else:
-#         display_model = current_model_name if current_model_name else selected_model_id
-#         st.info(f"ℹ️ 선택된 모델: **{display_model}** (권장 steps: {default_steps}, guidance: {default_guidance})")
-
-#     col1, col2 = st.columns(2)
-
-#     with col1:
-#         steps = st.slider(
-#             "추론 단계 (Steps)",
-#             min_value=config.get("image.steps.min", 1),
-#             max_value=config.get("image.steps.max", 50),
-#             value=default_steps,
-#             step=1,
-#             help="생성 반복 횟수 (높을수록 정교하지만 느림)"
-#         )
-
-#     with col2:
-#         # Guidance Scale (모델이 지원하는 경우만)
-#         if default_guidance is not None:
-#             guidance_scale = st.slider(
-#                 "Guidance Scale",
-#                 min_value=1.0,
-#                 max_value=10.0,
-#                 value=float(default_guidance),
-#                 step=0.5,
-#                 help="프롬프트 준수 강도 (높을수록 프롬프트를 더 따름)"
-#             )
-#         else:
-#             guidance_scale = None
-#             st.caption("(현재 모델은 Guidance Scale 미사용)")
-
-#     # 생성 개수 선택
-#     num_images = st.slider(
-#         "생성할 이미지 개수",
-#         min_value=1,
-#         max_value=5,
-#         value=1,
-#         step=1,
-#         help="여러 개 생성 시 각각 다른 랜덤 seed 사용 (시간: 약 30-60초/이미지)"
-#     )
-
-#     # 후처리 방식 선택
-#     st.divider()
-#     st.subheader("🔧 후처리 옵션")
-
-#     post_process_method = st.radio(
-#         "후처리 방식",
-#         options=["none", "impact_pack"],
-#         format_func=lambda x: {
-#             "none": "없음 (빠름)",
-#             "impact_pack": "ComfyUI Impact Pack (YOLO+SAM, 얼굴/손 보정)"
-#         }[x],
-#         index=0,
-#         help="후처리 없음: 가장 빠름\nImpact Pack: ComfyUI 기반 얼굴/손 보정"
-#     )
-
-#     # ADetailer 제거됨 (ComfyUI 사용으로 인해 비활성화)
-#     enable_adetailer = False
-#     adetailer_targets = None
-
-#     # 생성 중 상태 확인
-#     is_generating = st.session_state.get("is_generating_t2i", False)
-
-#     if is_generating:
-#         st.warning("⏳ 이미지 생성 중입니다... 페이지를 이동하지 마세요!")
-#         submitted = False
-#     else:
-#         submitted = st.button(f"🖼 이미지 생성 ({num_images}개)", type="primary")
-
-#     if submitted and selected_caption:
-#         # 생성 시작 - 상태 설정
-#         st.session_state["is_generating_t2i"] = True
-
-#         # 해상도 정렬
-#         aligned_w = align_to_64(width)
-#         aligned_h = align_to_64(height)
-#         if aligned_w != width or aligned_h != height:
-#             st.info(f"해상도 정렬: {width}x{height} → {aligned_w}x{aligned_h}")
-
-#         st.session_state["generated_images"] = []
-#         progress = st.progress(0)
-
-#         for i in range(num_images):
-#             # 1개만 생성할 때는 variation 표시 안함
-#             if num_images == 1:
-#                 prompt = caption_to_prompt(selected_caption)
-#             else:
-#                 prompt = caption_to_prompt(f"{selected_caption} (variation {i+1})")
-
-#             payload = {
-#                 "prompt": prompt,
-#                 "width": aligned_w,
-#                 "height": aligned_h,
-#                 "steps": steps,
-#                 "guidance_scale": guidance_scale,
-#                 "post_process_method": post_process_method,
-#                 "enable_adetailer": enable_adetailer,
-#                 "adetailer_targets": adetailer_targets,
-#                 "model_name": selected_model_id  # 선택된 모델 전달
-#             }
-
-#             try:
-#                 with st.spinner(f"이미지 {i+1}/{num_images} 생성 중..."):
-#                     img_bytes = api.call_t2i(payload)
-#                     if img_bytes:
-#                         st.session_state["generated_images"].append({
-#                             "prompt": prompt,
-#                             "bytes": img_bytes
-#                         })
-#                 progress.progress((i+1)/num_images)
-#             except Exception as e:
-#                 st.error(f"이미지 {i+1} 생성 실패: {e}")
-#                 break
-        
-#         progress.empty()
-
-#         # 생성 완료 - 상태 해제
-#         st.session_state["is_generating_t2i"] = False
-
-#         if st.session_state.get("generated_images"):
-#             st.success(f"✅ {len(st.session_state['generated_images'])}개 이미지 완료!")
-
-#             cols = st.columns(len(st.session_state["generated_images"]))
-#             for idx, img_data in enumerate(st.session_state["generated_images"]):
-#                 with cols[idx]:
-#                     st.image(img_data["bytes"], caption=f"버전 {idx+1}", use_container_width=True)
-#                     st.download_button(
-#                         f"⬇️ 다운로드",
-#                         img_data["bytes"],
-#                         f"image_v{idx+1}.png",
-#                         "image/png",
-#                         key=f"dl_{idx}"
-#                     )
-#         else:
-#             st.error("❌ 이미지 생성에 실패했습니다. 백엔드 로그를 확인하세요.")
-
 # ============================================================
 # 페이지 3: I2I 이미지 편집
 # ============================================================
@@ -1237,35 +1027,6 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
             )
 
         st.caption(f"사용된 프롬프트: {edited['prompt']}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1545,570 +1306,155 @@ def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ============================================================
-# 🆕 페이지 4: 이미지 편집 (v3.0 - 3가지 모드)
-# ============================================================
-# def render_image_editing_experiment_page(config: ConfigLoader, api: APIClient):
-#     st.title("✨ AI 이미지 편집")
-#     st.markdown("**3가지 편집 모드로 원하는 부분만 정밀하게 변경하세요**")
-
-#     # 편집 모드 정보 (image_editing_config.yaml에서 로드)
-#     EDITING_MODES = {
-#         "portrait_mode": {
-#             "id": "portrait_mode",
-#             "name": "👤 인물 모드",
-#             "icon": "👤",
-#             "description": "얼굴은 100% 보존하고, 의상과 배경만 자연스럽게 변경",
-#             "detail": "Face Detector로 얼굴을 자동 보호하고, ControlNet(Depth/Canny)으로 체형을 유지하면서 옷과 배경만 변경합니다.",
-#             "use_cases": ["프로필 사진 배경 변경", "의상 스타일 변경", "촬영 장소 변경"]
-#         },
-#         "product_mode": {
-#             "id": "product_mode",
-#             "name": "📦 제품 모드",
-#             "icon": "📦",
-#             "description": "제품은 그대로 유지하고, 배경을 창의적으로 변경",
-#             "detail": "BEN2로 제품을 정밀하게 분리한 뒤, FLUX T2I로 새로운 배경을 생성하고 자연스럽게 합성합니다.",
-#             "use_cases": ["제품 사진 배경 교체", "광고 이미지 제작", "스튜디오 배경 연출"]
-#         },
-#         "hybrid_mode": {
-#             "id": "hybrid_mode",
-#             "name": "✨ 고급 모드",
-#             "icon": "✨",
-#             "description": "얼굴과 제품을 동시에 보존하고, 나머지만 변경",
-#             "detail": "얼굴(Face Detector)과 제품(BEN2)을 동시에 보호하면서, ControlNet Canny로 손가락 디테일까지 유지합니다.",
-#             "use_cases": ["인물+제품 광고", "손에 든 제품 촬영", "모델+제품 합성"]
-#         }
-#     }
-
-#     # 1️⃣ 이미지 업로드
-#     st.subheader("1️⃣ 이미지 업로드")
-#     uploaded_file = st.file_uploader(
-#         "편집할 이미지를 업로드하세요",
-#         type=["png", "jpg", "jpeg", "webp"],
-#         help="인물 사진, 제품 사진, 또는 인물+제품 사진 모두 가능합니다"
-#     )
-
-#     if not uploaded_file:
-#         st.info("👆 이미지를 먼저 업로드하세요")
-
-#         # 샘플 사용 예시 표시 (항상 보이게)
-#         st.markdown("### 💡 각 모드 사용 예시")
-#         col1, col2, col3 = st.columns(3)
-#         with col1:
-#             st.markdown("**👤 인물 모드**")
-#             for use_case in EDITING_MODES["portrait_mode"]["use_cases"]:
-#                 st.markdown(f"• {use_case}")
-#         with col2:
-#             st.markdown("**📦 제품 모드**")
-#             for use_case in EDITING_MODES["product_mode"]["use_cases"]:
-#                 st.markdown(f"• {use_case}")
-#         with col3:
-#             st.markdown("**✨ 고급 모드**")
-#             for use_case in EDITING_MODES["hybrid_mode"]["use_cases"]:
-#                 st.markdown(f"• {use_case}")
-#         return
-
-#     # 업로드된 이미지 표시
-#     image_bytes = uploaded_file.read()
-#     image = Image.open(BytesIO(image_bytes))
-
-#     col1, col2 = st.columns([1, 1])
-#     with col1:
-#         st.image(image, caption="원본 이미지", use_container_width=True)
-#     with col2:
-#         st.markdown("**이미지 정보**")
-#         st.write(f"• 크기: {image.size[0]} x {image.size[1]} 픽셀")
-#         st.write(f"• 포맷: {image.format}")
-#         st.write(f"• 파일 크기: {len(image_bytes) / 1024:.1f} KB")
-
-#     # 2️⃣ 선택된 편집 모드 확인
-#     if "selected_editing_mode" not in st.session_state:
-#         st.warning("⚠️ 사이드바에서 편집 모드를 선택해주세요.")
-#         return
-
-#     selected_mode_id = st.session_state["selected_editing_mode"]
-#     selected_mode = EDITING_MODES[selected_mode_id]
-
-#     st.subheader(f"2️⃣ 선택된 모드: {selected_mode['name']}")
-#     st.info(f"**{selected_mode['description']}**\n\n{selected_mode['detail']}")
-#     st.divider()
-
-#     # 3️⃣ 프롬프트 입력
-#     st.subheader("3️⃣ 편집 내용 입력")
-
-#     # 모드별 프롬프트 입력
-#     if selected_mode_id == "portrait_mode":
-#         prompt = st.text_area(
-#             "의상과 배경 설명",
-#             placeholder="예: Wearing a professional navy blue suit, modern office background with glass windows, natural daylight, high quality",
-#             help="변경하고 싶은 의상과 배경을 영어로 상세히 설명하세요. 얼굴은 자동으로 보호됩니다.",
-#             height=100,
-#             key="prompt"
-#         )
-
-#     elif selected_mode_id == "product_mode":
-#         background_prompt = st.text_area(
-#             "배경 설명",
-#             placeholder="예: Cyberpunk city at night, neon lights, futuristic atmosphere, bokeh effect, high quality",
-#             help="생성하고 싶은 배경을 영어로 상세히 설명하세요. 제품은 자동으로 분리되어 보존됩니다.",
-#             height=100,
-#             key="background_prompt"
-#         )
-#         prompt = background_prompt  # API 호출 시 사용
-
-#     elif selected_mode_id == "hybrid_mode":
-#         prompt = st.text_area(
-#             "의상과 배경 설명",
-#             placeholder="예: Woman in elegant red dress holding champagne bottle, luxury hotel lobby background, golden lighting, professional photography",
-#             help="변경하고 싶은 의상과 배경을 영어로 설명하세요. 얼굴과 손에 든 제품은 자동으로 보호됩니다.",
-#             height=100,
-#             key="prompt"
-#         )
-
-#     # 4️⃣ 파라미터 설정
-#     st.subheader("4️⃣ 파라미터 조정")
-
-#     # 모드별 파라미터 설정
-#     col1, col2 = st.columns(2)
-
-#     with col1:
-#         steps = st.slider(
-#             "생성 품질 (Steps)",
-#             min_value=10,
-#             max_value=50,
-#             value=28,
-#             help="높을수록 품질이 향상되지만 시간이 오래 걸립니다"
-#         )
-
-#     with col2:
-#         if selected_mode_id == "portrait_mode":
-#             guidance_scale = st.slider(
-#                 "프롬프트 반영 강도",
-#                 min_value=1.0,
-#                 max_value=10.0,
-#                 value=3.5,
-#                 step=0.5,
-#                 help="높을수록 프롬프트를 강하게 반영합니다"
-#             )
-#         elif selected_mode_id == "product_mode":
-#             guidance_scale = st.slider(
-#                 "배경 디테일 강도",
-#                 min_value=3.0,
-#                 max_value=10.0,
-#                 value=5.0,
-#                 step=0.5,
-#                 help="높을수록 배경 프롬프트를 강하게 반영합니다"
-#             )
-#         elif selected_mode_id == "hybrid_mode":
-#             guidance_scale = st.slider(
-#                 "프롬프트 반영 강도",
-#                 min_value=1.0,
-#                 max_value=10.0,
-#                 value=3.5,
-#                 step=0.5,
-#                 help="높을수록 프롬프트를 강하게 반영합니다"
-#             )
-
-#     # 모드별 추가 파라미터
-#     if selected_mode_id == "portrait_mode" or selected_mode_id == "hybrid_mode":
-#         col1, col2, col3 = st.columns(3)
-
-#         with col1:
-#             controlnet_type = st.selectbox(
-#                 "체형 유지 방식",
-#                 ["depth", "canny"],
-#                 index=0 if selected_mode_id == "portrait_mode" else 1,
-#                 help="Depth: 체형/포즈 유지 | Canny: 손가락 디테일 유지"
-#             )
-
-#         with col2:
-#             controlnet_strength = st.slider(
-#                 "체형 유지 강도",
-#                 min_value=0.0,
-#                 max_value=1.0,
-#                 value=0.7 if selected_mode_id == "portrait_mode" else 0.8,
-#                 step=0.05,
-#                 help="높을수록 원본 체형/포즈를 강하게 유지합니다"
-#             )
-
-#         with col3:
-#             denoise_strength = st.slider(
-#                 "변경 강도",
-#                 min_value=0.7 if selected_mode_id == "hybrid_mode" else 0.0,
-#                 max_value=1.0,
-#                 value=1.0 if selected_mode_id == "portrait_mode" else 0.9,
-#                 step=0.05,
-#                 help="1.0 = 완전히 새로 그림, 낮을수록 원본 보존"
-#             )
-
-#     elif selected_mode_id == "product_mode":
-#         blending_strength = st.slider(
-#             "합성 자연스러움",
-#             min_value=0.2,
-#             max_value=0.6,
-#             value=0.35,
-#             step=0.05,
-#             help="낮을수록 원본 제품 보존, 높을수록 배경과 자연스럽게 융합"
-#         )
-
-#     # 네거티브 프롬프트 (선택 사항)
-#     with st.expander("⚙️ 추가 설정 (선택)"):
-#         negative_prompt = st.text_area(
-#             "네거티브 프롬프트",
-#             value="blurry, low quality, distorted, bad anatomy",
-#             help="생성하지 않을 요소를 설명하세요 (FLUX 모델은 효과가 제한적)",
-#             height=60,
-#             key="negative_prompt"
-#         )
-
-#     # 5️⃣ 편집 실행
-#     st.subheader("5️⃣ 편집 실행")
-
-#     # 버튼 비활성화 처리를 위한 세션 상태
-#     if "editing_in_progress" not in st.session_state:
-#         st.session_state["editing_in_progress"] = False
-
-#     if "editing_request" not in st.session_state:
-#         st.session_state["editing_request"] = None
-
-#     # 편집 버튼 (진행 중일 때 비활성화)
-#     button_disabled = st.session_state["editing_in_progress"]
-
-#     if st.button(f"{selected_mode['icon']} 편집 시작", type="primary", use_container_width=True, disabled=button_disabled):
-#         # 프롬프트 체크
-#         if not prompt or not prompt.strip():
-#             st.warning("⚠️ 프롬프트를 입력하세요")
-#             st.stop()
-
-#         # 편집 요청 저장 (모드별 파라미터 포함)
-#         payload = {
-#             "experiment_id": selected_mode_id,
-#             "input_image_base64": base64.b64encode(image_bytes).decode("utf-8"),
-#             "prompt": prompt,
-#             "negative_prompt": negative_prompt,
-#             "steps": steps,
-#             "guidance_scale": guidance_scale,
-#             "strength": 0.8,  # 하위 호환성 (deprecated)
-#         }
-
-#         # 모드별 추가 파라미터
-#         if selected_mode_id == "portrait_mode" or selected_mode_id == "hybrid_mode":
-#             payload["controlnet_type"] = controlnet_type
-#             payload["controlnet_strength"] = controlnet_strength
-#             payload["denoise_strength"] = denoise_strength
-
-#         if selected_mode_id == "product_mode":
-#             payload["blending_strength"] = blending_strength
-#             payload["background_prompt"] = prompt  # 배경 프롬프트를 background_prompt로도 전달
-
-#         st.session_state["editing_request"] = payload
-#         st.session_state["editing_in_progress"] = True
-#         st.rerun()
-
-#     # 편집 요청이 있으면 실행
-#     if st.session_state["editing_in_progress"] and st.session_state["editing_request"]:
-#         payload = st.session_state["editing_request"]
-
-#         # 진행상황 표시
-#         selected_mode = EDITING_MODES.get(payload["experiment_id"], {})
-#         mode_name = selected_mode.get("name", "이미지 편집")
-
-#         # 파이프라인 단계 정의
-#         pipeline_steps = {
-#             "portrait_mode": [
-#                 "📥 이미지 업로드 및 전처리",
-#                 "🔍 얼굴 영역 자동 감지",
-#                 "🎭 얼굴 마스크 생성 및 반전",
-#                 "📊 체형 가이드 추출 (Depth/Canny)",
-#                 "🎨 ControlNet 적용",
-#                 "🚀 이미지 생성 (의상/배경 변경)",
-#                 "💾 결과 저장 및 후처리"
-#             ],
-#             "product_mode": [
-#                 "📥 이미지 업로드 및 전처리",
-#                 "✂️ BEN2 배경 제거 (제품 분리)",
-#                 "🎨 AI 배경 생성 (T2I)",
-#                 "🔗 제품+배경 레이어 합성",
-#                 "🖼️ FLUX Fill 자연스러운 블렌딩",
-#                 "💾 결과 저장 및 후처리"
-#             ],
-#             "hybrid_mode": [
-#                 "📥 이미지 업로드 및 전처리",
-#                 "🔍 얼굴 + 제품 영역 감지",
-#                 "🎭 멀티 마스크 생성 및 합성",
-#                 "📊 윤곽선 가이드 추출 (Canny)",
-#                 "🎨 ControlNet 적용",
-#                 "🚀 이미지 생성 (의상/배경 변경)",
-#                 "💾 결과 저장 및 후처리"
-#             ]
-#         }
-
-#         steps = pipeline_steps.get(payload["experiment_id"], [])
-
-#         try:
-#             # 진행상황 안내 표시
-#             st.info(f"🎨 **{mode_name} 파이프라인 실행 중...**\n\n" +
-#                    "\n".join([f"{i+1}. {step}" for i, step in enumerate(steps)]) +
-#                    "\n\n💡 백엔드 로그를 모니터링하여 실시간 진행상황을 확인하세요!")
-
-#             with st.spinner(f"{mode_name} 실행 중... 잠시만 기다려주세요 (평균 30-60초 소요)"):
-#                 result = api.edit_with_comfyui(payload)
-
-#             # 편집 완료 - 버튼 다시 활성화 및 요청 초기화
-#             st.session_state["editing_in_progress"] = False
-#             st.session_state["editing_request"] = None
-
-#             if result and result.get("success"):
-#                 st.success(f"✅ 편집 완료! ({selected_mode['name']} | 소요 시간: {result.get('elapsed_time', 0):.1f}초)")
-
-#                 # 6️⃣ 결과 표시
-#                 st.subheader("6️⃣ 편집 결과")
-
-#                 # 배경 제거 이미지 (있는 경우)
-#                 if result.get("background_removed_image_base64"):
-#                     bg_removed_bytes = base64.b64decode(result["background_removed_image_base64"])
-#                     bg_removed_image = Image.open(BytesIO(bg_removed_bytes))
-
-#                     col1, col2, col3 = st.columns(3)
-#                     with col1:
-#                         st.markdown("**📸 원본 이미지**")
-#                         st.image(image, use_container_width=True)
-#                     with col2:
-#                         st.markdown("**✂️ 배경 제거 (중간 단계)**")
-#                         st.image(bg_removed_image, use_container_width=True)
-#                     with col3:
-#                         st.markdown(f"**{selected_mode['icon']} 최종 결과**")
-#                         output_bytes = base64.b64decode(result["output_image_base64"])
-#                         output_image = Image.open(BytesIO(output_bytes))
-#                         st.image(output_image, use_container_width=True)
-
-#                     # 다운로드 버튼
-#                     col1, col2 = st.columns(2)
-#                     with col1:
-#                         st.download_button(
-#                             "⬇️ 배경 제거 이미지 다운로드",
-#                             BytesIO(bg_removed_bytes).getvalue(),
-#                             f"background_removed_{selected_mode_id}.png",
-#                             "image/png",
-#                             use_container_width=True
-#                         )
-#                     with col2:
-#                         st.download_button(
-#                             "⬇️ 최종 결과 다운로드",
-#                             BytesIO(output_bytes).getvalue(),
-#                             f"edited_{selected_mode_id}.png",
-#                             "image/png",
-#                             use_container_width=True
-#                         )
-
-#                 else:
-#                     # 배경 제거 이미지 없이 최종 결과만
-#                     col1, col2 = st.columns(2)
-#                     with col1:
-#                         st.markdown("**📸 원본 이미지**")
-#                         st.image(image, use_container_width=True)
-#                     with col2:
-#                         st.markdown(f"**{selected_mode['icon']} 편집 결과**")
-#                         output_bytes = base64.b64decode(result["output_image_base64"])
-#                         output_image = Image.open(BytesIO(output_bytes))
-#                         st.image(output_image, use_container_width=True)
-
-#                     # 다운로드 버튼
-#                     st.download_button(
-#                         "⬇️ 편집 결과 다운로드",
-#                         BytesIO(output_bytes).getvalue(),
-#                         f"edited_{selected_mode_id}.png",
-#                         "image/png",
-#                         use_container_width=True
-#                     )
-
-#             else:
-#                 # 편집 실패 - 버튼 다시 활성화 및 요청 초기화
-#                 st.session_state["editing_in_progress"] = False
-#                 st.session_state["editing_request"] = None
-#                 error_msg = result.get("error", "알 수 없는 오류") if result else "응답 없음"
-#                 st.error(f"❌ 편집 실패: {error_msg}")
-
-#         except Exception as e:
-#             # 예외 발생 시에도 버튼 다시 활성화 및 요청 초기화
-#             st.session_state["editing_in_progress"] = False
-#             st.session_state["editing_request"] = None
-#             st.error(f"❌ 오류 발생: {e}")
-
-# ============================================================
-# 페이지 5: 3D 캘리그라피 생성 (텍스트 오버레이)
+# 페이지 5: 캘리그라피 생성
 # ============================================================
 def render_text_overlay_page(config: ConfigLoader, api: APIClient):
-    """텍스트 오버레이 페이지 - 3D 캘리그라피 생성 (ControlNet Depth SDXL 활용)"""
-    st.title("🔤 3D 캘리그라피 생성")
+    """캘리그라피 생성 페이지"""
+    st.title("🔤 캘리그라피 생성")
     
     st.info("""
-    💡 **ControlNet Depth SDXL**을 활용하여 입체적인 3D 텍스트를 생성합니다.
-    - Depth Map 기반으로 자연스러운 입체감 구현
-    - 배경이 투명한 PNG로 생성되어 다른 이미지와 합성 가능
-    - 다양한 3D 스타일 지원 (엠보싱, 조각, 플로팅 등)
+    💡 원하는 문구를 입력하면 입체적인 캘리그라피 이미지로 만들어줍니다.
+    - **기본 모드**: Pillow로 빠르게 생성 (투명 배경)
+    - **스타일 모드**: AI 모델로 특수 효과 적용 (매트, 네온, 금박 등)
+    - 결과물은 배경이 투명한 PNG로 생성되어 다른 이미지 위에 합성 가능합니다.
     """)
     
     col1, col2 = st.columns([1, 1.5])
     
     with col1:
-        st.subheader("⚙️ 텍스트 설정")
+        st.subheader("🎨 디자인 설정")
         
-        # 텍스트 입력
+        # 1. 텍스트 입력
+        default_text = "헬스케어 프로젝트"
         text_input = st.text_input(
-            "생성할 텍스트",
-            placeholder="예: 새해 대박!",
-            help="한글, 영문 모두 가능합니다",
+            "생성할 문구",
+            value=default_text,
             key="calligraphy_text"
         )
         
-        # 색상 선택
+        # 2. 색상 선택
+        st.markdown("---")
         color_hex = st.color_picker(
-            "텍스트 색상",
-            value="#FFFFFF",
-            help="생성 후 색상 적용 (흰색 권장)",
+            "글자 색상",
+            value="#FFD700",
             key="calligraphy_color"
         )
         
-        # 3D 스타일 선택 (ControlNet Depth 활용)
+        # 3. 스타일 선택
+        st.markdown("---")
         style_options = {
-            "default": "기본 (Default) - 자연스러운 3D 입체감",
-            "emboss": "엠보싱 (Emboss) - 돌출된 금속 효과",
-            "carved": "조각 (Carved) - 돌에 새긴 듯한 효과",
-            "floating": "플로팅 (Floating) - 공중에 떠 있는 효과"
+            "basic_color": "효과 없음 (기본)",
+            "smooth matte plastic": "매트 플라스틱 (깔끔함)",
+            "glossy metal": "유광 금속 (고급스러움)",
+            "liquid water": "물 질감 (청량함)",
+            "neon light": "네온 사인 (화려함)",
+            "gold foil": "금박 (럭셔리)",
+            "ice texture": "얼음 (시원함)"
         }
         
-        style_display = st.selectbox(
-            "3D 스타일",
-            list(style_options.values()),
-            help="ControlNet Depth를 사용한 다양한 입체감 표현",
+        selected_style_display = st.selectbox(
+            "효과(Style) 선택",
+            options=list(style_options.values()),
             key="calligraphy_style"
         )
         
         # 역매핑: 표시명 -> 실제 style 값
-        style = [k for k, v in style_options.items() if v == style_display][0]
+        selected_style = [k for k, v in style_options.items() if v == selected_style_display][0]
         
-        # 폰트 경로 (고급 옵션)
+        # 4. 폰트 경로 (기본값 자동 설정)
         with st.expander("🔧 고급 설정"):
             font_path = st.text_input(
                 "폰트 파일 경로 (선택)",
+                value="/home/shared/RiaSans-Bold.ttf",
                 placeholder="/home/shared/RiaSans-Bold.ttf",
-                help="비워두면 기본 폰트 사용. 서버에 있는 폰트 경로를 입력하세요",
+                help="비워두면 기본 폰트 사용",
                 key="calligraphy_font_path"
             )
             
-            st.caption("""
-            **ℹ️ 사용 모델:**
-            - ControlNet Depth SDXL (Depth Map 추출)
-            - Stable Diffusion XL Base (3D 효과 생성)
-            - Rembg (배경 제거)
-            """)
+            if selected_style == "basic_color":
+                st.caption("ℹ️ **기본 모드**: Pillow를 사용하여 고속 생성")
+            else:
+                st.caption("ℹ️ **스타일 모드**: SDXL AI 모델로 특수 효과 생성 (시간 소요)")
         
-        # 생성 버튼
+        # 5. 생성 버튼
         st.markdown("---")
         generate_btn = st.button(
-            "🎨 3D 캘리그라피 생성",
+            "✨ 캘리그라피 생성하기",
             type="primary",
             use_container_width=True,
             disabled=not text_input or not text_input.strip()
         )
     
     with col2:
-        st.subheader("📋 미리보기 및 결과")
+        st.subheader("🖼️ 결과물")
         
-        # 생성 버튼 클릭 시
         if generate_btn:
             if not text_input or not text_input.strip():
-                st.warning("⚠️ 텍스트를 입력하세요")
+                st.warning("⚠️ 문구를 입력해주세요.")
             else:
                 # API 호출 준비
                 payload = {
                     "text": text_input,
                     "color_hex": color_hex,
-                    "style": style,  # default, emboss, carved, floating
+                    "style": selected_style,
                     "font_path": font_path.strip() if font_path else ""
                 }
                 
+                # 스타일 표시
+                if selected_style == "basic_color":
+                    spinner_text = "⚡ Pillow로 빠르게 생성 중..."
+                else:
+                    spinner_text = f"🎨 AI로 '{selected_style_display}' 스타일 생성 중... (30-60초 소요)"
+                
                 try:
-                    with st.spinner(f"⏳ ControlNet Depth로 3D 효과 생성 중... (스타일: {style})"):
-                        # API 호출
-                        result_image = api.call_calligraphy(payload)
+                    with st.spinner(spinner_text):
+                        image_bytes = api.call_calligraphy(payload)
                     
-                    if result_image:
-                        st.success("✅ 3D 캘리그라피 생성 완료!")
+                    if image_bytes:
+                        st.success("✅ 캘리그라피 생성 완료!")
                         
                         # 결과 이미지 표시
-                        result_image.seek(0)
                         st.image(
-                            result_image,
-                            caption=f"생성된 캘리그라피: {text_input}",
+                            image_bytes,
+                            caption=f"생성: {text_input}",
                             use_container_width=True
                         )
                         
                         # 다운로드 버튼
-                        result_image.seek(0)
                         st.download_button(
                             "⬇️ PNG 다운로드 (배경 투명)",
-                            result_image.read(),
-                            f"calligraphy_{text_input[:10]}.png",
+                            image_bytes,
+                            f"calligraphy_{text_input[:15]}.png",
                             "image/png",
                             use_container_width=True,
                             key="download_calligraphy"
                         )
                         
-                        # 세션 상태에 저장 (재사용 가능)
-                        result_image.seek(0)
+                        # 세션에 저장
                         st.session_state["last_calligraphy"] = {
                             "text": text_input,
-                            "image": result_image.read()
+                            "image": image_bytes
                         }
                     else:
                         st.error("❌ 이미지 생성 실패")
-                        
+                
                 except Exception as e:
                     st.error(f"❌ 생성 실패: {e}")
         
         # 이전 결과 표시
         elif "last_calligraphy" in st.session_state:
             st.info("이전 생성 결과:")
-            last_result = st.session_state["last_calligraphy"]
+            last = st.session_state["last_calligraphy"]
             st.image(
-                last_result["image"],
-                caption=f"이전 결과: {last_result['text']}",
+                last["image"],
+                caption=f"이전: {last['text']}",
                 use_container_width=True
             )
             st.download_button(
                 "⬇️ PNG 다운로드",
-                last_result["image"],
-                f"calligraphy_{last_result['text'][:10]}.png",
+                last["image"],
+                f"calligraphy_{last['text'][:15]}.png",
                 "image/png",
                 use_container_width=True,
                 key="download_last_calligraphy"
