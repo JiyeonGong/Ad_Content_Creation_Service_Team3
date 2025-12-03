@@ -148,7 +148,7 @@ def get_flux_t2i_workflow() -> Dict[str, Any]:
             }
         },
 
-        # [NEW] 노드 30: Negative 프롬프트 (Flux는 보통 비워둠)
+        # 노드 30: Negative 프롬프트 (Flux는 보통 비워둠)
         "30": {
             "class_type": "CLIPTextEncode",
             "inputs": {
@@ -158,15 +158,15 @@ def get_flux_t2i_workflow() -> Dict[str, Any]:
         },
 
         # ----------------------------------------------------------
-        # [핵심 추가] 노드 35: Flux Guidance
-        # 이 노드가 있어야 프롬프트 말을 잘 듣습니다.
-        # guidance 값이 높을수록(예: 6.0) 프롬프트 반영률이 올라갑니다.
+        # 노드 35: Flux Guidance
+        # 이 노드가 있어야 프롬프트 말을 잘 듣는다
+        # guidance 값이 높을수록(예: 6.0) 프롬프트 반영률이 올라간다
         # ----------------------------------------------------------
         "35": {
             "class_type": "FluxGuidance",
             "inputs": {
                 "conditioning": ["3", 0], # Positive 프롬프트를 받음
-                "guidance": 50 # [중요] 기본값 3.5 -> 4.5~6.0으로 올리세요!
+                "guidance": 50 
             }
         },
 
@@ -436,10 +436,6 @@ def get_flux_i2i_workflow() -> Dict[str, Any]:
     return workflow
 
 
-# 🗑️ 기존 실험 워크플로우 제거됨 (ben2_flux_fill, ben2_qwen_image)
-# 새로운 3가지 모드로 대체: portrait_mode, product_mode, hybrid_mode
-
-
 def update_flux_t2i_workflow(
     workflow: Dict[str, Any],
     model_name: str,
@@ -482,11 +478,11 @@ def update_flux_t2i_workflow(
     # 1. KSampler (노드 6)
     workflow["6"]["inputs"]["seed"] = seed
     workflow["6"]["inputs"]["steps"] = steps
-    workflow["6"]["inputs"]["cfg"] = 1.0  # [중요] CFG는 1.0 고정! (웹 값 무시)
+    workflow["6"]["inputs"]["cfg"] = 1.0  # CFG는 1.0 고정 (웹 값 무시)
 
     # 2. FluxGuidance (노드 35)
     if "35" in workflow:
-        workflow["35"]["inputs"]["guidance"] = guidance_scale # 웹 슬라이더 값을 여기에!
+        workflow["35"]["inputs"]["guidance"] = guidance_scale # 웹 슬라이더 값을 여기에 넣음
     else:
         print("⚠️ 경고: FluxGuidance(35) 노드가 템플릿에 없습니다!")
 
@@ -618,7 +614,7 @@ def update_workflow_inputs(
                     "resolution": 1024
                 }
             }
-            # [NEW] Canny 선택 시 Union 타입도 Canny(0)로 설정
+            # Canny 선택 시 Union 타입도 Canny(0)로 설정
             if "25" in workflow:
                 workflow["25"]["inputs"]["type"] = "canny"
 
@@ -700,11 +696,6 @@ def update_workflow_inputs(
             workflow["40"]["inputs"]["denoise"] = denoise_strength
 
     return workflow
-
-
-# 🗑️ 프리로드 기능 제거됨 (모델 자동 로딩 제거로 불필요)
-
-
 
 
 def get_workflow_input_image_node_id(experiment_id: str) -> str:
@@ -881,7 +872,7 @@ def get_portrait_mode_workflow() -> Dict[str, Any]:
             "inputs": {
                 "positive": ["7", 0],
                 "negative": ["6", 0],
-                "control_net": ["25", 0],  # [FIX] 21번(Loader) 대신 25번(Type설정) 연결
+                "control_net": ["25", 0],  # 21번(Loader) 대신 25번(Type설정) 연결
                 "image": ["20", 0],
                 "vae": ["4", 0],
                 "strength": 0.7,  # 런타임에 설정
@@ -1342,7 +1333,7 @@ def get_hybrid_mode_workflow() -> Dict[str, Any]:
             "inputs": {
                 "positive": ["7", 0],
                 "negative": ["6", 0],
-                "control_net": ["25", 0],  # [FIX] 21번(Loader) 대신 25번(Type설정) 연결
+                "control_net": ["25", 0],  # 21번(Loader) 대신 25번(Type설정) 연결
                 "image": ["20", 0],
                 "vae": ["4", 0],
                 "strength": 0.8,  # 런타임에 설정
