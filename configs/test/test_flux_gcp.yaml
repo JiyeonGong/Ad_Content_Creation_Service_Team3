@@ -1,0 +1,138 @@
+# GCP VM FLUX 테스트 설정
+# 실험용 프롬프트와 파라미터를 이 파일에서 관리합니다.
+
+# 모델 설정
+# 선택 가능한 모델:
+# - "flux-dev-bnb-8bit": 사전 양자화 8-bit 모델 (bitsandbytes) ⭐ 권장
+# - "flux-dev-fp8-pre": 사전 양자화 FP8 모델 (torchao 버전 문제로 사용 불가)
+# - "flux-dev-fp8": 로컬 모델 + 직접 양자화 (디버깅용)
+# - "flux-dev-gcp": 로컬 모델 원본
+model:
+  name: "flux-dev-bnb-8bit"  # 사전 양자화 8-bit 모델 (권장)
+  path: "/home/shared/models"  # 모델 캐시 디렉토리
+
+# 출력 디렉토리
+output:
+  base_dir: "./outputs/flux_gcp"
+  save_prompt: true
+  save_metadata: true
+
+# 메모리 최적화 설정 (ai-ad 방식)
+memory_optimization:
+  # Sequential CPU offload (FLUX 전용 - 메모리 70% 절약, 하지만 느림)
+  # L4는 VRAM 23GB라 여유있음 → false로 변경하면 속도 2-3배 빨라짐
+  enable_sequential_cpu_offload: false  # 속도 우선 (메모리 여유 있음)
+
+  # VAE 최적화
+  enable_vae_tiling: true
+  enable_vae_slicing: true
+
+  # 데이터 타입 (bfloat16 권장)
+  dtype: "bfloat16"
+
+  # 생성 간 캐시 정리
+  empty_cache_between_images: true
+
+  # 순차 생성 (배치 대신)
+  sequential_generation: true
+
+# 테스트 시나리오
+# enabled: false로 설정하면 해당 실험 스킵
+test_scenarios:
+  # ========================================
+  # 실험 1: 기본 테스트 (빠른 확인)
+  # ========================================
+  - name: "exp01_basic_test"
+    enabled: true
+    prompt: "A professional woman in her 30s holding a smartphone, smiling, bright modern office background, realistic hands with 5 fingers"
+    width: 1024
+    height: 1024
+    num_inference_steps: 28
+    guidance_scale: 3.5
+    num_images: 1
+    seed: null  # 랜덤 seed (매번 다른 이미지)
+    description: "기본 품질 확인"
+
+  # ========================================
+  # 실험 2: 손 디테일 강조
+  # ========================================
+  - name: "exp02_hand_focus"
+    enabled: false
+    prompt: "Close-up professional photo of hands holding a product box, 5 fingers clearly visible, detailed hand anatomy, perfect skin texture, professional studio lighting, white background"
+    width: 1024
+    height: 1024
+    num_inference_steps: 35
+    guidance_scale: 4.0
+    num_images: 1
+    seed: null  # 랜덤 seed
+    description: "손 디테일 최대화"
+
+  # ========================================
+  # 실험 3: 헬스케어 시나리오
+  # ========================================
+  - name: "exp03_healthcare"
+    enabled: false
+    prompt: "A friendly healthcare professional in white coat showing a medical device to camera, welcoming smile, modern clinic interior, natural lighting, professional photography"
+    width: 1024
+    height: 1024
+    num_inference_steps: 30
+    guidance_scale: 3.5
+    num_images: 1
+    seed: null  # 랜덤 seed
+    description: "헬스케어 광고용"
+
+  # ========================================
+  # 실험 4: 낮은 step 테스트 (속도 확인)
+  # ========================================
+  - name: "exp04_low_steps"
+    enabled: false
+    prompt: "A person showing hand gesture, modern background, professional photo"
+    width: 1024
+    height: 1024
+    num_inference_steps: 20
+    guidance_scale: 3.0
+    num_images: 1
+    seed: 789
+    description: "빠른 생성 테스트"
+
+  # ========================================
+  # 실험 5: 고해상도 테스트
+  # ========================================
+  - name: "exp05_high_resolution"
+    enabled: false
+    prompt: "Professional advertisement photo, high quality, detailed, 8k resolution"
+    width: 1536
+    height: 1536
+    num_inference_steps: 40
+    guidance_scale: 3.5
+    num_images: 1
+    seed: 999
+    description: "고해상도 메모리 테스트"
+
+  # ========================================
+  # 실험 6: 다양한 guidance 비교
+  # ========================================
+  - name: "exp06_guidance_comparison"
+    enabled: false
+    prompt: "A smiling person holding a health supplement bottle, professional lighting"
+    width: 1024
+    height: 1024
+    num_inference_steps: 28
+    guidance_scale: 2.5  # 낮은 값
+    num_images: 1
+    seed: 111
+    description: "Guidance scale 비교"
+
+# 실행 옵션
+execution:
+  # 실행할 실험 필터 (비어있으면 enabled=true인 모든 실험)
+  run_only: []  # 예: ["exp01_basic_test", "exp02_hand_focus"]
+
+  # 에러 발생 시 계속 진행
+  continue_on_error: true
+
+  # 각 실험 후 대기 시간 (초)
+  delay_between_experiments: 2
+
+  # 상세 로그
+  verbose: true
