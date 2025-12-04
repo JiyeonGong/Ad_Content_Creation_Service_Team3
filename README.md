@@ -310,7 +310,7 @@ cd ..
 
 ### 2단계: 모델 다운로드
 
-**필수/선택 모델 전체 목록**
+**필수/선택 모델 전체 목록(이 모델들은 /home/shared에서 연결되고 있습니다.)**
 
 - FLUX 계열 (GGUF)
   - `FLUX.1-dev` 텍스트→이미지 및 이미지→이미지
@@ -328,10 +328,6 @@ cd ..
 - 텍스트 인코더/CLIP (GGUF)
   - `t5-v1_1-xxl-encoder-Q8_0.gguf`
   - CLIP Large 호환 파일 (GGUF)
-
-- 배경 제거/후처리
-  - `BEN2_Base.pth` (BEN2)
-  - `Rembg`(U2Net) 런타임 모델은 패키지 설치 시 자동
 
 - 기타 리소스
   - 예시 폰트: `/home/shared/ae.safetensors`(VAE), 프로젝트 폰트는 시스템 경로 자동 적용
