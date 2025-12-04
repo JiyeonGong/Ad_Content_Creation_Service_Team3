@@ -66,53 +66,52 @@
 
 ## 6. 프로젝트 폴더 구조
 ```
-├── comfyui
-├── configs
-│   ├── frontend_config.yaml
-│   ├── image_editing_config.yaml
-│   ├── model_config.yaml
-├── Dockerfile
-├── docs
+├── comfyui/                      #ComfyUI 엔진 모듈
+├── configs/                      # 전체 시스템 설정 파일 디렉토리
+│   ├── frontend_config.yaml.     # Streamlit frontend setup
+│   ├── image_editing_config.yaml # AI 이미지 편집 시스템 설정 파일
+│   ├── model_config.yaml         # 이미지 생성 모델 설정 파일
+│   ├── test/ # 테스트 코드  
+│   │   ├── test_flux_gcp.yaml
+│   │   └── experiment_t2i_01.yaml
+├── Dockerfile                    # 컨테이너 기반 배포를 위한 빌드 설정
+├── docs/                         # 프로젝트 개발 문서 및 가이드
 │   ├── env_example.md
 │   └── 임시.md
-├── pyproject.toml
-├── README.md
-├── requirements.txt
-├── scripts
-│   ├── download_t5xxl.py
-│   ├── install_comfyui.sh
-│   ├── load_flux_fp8_for_lora.py
-│   ├── monitor_backend.sh
-│   ├── monitor.sh
-│   ├── run_experiment.py
-│   ├── start_all.sh
-│   ├── start_comfyui.sh
-│   ├── stop_all.sh
-│   ├── stop_comfyui.sh
-│   ├── test
-│   │   ├── prompt_self_test.py
-│   │   └── validate_model_config.py
-│   ├── test_flux_gcp.py
-│   └── torchcheck.py
-├── src
+├── pyproject.toml                # 프로젝트 메타데이터 및 빌드 시스템 설정(uv) 
+├── README.md 
+├── requirements.txt              # Python 패키지 의존성 목록
+├── scripts/                       #자동화 및 유틸리티 스크립트 모음
+│   ├── install_comfyui.sh        # comfyui 설치 자동화 스크립트
+│   ├── monitor_backend.sh        # 백엔드 API 집중 모니터링 스크립트 이미지 생성/편집 진행 상황, 프로그레스바, 모델 로딩 등을 실시간으로 표시
+│   ├── start_all.sh              # 전체 서버 시작 스크립트 (Uvicorn + ComfyUI + Streamlit)
+│   ├── start_comfyui.sh          # ComfyUI 백그라운드 실행 스크립트  
+│   ├── stop_all.sh               # 전체 서버 중단 스크립트
+│   ├── stop_comfyui.sh           # ComfyUI 중단 스크립트
+│   ├── test/ # 테스트 코드  
+│   │   ├── prompt_self_test.py 
+│   │   ├── validate_model_config.py
+│   │   └── test_flux_gcp.py         # FastAPI 없이 model_loader를 직접 사용해서 빠르게 테스트
+│   └── torchcheck.py                # PyTorch 버전 및 CUDA 사용 가능 여부 검증
+├── src/                         # 소스 코드 메인 디렉토리
 │   ├── __init__.py
-│   ├── backend
-│   │   ├── __init__.py
-│   │   ├── comfyui_client.py
-│   │   ├── comfyui_workflows.py
-│   │   ├── exceptions.py
-│   │   ├── main.py
-│   │   ├── model_loader.py
-│   │   ├── model_registry.py
-│   │   ├── post_processor.py
-│   │   ├── services.py
-│   │   └── text_overlay.py
-│   └── frontend
+│   ├── backend/                 # FastAPI 백엔드 서버
+│   │   ├── __init__.py 
+│   │   ├── comfyui_client.py    # ComfyUI API 클라이언트
+│   │   ├── comfyui_workflows.py # T2I, I2I 등 ComfyUI 워크플로우 정의
+│   │   ├── exceptions.py        # 백엔드 서비스 커스텀 예외 정의
+│   │   ├── main.py              # FastAPI 애플리케이션 진입점 (Entry Point)
+│   │   ├── model_loader.py      # 설정 기반 모델 로딩 및 관리
+│   │   ├── model_registry.py    # 모델 설정 로드 및 관리
+│   │   ├── post_processor.py    # 이미지 생성 후처리 파이프라인
+│   │   ├── services.py          # 비즈니스 로직 처리 및 서비스 레이어
+│   │   └── text_overlay.py      # 3D 캘리그라피 생성 및 텍스트 합성 모듈
+│   └── frontend/
 │       ├── __init__.py
-│       ├── app.py
-│       ├── model_selector.py
-│       └── utils.py
-└── uv.lock
+│       ├── app.py               # Streamlit Frontend
+│       ├── model_selector.py    # 모델 선택 UI 컴포넌트
+│       └── utils.py             # Frontend utility
+└── uv.lock                      # 의존선 버전 잠금 파일(uv)
 ```
 
 
