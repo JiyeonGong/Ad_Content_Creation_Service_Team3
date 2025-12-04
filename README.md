@@ -300,4 +300,5 @@ cd src/frontend && streamlit run app.py --server.port 8501
 
 ### 프로젝트 문서
 - **프로젝트 Notion 페이지** 👉 [Notion 링크](https://chlorinated-knife-ad5.notion.site/part4-3-29490068d16d80778fa3c473cba05d56?source=copy_link)
-- **최종 프로젝트 보고서(Notion)** 👉 [Notion 링크 (다운로드)](https://chlorinated-knife-ad5.notion.site/Part-4-3-2bd90068d16d803d8bd5f55fa5cf4f32?source=copy_link)
+- **최종 프로젝트 보고서(Notion)** 👉 [Notion 링크](https://chlorinated-knife-ad5.notion.site/Part-4-3-2bd90068d16d803d8bd5f55fa5cf4f32?source=copy_link)
+- **최종 프로젝트 PDF** 👉 [다운로드](https://github.com/JiyeonGong/Ad_Content_Creation_Service_Team3/blob/main/docs/Team3_Project_Final_Report.pdf)
