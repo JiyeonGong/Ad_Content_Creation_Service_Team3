@@ -99,7 +99,7 @@
 ├── Dockerfile                    # 컨테이너 기반 배포를 위한 빌드 설정
 ├── docs/                         # 프로젝트 개발 문서 및 가이드
 │   ├── env_example.md
-│   └── 임시.md
+│   └── Team3_Project_Final_Report.pdf  # 프로젝트 최종 보고서 
 ├── pyproject.toml                # 프로젝트 메타데이터 및 빌드 시스템 설정(uv) 
 ├── README.md 
 ├── requirements.txt              # Python 패키지 의존성 목록
