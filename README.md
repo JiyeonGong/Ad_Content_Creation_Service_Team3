@@ -1,13 +1,13 @@
 # 🛍️ 소상공인을 위한 광고 제작 서비스 (Fit - AD)
+![Python](https://img.shields.io/badge/Python-3.12-blue) 
+![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.28-red)
+![ComfyUI](https://img.shields.io/badge/ComfyUI-Latest-purple)
 
 > **"딱 맞는, 알맞는 이미지를 제공합니다! Fit - AD."**
 >
 > 소상공인을 위한 AI 기반 마케팅 자동화 플랫폼 (Flux.1 & ComfyUI 기반)
 
-![Python](https://img.shields.io/badge/Python-3.12-blue) 
-![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green)
-![Streamlit](https://img.shields.io/badge/Streamlit-1.28-red)
-![ComfyUI](https://img.shields.io/badge/ComfyUI-Latest-purple)
 
 ---
 
@@ -67,7 +67,7 @@
 
 ### AI Core (Generative Models)
 - ComfyUI: 노드 기반 이미지 생성 파이프라인 오케스트레이션
-- FLUX.1-dev (GGUF): 고품질 T2I/I2I 생성 (메모리 최적화 적용)
+- FLUX.1-dev (양자화): 고품질 T2I/I2I 생성 (메모리 최적화 적용)
 - FLUX.1-Fill & BEN2: 자연스러운 배경 제거 및 인페인팅
 - SDXL ControlNet (Depth): 3D 텍스트 심도 제어
 
@@ -75,18 +75,13 @@
 ```
 ├── comfyui
 ├── configs
-│   ├── experiment_t2i_01.yaml
 │   ├── frontend_config.yaml
 │   ├── image_editing_config.yaml
 │   ├── model_config.yaml
-│   └── test_flux_gcp.yaml
 ├── Dockerfile
 ├── docs
 │   ├── env_example.md
 │   └── 임시.md
-├── outputs
-│   └── flux_gcp
-│       └── 20251122_082524
 ├── pyproject.toml
 ├── README.md
 ├── requirements.txt
@@ -132,19 +127,139 @@
 여기에 개발환경 정보 추가
 ```
 
-## 7. 환경설정 및 설치
+## 7. 설치 및 실행
 
-## 8. 실행 방법
+### 사전 요구사항
+
+- **GPU**: NVIDIA GPU 22GB+ VRAM (RTX 4090 권장)
+- **OS**: Linux (Ubuntu 20.04+) 또는 Windows with WSL2
+- **Python**: 3.12+
+- **CUDA**: 12.8+
+- **Docker** (선택사항): 컨테이너화 배포용
+
+### 1단계: 환경 설정
+
+```bash
+# 저장소 복제
+git clone https://github.com/JiyeonGong/Ad_Content_Creation_Service_Team3/
+cd Ad_Content_Creation_Service_Team3
+
+# 가상 환경 생성
+python3.12 -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# 또는
+.venv\Scripts\activate  # Windows
+
+# 의존성 설치
+pip install -r requirements.txt
+
+# ComfyUI 의존성 설치
+cd comfyui
+pip install -r requirements.txt
+cd ..
+```
+
+### 2단계: 모델 다운로드
+
+**필수/선택 모델 전체 목록(이 모델들은 /home/shared에서 연결되고 있습니다.)**
+
+- FLUX 계열 (GGUF)
+  - `FLUX.1-dev` 텍스트→이미지 및 이미지→이미지
+  - `FLUX.1-Fill` 배경 채우기/확장
+  - `FLUX.1-Fill-dev-Q8_0.gguf` 또는 동등 GGUF 파일
+  - `flux1-dev-Q8_0.gguf`, `flux1-dev-Q4_0.gguf` 중 환경에 맞게 선택
+
+- SDXL & VAE
+  - `stable-diffusion-xl-base-1.0` (FP16 권장)
+  - `sdxl-vae-fp16-fix` (MadeByOllin)
+
+- ControlNet
+  - `controlnet-depth-sdxl-1.0-small`
+
+- 텍스트 인코더/CLIP (GGUF)
+  - `t5-v1_1-xxl-encoder-Q8_0.gguf`
+  - CLIP Large 호환 파일 (GGUF)
+
+- 기타 리소스
+  - 예시 폰트: `/home/shared/ae.safetensors`(VAE), 프로젝트 폰트는 시스템 경로 자동 적용
+
+설치/배치 방법
+
+- 기본적으로 ComfyUI가 최초 실행 시 필요한 모델을 `comfyui/models` 및 캐시로 자동 다운로드/로딩합니다.
+- 로컬에 이미 모델이 있는 경우 `comfyui/extra_model_paths.yaml`의 `base_path`를 `/home/shared` 등 실제 저장소로 설정해 인덱싱 속도를 향상하세요.
+- 위 목록의 GGUF/FP16 파일은 용량이 크므로 네트워크/디스크 상태에 따라 최초 로딩에 수 분이 소요될 수 있습니다.
+
+필요한 ComfyUI 커스텀 노드 목록
+
+- BEN2 배경 제거: `BEN2_ComfyUI` (직접 클론 및 가중치 다운로드 필요)
+  - 소스: https://github.com/PramaLLC/BEN2_ComfyUI
+- 4bit/8bit 로더: `ComfyUI_bnb_nf4_fp4_Loaders` (직접 클론 필요)
+  - 소스: https://github.com/excosy/ComfyUI_bnb_nf4_fp4_Loaders
+- 웹에서 설치(ComfyUI 노드 매니저)
+  - `comfyui-impact-pack` (후처리/검출 유틸)
+  - `comfyui-impact-subpack` (Impact Pack 서브 유틸)
+  - `comfyui_controlnet_aux` (ControlNet 보조/전처리)
+  - `ComfyUI-GGUF` (GGUF 로더/유틸)
+  - `comfyui-rmbg` (Rembg 인터페이스 노드)
+  - `ComfyUI-BRIA_AI-RMBG` (BRIA RMBG 인터페이스)
+  - `ComfyUI-Manager` (노드 매니저)
+  - 기타 워크플로우 지원 노드들(필요 시 추가)
+
+설치 가이드
+
+```bash
+# 직접 클론이 필요한 커스텀 노드
+cd comfyui/custom_nodes
+git clone https://github.com/excosy/ComfyUI_bnb_nf4_fp4_Loaders.git
+git clone https://github.com/PramaLLC/BEN2_ComfyUI.git
+
+# 나머지 노드는 ComfyUI 웹(Manager)에서 설치 권장
+# ComfyUI 실행 후 Manager 탭에서 검색/설치
+```
+
+### 3단계: 환경 변수 설정
+
+```bash
+# .env 파일 생성 (OpenAI API 키만 지정)
+cat > .env << EOF
+OPENAI_API_KEY=sk-...
+EOF
+```
+
+### 4단계: 서비스 시작
+
+```bash
+# 모든 서비스 자동 시작
+bash scripts/start_all.sh
+
+# 개별 시작 (디버깅용)
+# 터미널 1: ComfyUI
+cd comfyui && python main.py --listen 0.0.0.0 --port 8188
+
+# 터미널 2: FastAPI
+cd src/backend && uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# 터미널 3: Streamlit
+cd src/frontend && streamlit run app.py --server.port 8501
+```
+
+### 5단계: 웹 접속
+
+```
+- Streamlit 프론트엔드: http://localhost:8501
+- FastAPI 문서: http://localhost:8000/docs
+- ComfyUI 대시보드: http://localhost:8188
+```
 
 ---
 ## 9. 협업 & 문서 자료
-### 👤 협업일지
-- 공지연 👉
-- 배진석 👉
-- 조계승 👉
-- 조민수 👉
+### 👤 개인 협업일지
+- **공지연** 👉 [협업일지 링크](https://chlorinated-knife-ad5.notion.site/2a290068d16d8002a362c8131ec36e82?source=copy_link)
+- **배진석** 👉 [협업일지 링크](https://chlorinated-knife-ad5.notion.site/2a290068d16d800cbb67d13c601ccb38?source=copy_link)
+- **조계승** 👉 [협업일지 링크](https://chlorinated-knife-ad5.notion.site/2a290068d16d8078a20fd8c00cece9f4?source=copy_link)
+- **조민수** 👉 [협업일지 링크](https://chlorinated-knife-ad5.notion.site/2a290068d16d8078a20fd8c00cece9f4?source=copy_link)
 
 ### 프로젝트 문서
-- 프로젝트 Notion 페이지 👉 ![노션 링크](https://chlorinated-knife-ad5.notion.site/part4-3-29490068d16d80778fa3c473cba05d56?source=copy_link)
-- 프로젝트 보고서(Notion) 👉 ![최종 보고서 링크](https://chlorinated-knife-ad5.notion.site/Part-4-3-2bd90068d16d803d8bd5f55fa5cf4f32?source=copy_link)
-- 최종 발표 자료 및 보고서(pdf) 👉 ![PPT 다운로드]()
+- **프로젝트 Notion 페이지** 👉 ![Notion 링크](https://chlorinated-knife-ad5.notion.site/part4-3-29490068d16d80778fa3c473cba05d56?source=copy_link)
+- **프로젝트 보고서(Notion)** 👉 ![Notion 링크](https://chlorinated-knife-ad5.notion.site/Part-4-3-2bd90068d16d803d8bd5f55fa5cf4f32?source=copy_link)
+- 최종 발표 자료 및 보고서(pdf) 👉 ![최종 보고서 다운로드]()
