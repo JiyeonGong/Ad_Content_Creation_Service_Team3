@@ -31,6 +31,22 @@
 
 ## 📱 3. 실행 화면
 
+<p align="center"><img src="assets/screenshot/1.png" alt="문구 생성1"/></p>
+<p align="center"><img src="assets/screenshot/2.png" alt="문구 생성2"/></p>
+<p align="center"><img src="assets/screenshot/3.png" alt="문구 기반 이미지 생성1"/></p>
+<p align="center"><img src="assets/screenshot/4.png" alt="문구 기반 이미지 생성2"/></p>
+<p align="center"><img src="assets/screenshot/5.png" alt="이미지 편집1"/></p>
+<p align="center"><img src="assets/screenshot/6.png" alt="이미지 편집2"/></p>
+<p align="center"><img src="assets/screenshot/7.png" alt="이미지 편집3"/></p>
+<p align="center"><img src="assets/screenshot/8.png" alt="이미지 편집4"/></p>
+<p align="center"><img src="assets/screenshot/9.png" alt="배경제거와 편집1"/></p>
+<p align="center"><img src="assets/screenshot/10.png" alt="배경제거와 편집2"/></p>
+<p align="center"><img src="assets/screenshot/11.png" alt="배경제거와 편집3"/></p>
+<p align="center"><img src="assets/screenshot/12.png" alt="캘리그라피1"/></p>
+<p align="center"><img src="assets/screenshot/13.png" alt="텍스트 오버레이1"/></p>
+<p align="center"><img src="assets/screenshot/14.png" alt="텍스트 오버레이2"/></p>
+
+
 
 
 ---
@@ -152,7 +168,7 @@ source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 
 # ComfyUI 설치 
-#프로젝트 루트에서 다음 명령어를 입력하여 comfy ui 설치
+# 프로젝트 루트에서 다음 명령어를 입력하여 comfy ui 설치
 scripts/install_comfyui.sh 
 
 # ComfyUI 의존성 설치
