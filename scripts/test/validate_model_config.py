@@ -8,8 +8,7 @@ PROJECT_ROOT = "/home/spai0323/Ad_Content_Creation_Service_Team3"
 # os.path.join()을 사용하여 경로 결합
 CONFIG_PATH = os.path.join(
     PROJECT_ROOT,
-    "src",
-    "backend",
+    "configs",
     "model_config.yaml"
 )
 

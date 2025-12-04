@@ -37,6 +37,11 @@ pages:
     title: "3D 캘리그라피 생성"
     description: "입체적인 3D 텍스트 이미지를 생성합니다 (배경 투명)"
 
+  - id: "canvas"
+    icon: "🎨"
+    title: "텍스트 이미지 배치"
+    description: "배경 이미지에 텍스트 이미지를 배치합니다"
+
 # 문구 생성 설정
 caption:
   service_types: []  # 사용자 직접 입력 방식으로 변경
@@ -131,7 +136,7 @@ ui:
     no_input: "⚠️ 필수 항목을 모두 입력해주세요"
     
   placeholders:
-    service_name: "예: 30일 다이어트 챌린지"
+    service_name: "예: 30일 다이어트 챌리지"
     features: "예: 전문 PT와 함께하는 맞춤형 운동, 영양 관리 포함"
     location: "예: 강남, 마포구, 온라인"
     caption: "예: 💪 새해 목표, 이번엔 꼭 이루자!"
