@@ -7,11 +7,12 @@ import re
 import streamlit as st
 import requests
 from io import BytesIO
-from PIL import Image
+from PIL import Image, ImageDraw
 import base64
 import yaml
 from typing import Optional, Dict, Any, List
 from pathlib import Path
+import math
 
 # ============================================================
 # 설정 로더
@@ -388,6 +389,8 @@ def main():
         render_t2i_page(config, api, connect_mode)
     elif page_id == "i2i":
         render_i2i_page(config, api, connect_mode)
+    elif page_id == "canvas":
+        render_canvas_page(config, api, connect_mode)
 
 # ============================================================
 # 페이지 1: 문구 생성
@@ -840,6 +843,121 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         "edited.png",
         "image/png"
     )
+
+# ============================================================
+# 페이지 5: 스트림릿 기능으로만 구현 (canvas 없음)
+# ============================================================
+def render_canvas_page(config, api, connect_mode):
+
+    st.title("🖼️ 이미지 위치 편집기")
+    st.warning("슬라이더/입력 필드를 사용해 텍스트 이미지 위치를 조정합니다.")
+
+    # ---------------------------------------------------------
+    # 1. 세션 상태 초기화 및 정의
+    # ---------------------------------------------------------
+    # 원본 좌표계의 최종 위치/크기를 저장합니다.
+    if "txt_state_L" not in st.session_state:
+        st.session_state.txt_state_L = {'left': 100, 'top': 100, 'width': 200, 'height': 50} 
+
+    # ---------------------------------------------------------
+    # 2. 이미지 로드 및 기본 크기 계산
+    # ---------------------------------------------------------
+    bg_file = st.file_uploader("📂 배경 이미지", type=["png","jpg","jpeg"], key="bg_up_l")
+    txt_file = st.file_uploader("📂 텍스트 이미지", type=["png","jpg","jpeg"], key="txt_up_l")
+
+    if not txt_file:
+        st.warning("텍스트 이미지를 업로드해주세요.")
+        return
+
+    bg = Image.open(bg_file).convert("RGBA") if bg_file else Image.new("RGBA", (800, 600), (255, 255, 255, 255))
+    txt_img = Image.open(txt_file).convert("RGBA")
+
+    bg_w, bg_h = bg.size
+    
+    # 세션 상태 초기 크기 재설정 (업로드 시 한 번만 실행)
+    if st.session_state.txt_state_L['width'] == 200 and st.session_state.txt_state_L['height'] == 50:
+        st.session_state.txt_state_L['width'] = min(bg_w // 3, txt_img.width)
+        st.session_state.txt_state_L['height'] = min(bg_h // 3, txt_img.height)
+        st.session_state.txt_state_L['left'] = bg_w // 10
+        st.session_state.txt_state_L['top'] = bg_h // 10
+
+    current_state = st.session_state.txt_state_L
+
+    # ---------------------------------------------------------
+    # 3. 위치 및 크기 조절 위젯
+    # ---------------------------------------------------------
+    st.subheader("🛠️ 위치 및 크기 조절 (원본 픽셀)")
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        new_left = st.slider("Left (X)", min_value=0, max_value=bg_w, 
+                             value=current_state['left'], key="l_left")
+    with col2:
+        new_top = st.slider("Top (Y)", min_value=0, max_value=bg_h, 
+                            value=current_state['top'], key="l_top")
+    with col3:
+        new_width = st.slider("Width (W)", min_value=1, max_value=bg_w, 
+                              value=current_state['width'], key="l_width")
+    with col4:
+        new_height = st.slider("Height (H)", min_value=1, max_value=bg_h, 
+                               value=current_state['height'], key="l_height")
+
+    # 세션 상태 업데이트
+    st.session_state.txt_state_L = {
+        'left': new_left, 'top': new_top, 
+        'width': new_width, 'height': new_height
+    }
+
+    # ---------------------------------------------------------
+    # 4. 미리보기 (PIL 합성)
+    # ---------------------------------------------------------
+    st.subheader("👀 실시간 미리보기")
+    
+    info = st.session_state.txt_state_L
+    preview_bg = bg.copy()
+    
+    # 텍스트 이미지 리사이즈 (정수형으로 변환)
+    try:
+        final_txt = txt_img.resize((info['width'], info['height']), Image.Resampling.LANCZOS)
+    except ValueError:
+        st.error("크기 값이 유효하지 않습니다. Width/Height가 1보다 큰지 확인해주세요.")
+        return
+
+    # 배경 이미지에 텍스트 이미지 오버레이
+    # 좌표도 정수형으로 변환
+    preview_bg.paste(final_txt, (info['left'], info['top']), final_txt)
+
+    # Streamlit에 미리보기 표시 (화면 크기에 맞게 조정)
+    display_w = 800
+    display_scale = display_w / bg_w
+    display_h = int(bg_h * display_scale)
+    
+    preview_display = preview_bg.resize((display_w, display_h), Image.Resampling.LANCZOS)
+    st.image(preview_display, caption="실시간 미리보기", use_container_width=True)
+
+    st.write(f"현재 위치: **Left={info['left']}, Top={info['top']}, Width={info['width']}, Height={info['height']}** (원본 픽셀)")
+
+
+    # ---------------------------------------------------------
+    # 5. 최종 합성 및 다운로드
+    # ---------------------------------------------------------
+    st.subheader("✨ 최종 합성")
+    
+    if st.button("💾 최종 결과 저장 및 다운로드", use_container_width=True, type="primary"):
+        # 최종 결과물 생성 (미리보기와 동일한 로직, 원본 크기)
+        final_bg = bg.copy()
+        final_txt = txt_img.resize((info['width'], info['height']), Image.Resampling.LANCZOS)
+        final_bg.paste(final_txt, (info['left'], info['top']), final_txt)
+
+        st.success("✅ 최종 합성 완료.")
+        buf = BytesIO()
+        final_bg.save(buf, format="PNG")
+        st.download_button("⬇️ 다운로드", buf.getvalue(), "result.png", "image/png")
+
+    # [전체 초기화 버튼]
+    if st.button("🔄 전체 초기화"):
+        st.session_state.txt_state_L = {'left': 100, 'top': 100, 'width': 200, 'height': 50} 
+        st.rerun()
 
 # ============================================================
 # 실행
