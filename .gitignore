@@ -29,9 +29,13 @@ Thumbs.db
 experiments/
 gitclone/
 cache/
-.cache/  # HuggingFace 등 라이브러리 캐시 폴더 추가
+recording/
 
-# 입력/출력 데이터 및 모델 폴더
+# 이미지 관련 파일 전부 제외
+#assets/outputs/
+
+# 입력폴더 공유시 주석처리
+#assets/inputs/
 data/
 outputs/
 models/

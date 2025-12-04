@@ -21,6 +21,7 @@ class ConfigLoader:
     
     def __init__(self, config_path: Optional[str] = None):
         if config_path is None:
+            # 프로젝트 루트의 configs/frontend_config.yaml로 이동
             config_path = os.path.join(os.path.dirname(__file__), "..", "..", "configs", "frontend_config.yaml")
         
         self.config_path = config_path
@@ -388,6 +389,12 @@ def main():
         render_t2i_page(config, api, connect_mode)
     elif page_id == "i2i":
         render_i2i_page(config, api, connect_mode)
+    elif page_id == "image_editing_experiment":
+        render_image_editing_experiment_page(config, api)
+    elif page_id == "text_overlay":
+        render_text_overlay_page(config, api)
+    elif page_id == "canvas":
+        render_canvas_page(config, api, connect_mode)
 
 # ============================================================
 # 페이지 1: 문구 생성
@@ -821,25 +828,326 @@ def render_i2i_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
         st.error(f"❌ 편집 실패: {e}")
         return
 
-    # --------------------------------------------
-    # 11) 결과 출력
-    # --------------------------------------------
-    st.success("✅ 편집 완료!")
+    # ---------------------------------------------------------------------
+    # 8) 편집 결과 표시 (세션 상태에서 가져오기)
+    # ---------------------------------------------------------------------
+    if st.session_state.get("page4_edited_result"):
+        result = st.session_state["page4_edited_result"]
+        
+        st.markdown("---")
+        st.subheader("🎉 편집 완료!")
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.image(display_image, caption="📸 원본 이미지", use_container_width=True)
+        with col2:
+            st.image(result["image_bytes"], caption=f"✨ {result['mode_name']} 결과", use_container_width=True)
+        
+        st.download_button(
+            "⬇️ 편집 이미지 다운로드",
+            result["image_bytes"],
+            file_name=f"edited_{selected_mode_id}.png",
+            mime="image/png",
+            use_container_width=True,
+            key="download_edited_result"
+        )
+        
+        st.caption(f"💡 사용된 프롬프트: {result['prompt']}")
+        
+        # 새로운 편집 시작 버튼
+        if st.button("🔄 새로운 이미지로 다시 편집", use_container_width=True):
+            st.session_state["page4_edited_result"] = None
+            st.rerun()
 
-    col1, col2 = st.columns(2)
+
+
+# ============================================================
+# 페이지 5: 캘리그라피 생성
+# ============================================================
+def render_text_overlay_page(config: ConfigLoader, api: APIClient):
+    """캘리그라피 생성 페이지"""
+    st.title("🔤 캘리그라피 생성")
+    
+    st.info("""
+    💡 원하는 문구를 입력하면 입체적인 캘리그라피 이미지로 만들어줍니다.
+    - **기본 모드**: Pillow로 빠르게 생성 (투명 배경)
+    - **스타일 모드**: AI 모델로 특수 효과 적용 (매트, 네온, 금박 등)
+    - 결과물은 배경이 투명한 PNG로 생성되어 다른 이미지 위에 합성 가능합니다.
+    """)
+    
+    col1, col2 = st.columns([1, 1.5])
+    
     with col1:
-        st.subheader("📌 원본")
-        st.image(image_bytes, use_container_width=True)
+        st.subheader("🎨 디자인 설정")
+        
+        # 1. 텍스트 입력
+        default_text = "헬스케어 프로젝트"
+        text_input = st.text_input(
+            "생성할 문구",
+            value=default_text,
+            key="calligraphy_text"
+        )
+        
+        # 2. 색상 선택
+        st.markdown("---")
+        color_hex = st.color_picker(
+            "글자 색상",
+            value="#FFD700",
+            key="calligraphy_color"
+        )
+        
+        # 3. 스타일 선택
+        st.markdown("---")
+        style_options = {
+            "basic_color": "효과 없음 (기본)",
+            "smooth matte plastic": "매트 플라스틱 (깔끔함)",
+            "glossy metal": "유광 금속 (고급스러움)",
+            "liquid water": "물 질감 (청량함)",
+            "neon light": "네온 사인 (화려함)",
+            "gold foil": "금박 (럭셔리)",
+            "ice texture": "얼음 (시원함)"
+        }
+        
+        selected_style_display = st.selectbox(
+            "효과(Style) 선택",
+            options=list(style_options.values()),
+            key="calligraphy_style"
+        )
+        
+        # 역매핑: 표시명 -> 실제 style 값
+        selected_style = [k for k, v in style_options.items() if v == selected_style_display][0]
+        
+        # 4. 폰트 경로 (기본값 자동 설정)
+        with st.expander("🔧 고급 설정"):
+            font_path = st.text_input(
+                "폰트 파일 경로 (선택)",
+                value="/home/shared/RiaSans-Bold.ttf",
+                placeholder="/home/shared/RiaSans-Bold.ttf",
+                help="비워두면 기본 폰트 사용",
+                key="calligraphy_font_path"
+            )
+            
+            if selected_style == "basic_color":
+                st.caption("ℹ️ **기본 모드**: Pillow를 사용하여 고속 생성")
+            else:
+                st.caption("ℹ️ **스타일 모드**: SDXL AI 모델로 특수 효과 생성 (시간 소요)")
+        
+        # 5. 생성 버튼
+        st.markdown("---")
+        generate_btn = st.button(
+            "✨ 캘리그라피 생성하기",
+            type="primary",
+            use_container_width=True,
+            disabled=not text_input or not text_input.strip()
+        )
+    
     with col2:
-        st.subheader("📌 편집결과")
-        st.image(edited_img, use_container_width=True)
+        st.subheader("🖼️ 결과물")
+        
+        if generate_btn:
+            if not text_input or not text_input.strip():
+                st.warning("⚠️ 문구를 입력해주세요.")
+            else:
+                # API 호출 준비
+                payload = {
+                    "text": text_input,
+                    "color_hex": color_hex,
+                    "style": selected_style,
+                    "font_path": font_path.strip() if font_path else ""
+                }
+                
+                # 스타일 표시
+                if selected_style == "basic_color":
+                    spinner_text = "⚡ Pillow로 빠르게 생성 중..."
+                else:
+                    spinner_text = f"🎨 AI로 '{selected_style_display}' 스타일 생성 중... (30-60초 소요)"
+                
+                try:
+                    with st.spinner(spinner_text):
+                        image_bytes = api.call_calligraphy(payload)
+                    
+                    if image_bytes:
+                        st.success("✅ 캘리그라피 생성 완료!")
+                        
+                        # 결과 이미지 표시
+                        st.image(
+                            image_bytes,
+                            caption=f"생성: {text_input}",
+                            use_container_width=True
+                        )
+                        
+                        # 다운로드 버튼
+                        st.download_button(
+                            "⬇️ PNG 다운로드 (배경 투명)",
+                            image_bytes,
+                            f"calligraphy_{text_input[:15]}.png",
+                            "image/png",
+                            use_container_width=True,
+                            key="download_calligraphy"
+                        )
+                        
+                        # 세션에 저장
+                        st.session_state["last_calligraphy"] = {
+                            "text": text_input,
+                            "image": image_bytes
+                        }
+                    else:
+                        st.error("❌ 이미지 생성 실패")
+                
+                except Exception as e:
+                    st.error(f"❌ 생성 실패: {e}")
+        
+        # 이전 결과 표시
+        elif "last_calligraphy" in st.session_state:
+            st.info("이전 생성 결과:")
+            last = st.session_state["last_calligraphy"]
+            st.image(
+                last["image"],
+                caption=f"이전: {last['text']}",
+                use_container_width=True
+            )
+            st.download_button(
+                "⬇️ PNG 다운로드",
+                last["image"],
+                f"calligraphy_{last['text'][:15]}.png",
+                "image/png",
+                use_container_width=True,
+                key="download_last_calligraphy"
+            )
+        else:
+            st.markdown("텍스트를 입력하고 생성 버튼을 눌러주세요.")
+    
+    # 사용 예시
+    st.markdown("---")
+    st.markdown("### 💡 사용 예시")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("**광고 문구**")
+        st.caption("• 신년 특가\n• 오픈 기념\n• 할인 중")
+    
+    with col2:
+        st.markdown("**이벤트 제목**")
+        st.caption("• 새해 대박\n• PT 무료 체험\n• 회원 모집")
+    
+    with col3:
+        st.markdown("**강조 텍스트**")
+        st.caption("• SALE\n• NEW\n• HOT")
 
-    st.download_button(
-        "⬇️ 편집 결과 다운로드",
-        edited_img,
-        "edited.png",
-        "image/png"
+
+# ============================================================
+# 페이지 6: 텍스트 이미지 배치 (프론트엔드 합성 전용)
+# ============================================================
+def render_canvas_page(config: ConfigLoader, api: APIClient, connect_mode: bool):
+    st.title("🎨 텍스트 이미지 배치")
+    st.warning("배경/텍스트 이미지를 업로드한 뒤 위치와 크기를 조절해 합성합니다.")
+
+    # 1) 세션 상태 초기화
+    if "txt_state_L" not in st.session_state:
+        st.session_state.txt_state_L = {
+            "left": 100,
+            "top": 100,
+            "width": 200,
+            "height": 50,
+        }
+
+    # 2) 입력 이미지 업로드
+    bg_file = st.file_uploader("📂 배경 이미지", type=["png", "jpg", "jpeg"], key="bg_up_l")
+    txt_file = st.file_uploader("📂 텍스트 이미지 (PNG 권장)", type=["png", "jpg", "jpeg"], key="txt_up_l")
+
+    if not txt_file:
+        st.info("텍스트 이미지를 업로드하면 투명 배경 PNG를 배치할 수 있습니다.")
+        st.stop()
+
+    # 배경: 없으면 기본 캔버스 생성
+    bg = Image.open(bg_file).convert("RGBA") if bg_file else Image.new("RGBA", (800, 600), (255, 255, 255, 255))
+    txt_img = Image.open(txt_file).convert("RGBA")
+    # 투명 여백 제거 (상단 오프셋 보정)
+    try:
+        alpha = txt_img.split()[3]
+        bbox = alpha.getbbox()
+        if bbox:
+            txt_img = txt_img.crop(bbox)
+    except Exception:
+        pass
+
+    bg_w, bg_h = bg.size
+
+    # 업로드 직후 1회 초기 배치값 보정
+    if st.session_state.txt_state_L["width"] == 200 and st.session_state.txt_state_L["height"] == 50:
+        st.session_state.txt_state_L["width"] = min(bg_w // 3, txt_img.width)
+        st.session_state.txt_state_L["height"] = min(bg_h // 3, txt_img.height)
+        st.session_state.txt_state_L["left"] = bg_w // 10
+        st.session_state.txt_state_L["top"] = bg_h // 10
+
+    info = st.session_state.txt_state_L
+
+    # 3) 위치/크기 조절 위젯
+    st.subheader("🛠️ 위치 및 크기 (원본 픽셀)")
+    c1, c2, c3, c4 = st.columns(4)
+    # 현재 텍스트 크기에 맞춘 안전 범위 계산
+    max_left = max(0, bg_w - info["width"]) if info["width"] <= bg_w else 0
+    max_top = max(0, bg_h - info["height"]) if info["height"] <= bg_h else 0
+    with c1:
+        new_left = st.slider("Left (X)", 0, max(bg_w, 1), min(info["left"], max_left), key="l_left")
+    with c2:
+        new_top = st.slider("Top (Y)", 0, max(bg_h, 1), min(info["top"], max_top), key="l_top")
+    with c3:
+        new_width = st.slider("Width (W)", 1, bg_w, info["width"], key="l_width")
+    with c4:
+        new_height = st.slider("Height (H)", 1, bg_h, info["height"], key="l_height")
+
+    st.session_state.txt_state_L = {
+        "left": int(new_left),
+        "top": int(new_top),
+        "width": int(new_width),
+        "height": int(new_height),
+    }
+
+    # 4) 미리보기
+    st.subheader("👀 미리보기")
+    preview_bg = bg.copy()
+    try:
+        final_txt = txt_img.resize((st.session_state.txt_state_L["width"], st.session_state.txt_state_L["height"]), Image.Resampling.LANCZOS)
+    except ValueError:
+        st.error("크기 값이 유효하지 않습니다. Width/Height 최소 1 이상이어야 합니다.")
+        st.stop()
+
+    # 경계 내 배치 클램프
+    place_left = min(max(0, st.session_state.txt_state_L["left"]), max(0, bg_w - st.session_state.txt_state_L["width"]))
+    place_top = min(max(0, st.session_state.txt_state_L["top"]), max(0, bg_h - st.session_state.txt_state_L["height"]))
+
+    preview_bg.paste(final_txt, (int(place_left), int(place_top)), final_txt)
+
+    display_w = 800
+    display_scale = display_w / bg_w
+    display_h = int(bg_h * display_scale)
+    preview_display = preview_bg.resize((display_w, display_h), Image.Resampling.LANCZOS)
+    st.image(preview_display, caption="실시간 미리보기", use_container_width=True)
+
+    st.write(
+        f"현재 위치: Left={st.session_state.txt_state_L['left']}, Top={st.session_state.txt_state_L['top']}, "
+        f"Width={st.session_state.txt_state_L['width']}, Height={st.session_state.txt_state_L['height']}"
     )
+
+    # 5) 최종 합성/다운로드
+    st.subheader("✨ 최종 합성")
+    col_ok, col_reset = st.columns([1, 1])
+    with col_ok:
+        if st.button("💾 최종 결과 저장 및 다운로드", use_container_width=True, type="primary"):
+            final_bg = bg.copy()
+            final_txt = txt_img.resize((st.session_state.txt_state_L["width"], st.session_state.txt_state_L["height"]), Image.Resampling.LANCZOS)
+            final_bg.paste(final_txt, (st.session_state.txt_state_L["left"], st.session_state.txt_state_L["top"]), final_txt)
+
+            buf = BytesIO()
+            final_bg.save(buf, format="PNG")
+            st.success("✅ 최종 합성 완료.")
+            st.download_button("⬇️ 다운로드", buf.getvalue(), "result.png", "image/png")
+
+    with col_reset:
+        if st.button("🔄 전체 초기화", use_container_width=True):
+            st.session_state.txt_state_L = {"left": 100, "top": 100, "width": 200, "height": 50}
+            st.rerun()
 
 # ============================================================
 # 실행
