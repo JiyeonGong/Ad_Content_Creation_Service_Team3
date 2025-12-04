@@ -151,6 +151,10 @@ source .venv/bin/activate  # Linux/Mac
 # 의존성 설치
 pip install -r requirements.txt
 
+# ComfyUI 설치 
+#프로젝트 루트에서
+scripts/install_comfyui.sh 입력으로 comfy ui 설치
+
 # ComfyUI 의존성 설치
 cd comfyui
 pip install -r requirements.txt
