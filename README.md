@@ -290,7 +290,7 @@
 
 ```bash
 # 저장소 복제
-git clone <repository-url>
+git clone https://github.com/JiyeonGong/Ad_Content_Creation_Service_Team3/
 cd Ad_Content_Creation_Service_Team3
 
 # 가상 환경 생성
@@ -310,30 +310,68 @@ cd ..
 
 ### 2단계: 모델 다운로드
 
-**주요 모델**
+**필수/선택 모델 전체 목록**
+
+- FLUX 계열 (GGUF)
+  - `FLUX.1-dev` 텍스트→이미지 및 이미지→이미지
+  - `FLUX.1-Fill` 배경 채우기/확장
+  - `FLUX.1-Fill-dev-Q8_0.gguf` 또는 동등 GGUF 파일
+  - `flux1-dev-Q8_0.gguf`, `flux1-dev-Q4_0.gguf` 중 환경에 맞게 선택
+
+- SDXL & VAE
+  - `stable-diffusion-xl-base-1.0` (FP16 권장)
+  - `sdxl-vae-fp16-fix` (MadeByOllin)
+
+- ControlNet
+  - `controlnet-depth-sdxl-1.0-small`
+
+- 텍스트 인코더/CLIP (GGUF)
+  - `t5-v1_1-xxl-encoder-Q8_0.gguf`
+  - CLIP Large 호환 파일 (GGUF)
+
+- 배경 제거/후처리
+  - `BEN2_Base.pth` (BEN2)
+  - `Rembg`(U2Net) 런타임 모델은 패키지 설치 시 자동
+
+- 기타 리소스
+  - 예시 폰트: `/home/shared/ae.safetensors`(VAE), 프로젝트 폰트는 시스템 경로 자동 적용
+
+설치/배치 방법
+
+- 기본적으로 ComfyUI가 최초 실행 시 필요한 모델을 `comfyui/models` 및 캐시로 자동 다운로드/로딩합니다.
+- 로컬에 이미 모델이 있는 경우 `comfyui/extra_model_paths.yaml`의 `base_path`를 `/home/shared` 등 실제 저장소로 설정해 인덱싱 속도를 향상하세요.
+- 위 목록의 GGUF/FP16 파일은 용량이 크므로 네트워크/디스크 상태에 따라 최초 로딩에 수 분이 소요될 수 있습니다.
+
+필요한 ComfyUI 커스텀 노드 목록
+
+- BEN2 배경 제거: `BEN2_ComfyUI` (직접 클론 필요)
+  - 소스: https://github.com/PramaLLC/BEN2_ComfyUI
+- 4bit/8bit 로더: `ComfyUI_bnb_nf4_fp4_Loaders` (직접 클론 필요)
+  - 소스: https://github.com/excosy/ComfyUI_bnb_nf4_fp4_Loaders
+- 웹에서 설치(ComfyUI 노드 매니저)
+  - `ComfyUI-Impact-Pack` (후처리/검출 유틸)
+  - `ControlNet` 관련 공식/커뮤니티 노드
+  - `Rembg` 인터페이스 노드 (선택)
+  - 기타 워크플로우 지원 노드들(필요 시 추가)
+
+설치 가이드
 
 ```bash
-# 로컬 캐시 디렉토리에 다운로드
-# (ComfyUI가 자동으로 처리하므로 수동 설치 불필요)
-# 단, 첫 실행 시 다운로드에 시간 소요
+# 직접 클론이 필요한 커스텀 노드
+cd comfyui/custom_nodes
+git clone https://github.com/excosy/ComfyUI_bnb_nf4_fp4_Loaders.git
+git clone https://github.com/PramaLLC/BEN2_ComfyUI.git
 
-# 필수 모델 목록
-- FLUX.1-dev (GGUF, ~9GB)
-- FLUX.1-Fill (GGUF, ~9GB)
-- SDXL Base (FP16, ~6GB)
-- ControlNet Depth SDXL (~2GB)
-- CLIP L (GGUF)
-- T5 Encoder (GGUF)
+# 나머지 노드는 ComfyUI 웹(Manager)에서 설치 권장
+# ComfyUI 실행 후 Manager 탭에서 검색/설치
 ```
 
 ### 3단계: 환경 변수 설정
 
 ```bash
-# .env 파일 생성
+# .env 파일 생성 (OpenAI API 키만 지정)
 cat > .env << EOF
-OPENAI_API_KEY=sk-...  # OpenAI API 키
-CUDA_VISIBLE_DEVICES=0  # GPU 0번 사용
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  # 메모리 최적화
+OPENAI_API_KEY=sk-...
 EOF
 ```
 
