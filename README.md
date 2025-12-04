@@ -349,9 +349,13 @@ cd ..
 - 4bit/8bit 로더: `ComfyUI_bnb_nf4_fp4_Loaders` (직접 클론 필요)
   - 소스: https://github.com/excosy/ComfyUI_bnb_nf4_fp4_Loaders
 - 웹에서 설치(ComfyUI 노드 매니저)
-  - `ComfyUI-Impact-Pack` (후처리/검출 유틸)
-  - `ControlNet` 관련 공식/커뮤니티 노드
-  - `Rembg` 인터페이스 노드 (선택)
+  - `comfyui-impact-pack` (후처리/검출 유틸)
+  - `comfyui-impact-subpack` (Impact Pack 서브 유틸)
+  - `comfyui_controlnet_aux` (ControlNet 보조/전처리)
+  - `ComfyUI-GGUF` (GGUF 로더/유틸)
+  - `comfyui-rmbg` (Rembg 인터페이스 노드)
+  - `ComfyUI-BRIA_AI-RMBG` (BRIA RMBG 인터페이스)
+  - `ComfyUI-Manager` (노드 매니저)
   - 기타 워크플로우 지원 노드들(필요 시 추가)
 
 설치 가이드
