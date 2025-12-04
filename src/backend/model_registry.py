@@ -61,6 +61,7 @@ class ModelRegistry:
     
     def __init__(self, config_path: Optional[str] = None):
         if config_path is None:
+            # 기본 경로 변경: 프로젝트 루트 configs/model_config.yaml
             config_path = os.path.join(
                 os.path.dirname(__file__),
                 "..", "..", "configs", "model_config.yaml"
@@ -190,7 +191,7 @@ def get_model_config() -> Dict[str, Any]:
     if _config_cache is None:
         config_path = os.path.join(
             os.path.dirname(__file__),
-            "model_config.yaml"
+            "..", "..", "configs", "model_config.yaml"
         )
         with open(config_path, 'r', encoding='utf-8') as f:
             _config_cache = yaml.safe_load(f)
