@@ -31,21 +31,42 @@
 
 ## 📱 3. 실행 화면
 
+아래는 Fit - AD의 실제 서비스 화면 스크린샷 입니다.
+
+### 홍보 문구 + 해시태그 생성
 <p align="center"><img src="assets/screenshot/1.png" alt="문구 생성1"/></p>
 <p align="center"><img src="assets/screenshot/2.png" alt="문구 생성2"/></p>
+소상공인의 가게 정보와 만들고싶은 광고의 특징과 분위기를 선택하면 자동으로 광고용 문구를 생성합니다. SNS 업로드용 추천 해시태그도 생성받아 바로 사용할 수 있습니다.
+🔗 연결 모드를 선택하면 다음 페이지에서 이어서 사용할 문구를 선택할 수 있습니다.
+
+### 문구 기반 이미지 생성
 <p align="center"><img src="assets/screenshot/3.png" alt="문구 기반 이미지 생성1"/></p>
 <p align="center"><img src="assets/screenshot/4.png" alt="문구 기반 이미지 생성2"/></p>
+소상공인이 원하는 문구를 기반으로 광고 이미지를 생성합니다. 이미지는 최대 5개를 동시에 생성하고, 그 중 가장 마음에 드는 이미지를 저장하거나 다음 단계에서 바로 이어서 사용할 수 있습니다.
+
+### 이미지 스타일 변경
 <p align="center"><img src="assets/screenshot/5.png" alt="이미지 편집1"/></p>
 <p align="center"><img src="assets/screenshot/6.png" alt="이미지 편집2"/></p>
 <p align="center"><img src="assets/screenshot/7.png" alt="이미지 편집3"/></p>
 <p align="center"><img src="assets/screenshot/8.png" alt="이미지 편집4"/></p>
+문구를 기반으로 생성된 이미지에서 일부를 수정할 수 있습니다. 예를 들면 '지금 사진 속 여자가 입은 옷의 색깔을 하얀색으로 바꿔줘.'와 같은 프롬프트로 사진을 편집할 수 있습니다. 스타일/분위기를 바꾸는데 유용합니다. 
+
+### 배경 제거와 편집
 <p align="center"><img src="assets/screenshot/9.png" alt="배경제거와 편집1"/></p>
 <p align="center"><img src="assets/screenshot/10.png" alt="배경제거와 편집2"/></p>
 <p align="center"><img src="assets/screenshot/11.png" alt="배경제거와 편집3"/></p>
+보다 정교하게 사용자가 직접 파라미터를 설정하여 사진을 편집할 수 있습니다. 인물 모드, 제품 모드, 고급 모드 총 세가지의 모드를 활용해 편리하게 사진을 편집할 수 있습니다.
+
+
+### 광고용 텍스트 이미지 생성
 <p align="center"><img src="assets/screenshot/12.png" alt="캘리그라피1"/></p>
+이미지에 합성할 투명 배경의 텍스트 png 파일을 만들 수 있습니다. 원하는 문구를 입력하고 색깔을 직접 지정합니다.
+
+
+### 텍스트 이미지 배치
 <p align="center"><img src="assets/screenshot/13.png" alt="텍스트 오버레이1"/></p>
 <p align="center"><img src="assets/screenshot/14.png" alt="텍스트 오버레이2"/></p>
-
+생성한 광고용 이미지에 텍스트 이미지를 추가하여 직접 편집할 수 있습니다. 텍스트 이미지를 마음대로 조정하여 원하는 곳에 문구를 추가하고 저장할 수 있습니다.
 
 
 
