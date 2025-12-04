@@ -65,7 +65,7 @@ volumes/
 comfyui/*
 
 # 모델 경로 설정은 추적
-# !comfyui/extra_model_paths.yaml
+!comfyui/extra_model_paths.yaml
 
 # 5. Logs & Monitoring
 logs/
